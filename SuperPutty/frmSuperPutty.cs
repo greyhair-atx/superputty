@@ -71,14 +71,7 @@ namespace SuperPutty
         private FormWindowState lastNonMinimizedWindowState = FormWindowState.Normal;
         private Rectangle lastNormalDesktopBounds;
         private ChildWindowFocusHelper focusHelper;
-        private bool isLeftControlDown;
-        private bool isRightControlDown;
-        private bool isLeftShiftDown;
-        private bool isRightShiftDown;
-        private bool isLeftAltDown;
-        private bool isRightAltDown;
-        private bool isLeftWinDown;
-        private bool isRightWinDown;
+        private readonly KeyboardHookState keyboardHookState = new KeyboardHookState();
         int commandMRUIndex = -1;
 
         private readonly TabSwitcher tabSwitcher;
@@ -169,6 +162,10 @@ namespace SuperPutty
             // Low-Level Mouse and Keyboard hooks
             llkp = KBHookCallback;
             kbHookID = SetKBHook(llkp);
+            if (kbHookID == IntPtr.Zero)
+            {
+                Log.ErrorFormat("Unable to install the keyboard hook. Win32Error={0}", Marshal.GetLastWin32Error());
+            }
             //llmp = MHookCallback;
             //mHookID = SetMHook(llmp);
 
@@ -280,7 +277,11 @@ namespace SuperPutty
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             // free hooks
-            NativeMethods.UnhookWindowsHookEx(kbHookID);
+            if (kbHookID != IntPtr.Zero && !NativeMethods.UnhookWindowsHookEx(kbHookID))
+            {
+                Log.WarnFormat("Unable to remove the keyboard hook. Win32Error={0}", Marshal.GetLastWin32Error());
+            }
+            kbHookID = IntPtr.Zero;
             //NativeMethods.UnhookWindowsHookEx(mHookID);
 
             // save window size and location if not maximized or minimized
@@ -360,13 +361,27 @@ namespace SuperPutty
         private void frmSuperPutty_Activated(object sender, EventArgs e)
         {
             Log.DebugFormat("[{0}] Activated", this.Handle);
+            keyboardHookState.Synchronize(IsAsyncKeyDown);
             //dockPanel1_ActiveDocumentChanged(null, null);
         }
 
         protected override void OnDeactivate(EventArgs e)
         {
-            ResetModifierKeyState();
+            long modifierStateVersion = keyboardHookState.Version;
             base.OnDeactivate(e);
+
+            if (IsHandleCreated && !IsDisposed && !Disposing)
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    if (!IsDisposed && !Disposing &&
+                        modifierStateVersion == keyboardHookState.Version &&
+                        !IsForegroundWindow(true))
+                    {
+                        keyboardHookState.Reset();
+                    }
+                }));
+            }
         }
 
         public void SetActiveDocument(ToolWindow toolWindow)
@@ -1293,47 +1308,9 @@ namespace SuperPutty
             }
         }
 
-        private void UpdateModifierKeyState(Keys keyCode, bool isKeyDown)
+        private static bool IsAsyncKeyDown(Keys keyCode)
         {
-            switch (keyCode)
-            {
-                case Keys.LControlKey:
-                    isLeftControlDown = isKeyDown;
-                    break;
-                case Keys.RControlKey:
-                    isRightControlDown = isKeyDown;
-                    break;
-                case Keys.LShiftKey:
-                    isLeftShiftDown = isKeyDown;
-                    break;
-                case Keys.RShiftKey:
-                    isRightShiftDown = isKeyDown;
-                    break;
-                case Keys.LMenu:
-                    isLeftAltDown = isKeyDown;
-                    break;
-                case Keys.RMenu:
-                    isRightAltDown = isKeyDown;
-                    break;
-                case Keys.LWin:
-                    isLeftWinDown = isKeyDown;
-                    break;
-                case Keys.RWin:
-                    isRightWinDown = isKeyDown;
-                    break;
-            }
-        }
-
-        private void ResetModifierKeyState()
-        {
-            isLeftControlDown = false;
-            isRightControlDown = false;
-            isLeftShiftDown = false;
-            isRightShiftDown = false;
-            isLeftAltDown = false;
-            isRightAltDown = false;
-            isLeftWinDown = false;
-            isRightWinDown = false;
+            return (NativeMethods.GetAsyncKeyState((int)keyCode) & 0x8000) != 0;
         }
 
         // Intercept keyboard messages for Ctrl-F4 and Ctrl-Tab handling
@@ -1345,21 +1322,20 @@ namespace SuperPutty
                     (NativeMethods.KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(NativeMethods.KBDLLHOOKSTRUCT));
                 Keys keys = (Keys)keyboardData.vkCode;
 
-                // Let generated input pass through without treating it as physical
-                // modifier state or recursively executing SuperPuTTY shortcuts.
-                if ((keyboardData.flags & (NativeMethods.LowLevelKeyboardFlags.Injected |
-                    NativeMethods.LowLevelKeyboardFlags.LowerIntegrityLevelInjected)) != 0)
+                // Let input generated by SuperPuTTY pass through without treating it
+                // as physical state or recursively executing SuperPuTTY shortcuts.
+                if (KeyboardHookState.IsSuperPuttyInjectedInput(keyboardData))
                 {
                     return NativeMethods.CallNextHookEx(kbHookID, nCode, wParam, lParam);
                 }
 
                 bool isKeyDown = wParam == (IntPtr)NativeMethods.WM_KEYDOWN || wParam == (IntPtr)NativeMethods.WM_SYSKEYDOWN;
-                UpdateModifierKeyState(keys, isKeyDown);
+                keyboardHookState.Update(keys, isKeyDown);
 
-                bool isControlDown = isLeftControlDown || isRightControlDown;
-                bool isShiftDown = isLeftShiftDown || isRightShiftDown;
-                bool isAltDown = isLeftAltDown || isRightAltDown;
-                bool isWinDown = isLeftWinDown || isRightWinDown;
+                bool isControlDown = keyboardHookState.IsControlDown;
+                bool isShiftDown = keyboardHookState.IsShiftDown;
+                bool isAltDown = keyboardHookState.IsAltDown;
+                bool isWinDown = keyboardHookState.IsWinDown;
 
                 if (Log.Logger.IsEnabledFor(Level.Trace))
                 {
@@ -1368,7 +1344,11 @@ namespace SuperPutty
                         isControlDown ? "Ctrl" : "", isAltDown ? "Alt" : "", isShiftDown ? "Shift" : "", isWinDown ? "Win" : "");
                 }
 
-                if (IsForegroundWindow(true))
+                IntPtr foregroundWindow = NativeMethods.GetForegroundWindow();
+                bool embeddedWindowIsForeground = IsForegroundWindow(foregroundWindow, false);
+                bool superPuttyIsForeground = embeddedWindowIsForeground || foregroundWindow == Handle;
+
+                if (superPuttyIsForeground)
                 {
                     // SuperPutty or Putty is the window in front...
 
@@ -1446,7 +1426,7 @@ namespace SuperPutty
                     }
                 }
 
-                if (IsForegroundWindow(false))
+                if (embeddedWindowIsForeground)
                 {
                     if (isKeyDown && isWinDown && (keys & Keys.KeyCode) == Keys.Left)
                     {
@@ -1456,7 +1436,10 @@ namespace SuperPutty
                         }
                         else
                         {
-                            SnapWindow(Keys.Left);
+                            if (!TrySnapWindow(Keys.Left))
+                            {
+                                return NativeMethods.CallNextHookEx(kbHookID, nCode, wParam, lParam);
+                            }
                         }
                         return (IntPtr)1;
                     }
@@ -1468,19 +1451,26 @@ namespace SuperPutty
                         }
                         else
                         {
-                            SnapWindow(Keys.Right);
+                            if (!TrySnapWindow(Keys.Right))
+                            {
+                                return NativeMethods.CallNextHookEx(kbHookID, nCode, wParam, lParam);
+                            }
                         }
                         return (IntPtr)1;
                     }
                     if (isKeyDown && isWinDown && (keys & Keys.KeyCode) == Keys.Up)
                     {
-                        SnapWindow(Keys.Up);
-                        return (IntPtr)1;
+                        if (TrySnapWindow(Keys.Up))
+                        {
+                            return (IntPtr)1;
+                        }
                     }
                     if (isKeyDown && isWinDown && (keys & Keys.KeyCode) == Keys.Down)
                     {
-                        SnapWindow(Keys.Down);
-                        return (IntPtr)1;
+                        if (TrySnapWindow(Keys.Down))
+                        {
+                            return (IntPtr)1;
+                        }
                     }
                     if (isKeyDown && isAltDown && (keys & Keys.KeyCode) == Keys.F4)
                     {
@@ -1531,7 +1521,11 @@ namespace SuperPutty
 
         private bool IsForegroundWindow(bool includeMainForm)
         {
-            IntPtr fgWindow = NativeMethods.GetForegroundWindow();
+            return IsForegroundWindow(NativeMethods.GetForegroundWindow(), includeMainForm);
+        }
+
+        private bool IsForegroundWindow(IntPtr fgWindow, bool includeMainForm)
+        {
             if (includeMainForm && this.Handle == fgWindow) return true; // main form is FG
 
             if (FindChildControl(this.DockPanel, fgWindow))
@@ -2015,9 +2009,15 @@ namespace SuperPutty
 
         #endregion
 
-        private void SnapWindow(Keys direction)
+        private bool TrySnapWindow(Keys direction)
         {
-            NativeMethods.SetForegroundWindow(this.Handle);
+            IntPtr previousForegroundWindow = NativeMethods.GetForegroundWindow();
+            if (!NativeMethods.SetForegroundWindow(this.Handle))
+            {
+                Log.WarnFormat("Unable to focus SuperPuTTY before snapping {0}. Win32Error={1}",
+                    direction, Marshal.GetLastWin32Error());
+                return false;
+            }
 
             // The physical Windows key is still down. Forward only the arrow to
             // the main form so Windows performs the snap without changing the
@@ -2033,7 +2033,17 @@ namespace SuperPutty
             {
                 Log.WarnFormat("Unable to send snap input for {0}. Sent {1} of {2} events. Win32Error={3}",
                     direction, sent, inputs.Length, Marshal.GetLastWin32Error());
+
+                if (previousForegroundWindow != IntPtr.Zero && previousForegroundWindow != Handle &&
+                    !NativeMethods.SetForegroundWindow(previousForegroundWindow))
+                {
+                    Log.WarnFormat("Unable to restore the previous foreground window after snap failure. Win32Error={0}",
+                        Marshal.GetLastWin32Error());
+                }
+                return false;
             }
+
+            return true;
         }
 
         private static NativeMethods.INPUT CreateKeyboardInput(Keys key, uint flags)
@@ -2046,7 +2056,8 @@ namespace SuperPutty
                     keyboard = new NativeMethods.KEYBDINPUT
                     {
                         wVk = (ushort)key,
-                        dwFlags = flags
+                        dwFlags = flags,
+                        dwExtraInfo = KeyboardHookState.SuperPuttyInputMarker
                     }
                 }
             };
@@ -2054,14 +2065,6 @@ namespace SuperPutty
 
         private void ShiftWindow(int offset)
         {
-/*            Keys direction = (offset < 0) ? Keys.Left : Keys.Right;
-            NativeMethods.keybd_event((byte)Keys.LWin, 0, 0, 0);
-            NativeMethods.keybd_event((byte)Keys.ShiftKey, 0, 0, 0);
-            NativeMethods.keybd_event((byte)direction, 0, 0, 0);
-            NativeMethods.keybd_event((byte)direction, 0, NativeMethods.KEYEVENTF_KEYUP, 0);
-            NativeMethods.keybd_event((byte)Keys.ShiftKey, 0, NativeMethods.KEYEVENTF_KEYUP, 0);
-            NativeMethods.keybd_event((byte)Keys.LWin, 0, NativeMethods.KEYEVENTF_KEYUP, 0);
-*/
             if (Screen.AllScreens.Length < 2)
                 return;
 
