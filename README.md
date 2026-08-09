@@ -1,23 +1,34 @@
-# SuperPuTTY Application
-SuperPuTTY is a windows based application which manages putty ssh terminals. Additionally it has a simple scripting language for basic tasks. It additionally support RDP sessions.
+# SuperPuTTY
 
-### License
-MIT
+> **Community fork:** This repository is an unofficial fork of
+> [jimradford/superputty](https://github.com/jimradford/superputty). It is used
+> to develop and evaluate possible fixes before they are reviewed or merged
+> upstream. Changes and test builds published here may be experimental and
+> should not be treated as official SuperPuTTY releases.
 
-For additional License information please read the License.txt included with the download
+SuperPuTTY is a Windows application for managing PuTTY SSH terminals. It also
+supports RDP sessions and provides a simple scripting language for common
+tasks.
 
-### Issue Tracking
-For issue tracking, documentation and downloads please visit the SuperPuTTY Project on Github
-https://github.com/jimradford/superputty
+## Project resources
 
-### Latest Releases [![GitHub release (latest by date)](https://img.shields.io/github/v/release/jimradford/superputty)](https://github.com/jimradford/superputty/releases/latest) [![Downloads (Latest Release)](https://img.shields.io/github/downloads/jimradford/superputty/latest/total?label=latest%20release%20downloads)](https://github.com/jimradford/superputty/releases/latest) ![GitHub all releases](https://img.shields.io/github/downloads/jimradford/superputty/total?label=total%20downloads)
-  The latest release is available for download at https://github.com/jimradford/superputty/releases/latest 
+- [Official SuperPuTTY repository](https://github.com/jimradford/superputty)
+- [Official releases](https://github.com/jimradford/superputty/releases)
+- [Official documentation](https://github.com/jimradford/superputty/wiki/Documentation)
+- [Candidate fixes in this fork](https://github.com/greyhair-atx/superputty/branches)
+- [Unsigned test builds from this fork](https://github.com/greyhair-atx/superputty/releases)
 
-  Previous releases can be found at https://github.com/jimradford/superputty/releases
+Please use the upstream repository for official downloads, documentation, and
+general issue reporting. Fork-specific test builds are provided only to help
+validate proposed fixes; review their release notes before installing them.
 
-  Most Recent non-release/test [![Build status](https://ci.appveyor.com/api/projects/status/s6thtyntec4beaqk/branch/master?svg=true)](https://ci.appveyor.com/project/jimradford/superputty/branch/master)
+## License
 
-Documentation is at https://github.com/jimradford/superputty/wiki/Documentation
+SuperPuTTY is licensed under the MIT License. See `License.txt` for details.
 
-### News and Updates
-Get the latest news and updates on the Facebook page https://www.facebook.com/superputty
+## Upstream status
+
+[![GitHub release](https://img.shields.io/github/v/release/jimradford/superputty)](https://github.com/jimradford/superputty/releases/latest)
+[![Latest release downloads](https://img.shields.io/github/downloads/jimradford/superputty/latest/total?label=latest%20release%20downloads)](https://github.com/jimradford/superputty/releases/latest)
+[![All release downloads](https://img.shields.io/github/downloads/jimradford/superputty/total?label=total%20downloads)](https://github.com/jimradford/superputty/releases)
+[![Build status](https://ci.appveyor.com/api/projects/status/s6thtyntec4beaqk/branch/master?svg=true)](https://ci.appveyor.com/project/jimradford/superputty/branch/master)
