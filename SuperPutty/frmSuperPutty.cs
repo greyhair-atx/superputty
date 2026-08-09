@@ -71,6 +71,14 @@ namespace SuperPutty
         private FormWindowState lastNonMinimizedWindowState = FormWindowState.Normal;
         private Rectangle lastNormalDesktopBounds;
         private ChildWindowFocusHelper focusHelper;
+        private bool isLeftControlDown;
+        private bool isRightControlDown;
+        private bool isLeftShiftDown;
+        private bool isRightShiftDown;
+        private bool isLeftAltDown;
+        private bool isRightAltDown;
+        private bool isLeftWinDown;
+        private bool isRightWinDown;
         int commandMRUIndex = -1;
 
         private readonly TabSwitcher tabSwitcher;
@@ -353,6 +361,12 @@ namespace SuperPutty
         {
             Log.DebugFormat("[{0}] Activated", this.Handle);
             //dockPanel1_ActiveDocumentChanged(null, null);
+        }
+
+        protected override void OnDeactivate(EventArgs e)
+        {
+            ResetModifierKeyState();
+            base.OnDeactivate(e);
         }
 
         public void SetActiveDocument(ToolWindow toolWindow)
@@ -1279,11 +1293,47 @@ namespace SuperPutty
             }
         }
 
-        private IntPtr foregroundBeforeWinDown = IntPtr.Zero;
-
-        private static bool GetKeyDown(Keys keyCode)
+        private void UpdateModifierKeyState(Keys keyCode, bool isKeyDown)
         {
-            return NativeMethods.GetKeyState((int)keyCode) < 0;
+            switch (keyCode)
+            {
+                case Keys.LControlKey:
+                    isLeftControlDown = isKeyDown;
+                    break;
+                case Keys.RControlKey:
+                    isRightControlDown = isKeyDown;
+                    break;
+                case Keys.LShiftKey:
+                    isLeftShiftDown = isKeyDown;
+                    break;
+                case Keys.RShiftKey:
+                    isRightShiftDown = isKeyDown;
+                    break;
+                case Keys.LMenu:
+                    isLeftAltDown = isKeyDown;
+                    break;
+                case Keys.RMenu:
+                    isRightAltDown = isKeyDown;
+                    break;
+                case Keys.LWin:
+                    isLeftWinDown = isKeyDown;
+                    break;
+                case Keys.RWin:
+                    isRightWinDown = isKeyDown;
+                    break;
+            }
+        }
+
+        private void ResetModifierKeyState()
+        {
+            isLeftControlDown = false;
+            isRightControlDown = false;
+            isLeftShiftDown = false;
+            isRightShiftDown = false;
+            isLeftAltDown = false;
+            isRightAltDown = false;
+            isLeftWinDown = false;
+            isRightWinDown = false;
         }
 
         // Intercept keyboard messages for Ctrl-F4 and Ctrl-Tab handling
@@ -1291,21 +1341,31 @@ namespace SuperPutty
         {
             if (nCode >= 0)
             {
-                int vkCode = Marshal.ReadInt32(lParam);
-                Keys keys = (Keys)vkCode;
+                NativeMethods.KBDLLHOOKSTRUCT keyboardData =
+                    (NativeMethods.KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(NativeMethods.KBDLLHOOKSTRUCT));
+                Keys keys = (Keys)keyboardData.vkCode;
 
-                // get key state of control/alt/shift is up/down
+                // Let generated input pass through without treating it as physical
+                // modifier state or recursively executing SuperPuTTY shortcuts.
+                if ((keyboardData.flags & (NativeMethods.LowLevelKeyboardFlags.Injected |
+                    NativeMethods.LowLevelKeyboardFlags.LowerIntegrityLevelInjected)) != 0)
+                {
+                    return NativeMethods.CallNextHookEx(kbHookID, nCode, wParam, lParam);
+                }
+
                 bool isKeyDown = wParam == (IntPtr)NativeMethods.WM_KEYDOWN || wParam == (IntPtr)NativeMethods.WM_SYSKEYDOWN;
-                bool isControlDown = GetKeyDown(Keys.LControlKey) || GetKeyDown(Keys.RControlKey);
-                bool isShiftDown = GetKeyDown(Keys.LShiftKey) || GetKeyDown(Keys.RShiftKey);
-                bool isAltDown = GetKeyDown(Keys.LMenu) || GetKeyDown(Keys.RMenu);
-                bool isWinDown = GetKeyDown(Keys.LWin) || GetKeyDown(Keys.RWin);
+                UpdateModifierKeyState(keys, isKeyDown);
+
+                bool isControlDown = isLeftControlDown || isRightControlDown;
+                bool isShiftDown = isLeftShiftDown || isRightShiftDown;
+                bool isAltDown = isLeftAltDown || isRightAltDown;
+                bool isWinDown = isLeftWinDown || isRightWinDown;
 
                 if (Log.Logger.IsEnabledFor(Level.Trace))
                 {
                     Log.DebugFormat("### KBHook: nCode={0}, wParam={1}, lParam={2} ({4,-4} - {3}) [{5}{6}{7}{8}]",
-                        nCode, wParam, vkCode, keys, isKeyDown ? "Down" : "Up",
-                        isControlDown ? "Ctrl" : "", isAltDown ? "Alt" : "", isAltDown ? "Shift" : "", isWinDown ? "Win" : "");
+                        nCode, wParam, keyboardData.vkCode, keys, isKeyDown ? "Down" : "Up",
+                        isControlDown ? "Ctrl" : "", isAltDown ? "Alt" : "", isShiftDown ? "Shift" : "", isWinDown ? "Win" : "");
                 }
 
                 if (IsForegroundWindow(true))
@@ -1390,7 +1450,7 @@ namespace SuperPutty
                 {
                     if (isKeyDown && isWinDown && (keys & Keys.KeyCode) == Keys.Left)
                     {
-                        if ((keys & Keys.Shift) == Keys.Shift)
+                        if (isShiftDown)
                         {
                             ShiftWindow(-1);
                         }
@@ -1402,7 +1462,7 @@ namespace SuperPutty
                     }
                     if (isKeyDown && isWinDown && (keys & Keys.KeyCode) == Keys.Right)
                     {
-                        if ((keys & Keys.Shift) == Keys.Shift)
+                        if (isShiftDown)
                         {
                             ShiftWindow(1);
                         }
@@ -1422,7 +1482,7 @@ namespace SuperPutty
                         SnapWindow(Keys.Down);
                         return (IntPtr)1;
                     }
-                    if (isKeyDown && (keys & Keys.Modifiers) == Keys.Alt && (keys & Keys.KeyCode) == Keys.F4)
+                    if (isKeyDown && isAltDown && (keys & Keys.KeyCode) == Keys.F4)
                     {
                         Application.Exit();
                         return (IntPtr)1;
@@ -1959,10 +2019,37 @@ namespace SuperPutty
         {
             NativeMethods.SetForegroundWindow(this.Handle);
 
-            NativeMethods.keybd_event((byte)Keys.LWin, 0, 0, 0);
-            NativeMethods.keybd_event((byte)direction, 0, 0, 0);
-            NativeMethods.keybd_event((byte)direction, 0, NativeMethods.KEYEVENTF_KEYUP, 0);
-            NativeMethods.keybd_event((byte)Keys.LWin, 0, NativeMethods.KEYEVENTF_KEYUP, 0);
+            // The physical Windows key is still down. Forward only the arrow to
+            // the main form so Windows performs the snap without changing the
+            // user's physical Windows-key state.
+            NativeMethods.INPUT[] inputs =
+            {
+                CreateKeyboardInput(direction, NativeMethods.KEYEVENTF_EXTENDEDKEY),
+                CreateKeyboardInput(direction, NativeMethods.KEYEVENTF_EXTENDEDKEY | NativeMethods.KEYEVENTF_KEYUP)
+            };
+
+            uint sent = NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(NativeMethods.INPUT)));
+            if (sent != (uint)inputs.Length)
+            {
+                Log.WarnFormat("Unable to send snap input for {0}. Sent {1} of {2} events. Win32Error={3}",
+                    direction, sent, inputs.Length, Marshal.GetLastWin32Error());
+            }
+        }
+
+        private static NativeMethods.INPUT CreateKeyboardInput(Keys key, uint flags)
+        {
+            return new NativeMethods.INPUT
+            {
+                type = NativeMethods.INPUT_KEYBOARD,
+                data = new NativeMethods.InputUnion
+                {
+                    keyboard = new NativeMethods.KEYBDINPUT
+                    {
+                        wVk = (ushort)key,
+                        dwFlags = flags
+                    }
+                }
+            };
         }
 
         private void ShiftWindow(int offset)
