@@ -394,6 +394,87 @@ namespace SuperPutty
             }
         }
 
+        private void fromCsvFileToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog openDialog = new OpenFileDialog
+            {
+                Filter = "CSV Files|*.csv|All files|*.*",
+                FileName = "Sessions.example.csv",
+                CheckFileExists = true,
+                InitialDirectory = Application.StartupPath
+            };
+            if (openDialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+
+            try
+            {
+                SessionCsvImportResult result = SessionCsvImporter.Load(openDialog.FileName);
+                if (!result.IsValid)
+                {
+                    ShowCsvImportErrors(result.Errors);
+                    return;
+                }
+
+                SuperPuTTY.ImportSessions(result.Sessions, "Imported");
+                MessageBox.Show(
+                    this,
+                    String.Format("Successfully imported {0} session{1} into the Imported folder.",
+                        result.Sessions.Count,
+                        result.Sessions.Count == 1 ? String.Empty : "s"),
+                    "CSV Session Import",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    this,
+                    "The CSV file could not be imported. No sessions were added.\r\n\r\n" + ex.Message,
+                    "CSV Session Import",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void ShowCsvImportErrors(IList<string> errors)
+        {
+            using (Form dialog = new Form())
+            using (TextBox errorText = new TextBox())
+            using (Button closeButton = new Button())
+            {
+                dialog.Text = "CSV Session Import Errors";
+                dialog.ClientSize = new Size(700, 400);
+                dialog.MinimumSize = new Size(500, 300);
+                dialog.StartPosition = FormStartPosition.CenterParent;
+                dialog.MinimizeBox = false;
+                dialog.MaximizeBox = true;
+
+                errorText.Multiline = true;
+                errorText.ReadOnly = true;
+                errorText.ScrollBars = ScrollBars.Both;
+                errorText.WordWrap = false;
+                errorText.Location = new Point(12, 12);
+                errorText.Size = new Size(dialog.ClientSize.Width - 24, dialog.ClientSize.Height - 58);
+                errorText.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+                errorText.Text = "No sessions were imported. Correct the following errors and try again:\r\n\r\n" +
+                    String.Join("\r\n", errors);
+
+                closeButton.Text = "Close";
+                closeButton.DialogResult = DialogResult.OK;
+                closeButton.Size = new Size(75, 23);
+                closeButton.Location = new Point(dialog.ClientSize.Width - 87, dialog.ClientSize.Height - 35);
+                closeButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+
+                dialog.AcceptButton = closeButton;
+                dialog.CancelButton = closeButton;
+                dialog.Controls.Add(errorText);
+                dialog.Controls.Add(closeButton);
+                dialog.ShowDialog(this);
+            }
+        }
+
 
         private void fromPuTTYCMExportToolStripMenuItem_Click(object sender, EventArgs e)
         {

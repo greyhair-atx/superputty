@@ -199,6 +199,7 @@
     <Compile Include="Data\LayoutData.cs" />
     <Compile Include="Data\PuttyDataHelper.cs" />
     <Compile Include="Data\RDPDataHelper.cs" />
+    <Compile Include="Data\SessionCsvImporter.cs" />
     <Compile Include="Data\SessionData.cs" />
     <Compile Include="Data\SessionDataStartInfo.cs" />
     <Compile Include="DebugLogViewer.cs">

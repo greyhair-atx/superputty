@@ -51,6 +51,7 @@ namespace SuperPutty
             this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.importSettingsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fromFileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.fromCsvFileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fromPuTTYSettingsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fromPuTTYPortableSettingsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fromPuTTYCMExportToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -178,6 +179,7 @@ namespace SuperPutty
             // 
             this.importSettingsToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.fromFileToolStripMenuItem,
+            this.fromCsvFileToolStripMenuItem,
             this.fromPuTTYSettingsToolStripMenuItem,
             this.fromPuTTYPortableSettingsToolStripMenuItem,
             this.fromPuTTYCMExportToolStripMenuItem,
@@ -192,7 +194,14 @@ namespace SuperPutty
             this.fromFileToolStripMenuItem.Size = new System.Drawing.Size(198, 22);
             this.fromFileToolStripMenuItem.Text = "From &File";
             this.fromFileToolStripMenuItem.Click += new System.EventHandler(this.fromFileToolStripMenuItem_Click);
-            // 
+            //
+            // fromCsvFileToolStripMenuItem
+            //
+            this.fromCsvFileToolStripMenuItem.Name = "fromCsvFileToolStripMenuItem";
+            this.fromCsvFileToolStripMenuItem.Size = new System.Drawing.Size(198, 22);
+            this.fromCsvFileToolStripMenuItem.Text = "From &CSV File";
+            this.fromCsvFileToolStripMenuItem.Click += new System.EventHandler(this.fromCsvFileToolStripMenuItem_Click);
+            //
             // fromPuTTYSettingsToolStripMenuItem
             // 
             this.fromPuTTYSettingsToolStripMenuItem.Name = "fromPuTTYSettingsToolStripMenuItem";
@@ -969,6 +978,7 @@ namespace SuperPutty
         private System.Windows.Forms.ToolStripMenuItem editSessionsInNotepadToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem reloadSessionsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem fromFileToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem fromCsvFileToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem fromPuTTYSettingsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem fromPuTTYPortableSettingsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem fromPuTTYCMExportToolStripMenuItem;
