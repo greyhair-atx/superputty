@@ -4,7 +4,7 @@
 > [jimradford/superputty](https://github.com/jimradford/superputty). It is used
 > to develop and evaluate possible fixes before they are reviewed or merged
 > upstream. Changes and test builds published here may be experimental and
-> should not be treated as official SuperPuTTY releases.
+> should **not** be treated as official SuperPuTTY releases.
 
 SuperPuTTY is a Windows application for managing PuTTY SSH terminals. It also
 supports RDP sessions and provides a simple scripting language for common
