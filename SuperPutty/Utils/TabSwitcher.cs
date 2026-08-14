@@ -106,6 +106,7 @@ namespace SuperPutty.Utils
             set
             {
                 //Log.Info("Setting current doc: " + value);
+                this.currentDocument = value;
                 this.TabSwitchStrategy.SetCurrentTab(value);
             }
         }

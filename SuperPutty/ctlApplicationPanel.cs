@@ -434,7 +434,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
         private void UpdateTitle()
         {
-            int length = NativeMethods.SendMessage(m_AppWin, NativeMethods.WM_GETTEXTLENGTH, 0, 0) + 1;
+            int length = checked((int)NativeMethods.SendMessage(m_AppWin, NativeMethods.WM_GETTEXTLENGTH, 0, 0)) + 1;
             StringBuilder sb = new StringBuilder(length + 1);
             NativeMethods.SendMessage(m_AppWin, NativeMethods.WM_GETTEXT, sb.Capacity, sb);
             string controlText = sb.ToString();

@@ -422,9 +422,8 @@ namespace SuperPutty.Data
                 try
                 {
                     var uri = new Uri(location);
-                    HttpWebRequest req = WebRequest.CreateHttp(uri);
-                    var response = req.GetResponse();
-                    using (StreamReader r = new StreamReader(response.GetResponseStream()))
+                    string content = httpRequest.GetString(uri.ToString());
+                    using (StringReader r = new StringReader(content))
                     {
                         sessions = (List<SessionData>)s.Deserialize(r);
                     }

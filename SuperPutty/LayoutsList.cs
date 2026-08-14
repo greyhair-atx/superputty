@@ -16,10 +16,10 @@ namespace SuperPutty
             this.listBoxLayouts.DataSource = SuperPuTTY.Layouts;
         }
 
-        protected override void OnClosed(EventArgs e)
+        protected override void OnFormClosed(FormClosedEventArgs e)
         {
             this.listBoxLayouts.DataSource = null;
-            base.OnClosed(e);
+            base.OnFormClosed(e);
         }
 
         private void contextMenuStrip_Opening(object sender, CancelEventArgs e)

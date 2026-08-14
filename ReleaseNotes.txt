@@ -1,3 +1,13 @@
+1.6.0
+ - Migrated the application and automated tests from .NET Framework 4.8 to .NET 10.
+ - Converted C# and WiX projects to SDK-style project files.
+ - Replaced .NET Remoting single-instance IPC with a current-user named pipe.
+ - Replaced Thread.Abort-based transfer cancellation with process cancellation and cooperative shutdown.
+ - Replaced legacy WebRequest usage with HttpClient.
+ - Migrated NUnit 2 tests to NUnit 4 and removed checked-in test runner binaries.
+ - Added a self-contained Windows x64 MSI built with WiX 6.
+ - Updated CI to build, test, audit, and publish the .NET 10 release artifact.
+
 1.5.0
  - Minor changes Fixes version issue with SuperPuTTY Update Checker Fixes Issues #887, #888, #889
  - Children attach improvement by @vityank in https://github.com/jimradford/superputty/pull/851

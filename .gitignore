@@ -135,6 +135,7 @@ _NCrunch*
 Licenses.licx
 .vs
 *.json
+!global.json
 /Talon.ApiServer/Identity4/Config.cs
 /Talon.ApiServer/tempkey.jwk
 /ArmorLink/Libs

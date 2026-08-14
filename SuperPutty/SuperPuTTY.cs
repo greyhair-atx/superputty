@@ -96,8 +96,6 @@ namespace SuperPutty
                 }
             }
 
-            // Register IpcChanncel for single instance support
-            SingleInstanceHelper.RegisterRemotingService();
             WindowEvents = new GlobalWindowEvents();
 
             Log.Info("Initialized");
@@ -107,6 +105,7 @@ namespace SuperPutty
         public static void Shutdown()
         {
             Log.Info("Shutting down...");
+            SingleInstanceHelper.StopServer();
         }
 
         /// <summary>Send status message to toolstrip</summary>
@@ -449,7 +448,7 @@ namespace SuperPutty
 
                         if (panel.InvokeRequired)
                         {
-                            panel.BeginInvoke((MethodInvoker)delegate {
+                            panel.BeginInvoke((System.Windows.Forms.MethodInvoker)delegate {
                                 panel.Close();
                             });
                         }
@@ -477,12 +476,7 @@ namespace SuperPutty
                         {
                             try
                             {
-                                HttpWebRequest req = WebRequest.CreateHttp(fileName);
-                                var response = req.GetResponse();
-                                using (var stream = new StreamReader(response.GetResponseStream()))
-                                {
-                                    script = stream.ReadToEnd();
-                                }
+                                script = httpRequest.GetString(fileName);
                             }
                             catch(Exception)
                             {

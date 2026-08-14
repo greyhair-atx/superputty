@@ -1,44 +1,37 @@
-# .NET Desktop
-# Build and run tests for .NET Desktop or Windows classic desktop solutions.
-# Add steps that publish symbols, save build artifacts, and more:
-# https://docs.microsoft.com/azure/devops/pipelines/apps/windows/dot-net
-
 trigger:
-- master
+  branches:
+    include:
+    - master
+    - integration
+    - sp-1.6.0
 
 pool:
-  vmImage: 'windows-latest'
+  vmImage: windows-latest
 
 variables:
-  solution: '**/*.sln'
-  buildPlatform: 'Any CPU'
-  buildConfiguration: 'Release'
+  buildConfiguration: Release
 
 steps:
-- task: NuGetToolInstaller@1
+- task: UseDotNet@2
+  displayName: Install .NET 10 SDK
+  inputs:
+    packageType: sdk
+    version: 10.0.x
 
-# Run Microsoft Security Utility on Source Repository
 - task: MicrosoftSecurityDevOps@1
-  displayName: 'Run Microsoft Security DevOps'
+  displayName: Run Microsoft Security DevOps
 
-- task: NuGetCommand@2
-  inputs:
-    restoreSolution: '$(solution)'
+- powershell: dotnet restore .\SuperPutty.sln
+  displayName: Restore solution
 
-- task: VSBuild@1
-  inputs:
-    solution: '$(solution)'
-    platform: '$(buildPlatform)'
-    configuration: '$(buildConfiguration)'
-    msbuildArgs: '/p:RunWixToolsOutOfProc=true'
+- powershell: dotnet build .\SuperPutty.sln -c $(buildConfiguration) --no-restore
+  displayName: Build application and installer
 
-- task: VSTest@2
-  inputs:
-    platform: '$(buildPlatform)'
-    configuration: '$(buildConfiguration)'
+- powershell: dotnet test .\SuperPuttyUnitTests\SuperPuttyUnitTests.csproj -c $(buildConfiguration) --no-build --filter "TestCategory!~Net"
+  displayName: Run automated tests
 
 - task: PublishPipelineArtifact@1
   inputs:
-    targetPath: '$(Pipeline.Workspace)'
-    artifactType: 'pipeline'
-    artifactName: 'drop'
+    targetPath: $(Build.SourcesDirectory)\SuperPuttyInstaller\bin\$(buildConfiguration)\SuperPuttySetup.msi
+    artifactType: pipeline
+    artifactName: SuperPutty-1.6.0-win-x64

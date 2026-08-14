@@ -1,200 +1,75 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
-     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension"
-     xmlns:netfx="http://schemas.microsoft.com/wix/NetFxExtension">  
-  <Product Id="*" Name="SuperPuTTY" Language="1033" Version="!(bind.fileVersion.ProductExe)" Manufacturer="Jim Radford" UpgradeCode="42567f59-2f27-4e5b-a900-9141dc2dd929">    
-    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
-    <Icon Id="ProductIcon" SourceFile="$(var.SuperPutty.ProjectDir)Apps-utilities-terminal.ico"/>
-    <Property Id="ARPPRODUCTICON" Value="ProductIcon"/>
-    <Property Id="ARPHELPLINK" Value="https://github.com/jimradford/superputty/wiki/Documentation"/>
-    <Property Id="ARPURLINFOABOUT" Value="https://github.com/jimradford/superputty/wiki"/>
-    <Property Id="ARPNOREPAIR" Value="1"/>
+  <Package Id="GreyhairATX.SuperPutty"
+           Name="SuperPuTTY"
+           Language="1033"
+           Version="1.6.0"
+           Manufacturer="SuperPuTTY Community"
+           UpgradeCode="42567f59-2f27-4e5b-a900-9141dc2dd929"
+           Scope="perMachine">
 
-    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />    
-      <Media Id="1" Cabinet="Cab1.cab" EmbedCab="yes" />
-    
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="ProductIcon" SourceFile="$(var.SuperPutty.ProjectDir)Apps-utilities-terminal.ico" />
+    <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/jimradford/superputty/wiki/Documentation" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/jimradford/superputty/wiki" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+
     <Feature Id="ProductFeature" Title="SuperPuTTY" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
-      <ComponentGroupRef Id="DefaultTheme" />
-      <ComponentRef Id="ApplicationShortcuts"/> 
+      <ComponentRef Id="ApplicationShortcuts" />
     </Feature>
 
-    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUIBannerBmp" Value="WixUIBannerBmp.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="WixUIDialogBmp.bmp" />
+    <WixVariable Id="WixUILicenseRtf" Value="..\License.rtf" />
 
-    <WixVariable Id="WixUIBannerBmp" Value="WixUIBannerBmp.bmp"/>
-    <WixVariable Id="WixUIDialogBmp" Value="WixUIDialogBmp.bmp"/>
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="SuperPuTTY" />
+    </StandardDirectory>
 
-    <WixVariable Id="WixUILicenseRtf" Value="$(var.SolutionDir)License.rtf" />
-
-    <UI>
-      <UIRef Id="WixUI_InstallDir" />      
-      <Publish Dialog="ExitDialog" 
-            Control="Finish" 
-            Event="DoAction" 
-            Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed</Publish>
-    </UI>
-    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch SuperPuTTY" />    
-    <Property Id="WixShellExecTarget" Value="[#ProductExe]" />
-    <CustomAction Id="LaunchApplication"
-        BinaryKey="WixCA"
-        DllEntry="WixShellExec"
-        Impersonate="yes" />
-  </Product>
-
-  <Fragment>
-    <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFilesFolder">
-        <Directory Id="INSTALLFOLDER" Name="SuperPuTTY">
-          <Directory Id="INSTALLTHEMEFOLDER" Name="themes">
-            <Directory Id="INSTALLDEFAULTTHEME" Name="default">
-              <Directory Id="INSTALLTHEMEICONSFOLDER" Name="icons"/>
-            </Directory>
-          </Directory>
-        </Directory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ProgramMenuSubfolder" Name="SuperPuTTY">
+        <Component Id="ApplicationShortcuts" Guid="0CF406F3-901A-4C75-9DCB-BE6042BC70CE">
+          <Shortcut Id="ApplicationShortcut"
+                    Name="SuperPuTTY"
+                    Description="SuperPuTTY SSH Window Manager"
+                    Target="[INSTALLFOLDER]SuperPutty.exe"
+                    WorkingDirectory="INSTALLFOLDER" />
+          <util:InternetShortcut Id="ProjectWebsiteShortcut"
+                                 Name="Project Website"
+                                 Target="https://github.com/jimradford/superputty/wiki/" />
+          <Shortcut Id="UninstallProduct"
+                    Name="Uninstall SuperPuTTY"
+                    Target="[SystemFolder]msiexec.exe"
+                    Arguments="/x [ProductCode]"
+                    Description="Uninstalls SuperPuTTY" />
+          <RegistryValue Root="HKCU"
+                         Key="Software\Jim Radford\SuperPuTTY"
+                         Name="installed"
+                         Type="integer"
+                         Value="1"
+                         KeyPath="yes" />
+          <RemoveFolder Id="ProgramMenuSubfolder" On="uninstall" />
+        </Component>
       </Directory>
+    </StandardDirectory>
 
-
-      <Directory Id="ProgramMenuFolder">
-        <Directory Id="ProgramMenuSubfolder" Name="SuperPuTTY">
-          <Component Id="ApplicationShortcuts" Guid="0CF406F3-901A-4C75-9DCB-BE6042BC70CE">
-
-            <Shortcut Id="ApplicationShortcut1"
-                      Name="SuperPuTTY" 
-                      Description="SuperPuTTY SSH Window Manager"
-                      Target="[#ProductExe]" 
-                      WorkingDirectory="INSTALLFOLDER"/>
-
-            <util:InternetShortcut Id="ProjectWebsiteShortcut"
-                        Name="Project Website"
-                               Target="https://github.com/jimradford/superputty/wiki/"/>
-
-            <Shortcut Id="UninstallProduct"
-            Name="Uninstall SuperPuTTY"
-            Target="[SystemFolder]msiexec.exe"
-            Arguments="/x [ProductCode]"
-            Description="Uninstalls SuperPuTTY" />
-
-            <RegistryValue Root="HKCU" 
-                           Key="Software\Jim Radford\SuperPuTTY"
-                           Name="installed" 
-                           Type="integer" 
-                           Value="1" 
-                           KeyPath="yes"/>
-
-            <RemoveFolder Id="ProgramMenuSubfolder" On="uninstall"/>
-          </Component>
-        </Directory>
-      </Directory>
-    </Directory>
-  </Fragment>
-
-  <Fragment>
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
-      <Component Id="ProductExe">
-        <File Id="ProductExe" Source="$(var.SuperPutty.TargetPath)">
-          <netfx:NativeImage Id="ngen_ProductExe" Platform="all" Priority="3"/>
-        </File>
+      <Component Id="ProductExecutable">
+        <File Id="ProductExe" Source="$(var.SuperPutty.TargetPath)" KeyPath="yes" />
       </Component>
-      <Component Id="ProductExeConfig">
-        <File Source="$(var.SuperPutty.TargetPath).config" />
-      </Component>
-      <Component Id="ProductLibLogging">
-        <File Source="$(var.SuperPutty.TargetDir)\log4net.dll" />
-      </Component>
-      <Component Id="ProductLibUI">
-        <File Source="$(var.SuperPutty.TargetDir)\WeifenLuo.WinFormsUI.Docking.dll" />
-      </Component>
-      <Component Id="ProductLibSSH">
-        <File Source="$(var.SuperPutty.TargetDir)\Renci.SshNet.dll" />
-      </Component>
-      <Component Id="ProductLibBouncyCastle">
-        <File Source="$(var.SuperPutty.TargetDir)\BouncyCastle.Cryptography.dll" />
-      </Component>
-      <Component Id="ProductLibBclAsyncInterfaces">
-        <File Source="$(var.SuperPutty.TargetDir)\Microsoft.Bcl.AsyncInterfaces.dll" />
-      </Component>
-      <Component Id="ProductLibBclCryptography">
-        <File Source="$(var.SuperPutty.TargetDir)\Microsoft.Bcl.Cryptography.dll" />
-      </Component>
-      <Component Id="ProductLibDependencyInjectionAbstractions">
-        <File Source="$(var.SuperPutty.TargetDir)\Microsoft.Extensions.DependencyInjection.Abstractions.dll" />
-      </Component>
-      <Component Id="ProductLibLoggingAbstractions">
-        <File Source="$(var.SuperPutty.TargetDir)\Microsoft.Extensions.Logging.Abstractions.dll" />
-      </Component>
-      <Component Id="ProductLibSystemBuffers">
-        <File Source="$(var.SuperPutty.TargetDir)\System.Buffers.dll" />
-      </Component>
-      <Component Id="ProductLibSystemFormatsAsn1">
-        <File Source="$(var.SuperPutty.TargetDir)\System.Formats.Asn1.dll" />
-      </Component>
-      <Component Id="ProductLibSystemMemory">
-        <File Source="$(var.SuperPutty.TargetDir)\System.Memory.dll" />
-      </Component>
-      <Component Id="ProductLibSystemNumericsVectors">
-        <File Source="$(var.SuperPutty.TargetDir)\System.Numerics.Vectors.dll" />
-      </Component>
-      <Component Id="ProductLibSystemRuntimeCompilerServicesUnsafe">
-        <File Source="$(var.SuperPutty.TargetDir)\System.Runtime.CompilerServices.Unsafe.dll" />
-      </Component>
-      <Component Id="ProductLibSystemThreadingTasksExtensions">
-        <File Source="$(var.SuperPutty.TargetDir)\System.Threading.Tasks.Extensions.dll" />
-      </Component>
-      <Component Id="ProductLibUITheme">
-        <File Source="$(var.SuperPutty.TargetDir)\WeifenLuo.WinFormsUI.Docking.ThemeVS2005.dll" />
-      </Component>
-    </ComponentGroup>    
-    <ComponentGroup Id="DefaultTheme" Directory="INSTALLTHEMEICONSFOLDER">
-      <Component Id="ThemeIconFiles" Guid="C834A688-708A-4DE1-8B64-7582CFF47F7C">
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\application_osx_terminal.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\application_xp_terminal.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\book.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\clock.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\comment.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\compress.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\database.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\drive_network.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\email.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\feed.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\firewall.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\flag_blue.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\flag_green.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\flag_orange.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\flag_pink.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\flag_purple.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\flag_red.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\flag_yellow.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\help.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\house.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\information.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\ipod.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\lightbulb.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\lightning.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\lorry.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\map.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\monitor.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\printer.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\report.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\server.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\telephone.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\television.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\time.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\tux.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\webcam.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\world.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\puffy.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\arch_linux.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\centos.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\debian.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\fedora.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\freebsd.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\linux_mint.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\redhat.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\suse_linux.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\ubuntu.png" />
-        <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\windows.png" />
-      </Component>
+      <Files Include="$(var.SuperPutty.TargetDir)**">
+        <Exclude Files="$(var.SuperPutty.TargetPath)" />
+        <Exclude Files="$(var.SuperPutty.TargetDir)**\*.pdb" />
+      </Files>
     </ComponentGroup>
-  </Fragment>
+
+  </Package>
 </Wix>

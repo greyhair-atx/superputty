@@ -90,9 +90,9 @@ namespace SuperPutty
             SuperPuTTY.Settings.SendCommandsToVisibleOnly = this.checkSendToVisible.Checked;
         }
 
-        protected override void OnClosing(CancelEventArgs e)
+        protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            base.OnClosing(e);
+            base.OnFormClosing(e);
             e.Cancel = true;
             this.Hide();
         }

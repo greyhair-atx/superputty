@@ -133,11 +133,11 @@ namespace SuperPutty
             this.ResortNodes();
         }
 
-        protected override void OnClosed(EventArgs e)
+        protected override void OnFormClosed(FormClosedEventArgs e)
         {
             SuperPuTTY.Sessions.ListChanged -= new ListChangedEventHandler(Sessions_ListChanged);
             SuperPuTTY.Settings.SettingsSaving -= new SettingsSavingEventHandler(Settings_SettingsSaving);
-            base.OnClosed(e);
+            base.OnFormClosed(e);
         }
 
         /// <summary>
