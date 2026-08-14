@@ -137,6 +137,18 @@ Expected result: each file produces a useful error with a row or header location
 
 Expected result: the import survives restart without damaging pre-existing sessions or layout data.
 
+## Persistence failure rollback
+
+Use a disposable configuration and keep a separate copy of its current `Sessions.XML`.
+
+1. Mark `Sessions.XML` read-only in Windows Explorer or with `attrib +R Sessions.XML`.
+2. Import a valid CSV file.
+3. Confirm the application reports that the file could not be imported.
+4. Confirm no imported sessions appear in the session tree and `Sessions.XML` is byte-for-byte unchanged.
+5. Remove the read-only attribute before continuing.
+
+Expected result: persistence failure leaves both the in-memory session collection and the existing file unchanged, and no temporary `.tmp` file remains in the settings folder.
+
 ## Connection smoke test
 
 Use a CSV containing an authorized reachable SSH or Telnet test host and, separately, a valid existing PuTTY profile.

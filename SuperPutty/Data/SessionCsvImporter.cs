@@ -21,6 +21,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using Microsoft.VisualBasic.FileIO;
@@ -78,6 +79,7 @@ namespace SuperPutty.Data
             }
 
             SessionCsvImportResult result = new SessionCsvImportResult();
+            Queue<long> recordLineNumbers = GetRecordLineNumbers(fileName);
             using (TextFieldParser parser = new TextFieldParser(fileName, Encoding.UTF8, true))
             {
                 parser.TextFieldType = FieldType.Delimited;
@@ -93,6 +95,7 @@ namespace SuperPutty.Data
                 }
 
                 string[] headers;
+                DequeueRecordLine(recordLineNumbers, 1);
                 try
                 {
                     headers = parser.ReadFields();
@@ -110,10 +113,9 @@ namespace SuperPutty.Data
                 }
 
                 HashSet<string> sessionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                int recordNumber = 1;
                 while (!parser.EndOfData)
                 {
-                    recordNumber++;
+                    long recordNumber = DequeueRecordLine(recordLineNumbers, parser.LineNumber);
                     string[] fields;
                     try
                     {
@@ -166,6 +168,89 @@ namespace SuperPutty.Data
             return result;
         }
 
+        private static Queue<long> GetRecordLineNumbers(string fileName)
+        {
+            Queue<long> lineNumbers = new Queue<long>();
+            using (StreamReader reader = new StreamReader(fileName, Encoding.UTF8, true))
+            {
+                long lineNumber = 0;
+                long recordStart = 0;
+                bool inRecord = false;
+                bool inQuotes = false;
+                bool atFieldStart = true;
+                string line;
+
+                while ((line = reader.ReadLine()) != null)
+                {
+                    lineNumber++;
+                    string trimmedLine = line.Trim();
+                    if (trimmedLine.Length == 0 || trimmedLine.StartsWith("#", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    if (!inRecord)
+                    {
+                        recordStart = lineNumber;
+                        inRecord = true;
+                        atFieldStart = true;
+                    }
+
+                    for (int i = 0; i < line.Length; i++)
+                    {
+                        char current = line[i];
+                        if (inQuotes)
+                        {
+                            if (current == '"')
+                            {
+                                if (i + 1 < line.Length && line[i + 1] == '"')
+                                {
+                                    i++;
+                                }
+                                else
+                                {
+                                    inQuotes = false;
+                                }
+                            }
+                        }
+                        else if (current == ',')
+                        {
+                            atFieldStart = true;
+                        }
+                        else if (atFieldStart && Char.IsWhiteSpace(current))
+                        {
+                            continue;
+                        }
+                        else
+                        {
+                            if (atFieldStart && current == '"')
+                            {
+                                inQuotes = true;
+                            }
+                            atFieldStart = false;
+                        }
+                    }
+
+                    if (!inQuotes)
+                    {
+                        lineNumbers.Enqueue(recordStart);
+                        inRecord = false;
+                    }
+                }
+
+                if (inRecord)
+                {
+                    lineNumbers.Enqueue(recordStart);
+                }
+            }
+            return lineNumbers;
+        }
+
+        private static long DequeueRecordLine(Queue<long> lineNumbers, long fallback)
+        {
+            return lineNumbers.Count > 0 ? lineNumbers.Dequeue() : fallback;
+        }
+
         private static Dictionary<string, int> ValidateHeaders(string[] headers, List<string> errors)
         {
             Dictionary<string, int> columns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -207,7 +292,7 @@ namespace SuperPutty.Data
         private static SessionData ParseRow(
             string[] fields,
             Dictionary<string, int> columns,
-            int recordNumber,
+            long recordNumber,
             List<string> errors)
         {
             int errorCount = errors.Count;

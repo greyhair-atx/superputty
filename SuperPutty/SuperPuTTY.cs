@@ -334,7 +334,7 @@ namespace SuperPutty
             {
                 sessionsMap.Remove(sessionId);
                 sessionsList.Remove(session);
-                Log.InfoFormat($"Removed Session, id={session}, success=true");
+                Log.InfoFormat($"Removed Session, id={sessionId}, success=true");
                 return true;
             }            
             return false;
@@ -653,16 +653,56 @@ namespace SuperPutty
         /// <param name="folder">The destination folder name</param>
         public static void ImportSessions(List<SessionData> sessions, string folder)
         {
-            foreach (SessionData session in sessions)
-            {
-                // pre-pend session id with the provided folder to put them
-                session.SessionId = MakeUniqueSessionId(SessionData.CombineSessionIds(folder, session.SessionId));
-                session.SessionName = SessionData.GetSessionNameFromId(session.SessionId);
-                AddSession(session);
-            }
-            Log.InfoFormat($"Imported {sessions.Count} sessions into {folder}");
+            ImportSessions(sessions, folder, SaveSessions);
+        }
 
-            SaveSessions();
+        internal static void ImportSessions(List<SessionData> sessions, string folder, Action persistSessions)
+        {
+            if (sessions == null)
+            {
+                throw new ArgumentNullException("sessions");
+            }
+            if (persistSessions == null)
+            {
+                throw new ArgumentNullException("persistSessions");
+            }
+
+            List<SessionData> addedSessions = new List<SessionData>();
+            Dictionary<SessionData, string[]> originalNames = sessions.ToDictionary(
+                session => session,
+                session => new[] { session.SessionId, session.SessionName });
+
+            try
+            {
+                foreach (SessionData session in sessions)
+                {
+                    // Prepend the destination folder and avoid collisions with existing sessions
+                    // and sessions added earlier in this import.
+                    session.SessionId = MakeUniqueSessionId(SessionData.CombineSessionIds(folder, session.SessionId));
+                    session.SessionName = SessionData.GetSessionNameFromId(session.SessionId);
+                    if (!AddSession(session))
+                    {
+                        throw new InvalidOperationException("Could not add imported session '" + session.SessionId + "'.");
+                    }
+                    addedSessions.Add(session);
+                }
+
+                persistSessions();
+                Log.InfoFormat($"Imported {sessions.Count} sessions into {folder}");
+            }
+            catch
+            {
+                foreach (SessionData session in addedSessions)
+                {
+                    RemoveSession(session.SessionId);
+                }
+                foreach (KeyValuePair<SessionData, string[]> original in originalNames)
+                {
+                    original.Key.SessionId = original.Value[0];
+                    original.Key.SessionName = original.Value[1];
+                }
+                throw;
+            }
         }
 
         /// <summary>Import sessions from older version of SuperPuTTY from the Windows Registry</summary>

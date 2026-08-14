@@ -138,3 +138,6 @@ Licenses.licx
 /Talon.ApiServer/Identity4/Config.cs
 /Talon.ApiServer/tempkey.jwk
 /ArmorLink/Libs
+
+# Locally generated release and manual-test bundles
+/artifacts/

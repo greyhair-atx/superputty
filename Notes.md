@@ -10,17 +10,22 @@ This file records build, test, and implementation details that are useful when w
 - Added support for `#` comment lines, quoted CSV fields, case-insensitive headers, protocol and port defaults, nested folders, and optional session properties.
 - Required each row to contain `SessionName` and either `Host` or an explicitly supplied `PuttySession`.
 - Added whole-file validation for headers, field counts, required values, duplicate session paths, protocols, ports, and malformed CSV records.
-- Invalid files return no partial import list. The application shows all errors with row numbers and does not modify `Sessions.XML`.
-- Valid sessions are passed to the existing `SuperPuTTY.ImportSessions` path, retaining unique-name handling, backups, saving, and UI refresh behavior.
+- Invalid files return no partial import list. The application shows all errors with physical file line numbers and does not modify `Sessions.XML`.
+- Valid sessions are passed to `SuperPuTTY.ImportSessions`, which now rolls back in-memory additions if persistence fails.
+- Session files are serialized to a same-directory temporary file, flushed to disk, and atomically moved or replaced so a failed save leaves the prior `Sessions.XML` intact.
 - Added `Sessions.example.csv` with comments and three example sessions.
-- Added `SessionCsvImporterTests` covering valid input, quoting/comments/defaults, accumulated row errors, atomic failure, and invalid headers.
+- Added `SessionCsvImporterTests` covering valid input, quoting/comments/defaults, physical line numbers, malformed rows, optional properties, duplicate paths, rollback, atomic replacement, and invalid headers.
+- Updated SSH.NET to 2026.0.0 and log4net to 3.3.2.
+- Generated installers and manual-test bundles belong in Gitea releases or CI artifacts; `/artifacts/` is intentionally ignored.
 
 ## Verification completed
 
 - Built the `SuperPutty` and `SuperPuttyUnitTests` solution targets successfully with Visual Studio MSBuild.
 - Built the complete Debug solution, including `SuperPuttyInstaller`, with Visual Studio 18 MSBuild and the explicit WiX v3 targets path documented below.
 - Generated `SuperPuttyInstaller\bin\Debug\SuperPuttySetup.msi` successfully.
-- Ran the three CSV importer tests: 3 passed, 0 failed.
+- Verified the installer contains SSH.NET 2026.0.0 and all of its runtime dependency DLLs.
+- Ran the ten CSV importer and persistence tests: 10 passed, 0 failed.
+- NuGet vulnerability audit reports no vulnerable direct or transitive packages in either project.
 - Parsed `Sessions.example.csv` with the built application: valid, 3 sessions.
 - `git diff --check` passes.
 
@@ -40,7 +45,7 @@ This file records build, test, and implementation details that are useful when w
 - WiX Toolset command-line installations alone do not satisfy the legacy `.wixproj` import used by this solution.
 - A complete solution build requires WiX v3 MSBuild targets registered for the installed Visual Studio/MSBuild version, or an explicit valid `WixTargetsPath`.
 - On this machine, Visual Studio 18 does not discover the installed WiX v3 targets automatically. They are available at `C:\Program Files (x86)\MSBuild\Microsoft\WiX\v3.x\Wix.targets` and work when passed explicitly.
-- Visual Studio 18's NuGet targets require the Windows runtime identifier to be included during restore and build.
+- The x86 unit-test project declares its `win-x86` runtime identifier so PackageReference restore works consistently.
 - Build the solution serially. Using MSBuild's `/m` switch can cause the application project and installer project reference to compile `SuperPutty.exe` concurrently, resulting in `CS2012` because the intermediate executable is locked.
 
 From PowerShell, restore packages with:
@@ -49,7 +54,6 @@ From PowerShell, restore packages with:
 & 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe' `
     .\SuperPutty.sln `
     /t:Restore `
-    /p:RuntimeIdentifiers=win `
     '/p:WixTargetsPath=C:\Program Files (x86)\MSBuild\Microsoft\WiX\v3.x\Wix.targets' `
     /v:minimal `
     /nologo
@@ -62,8 +66,6 @@ Then build the complete Debug solution without `/m`:
     .\SuperPutty.sln `
     /t:Build `
     /p:Configuration=Debug `
-    /p:RuntimeIdentifier=win `
-    /p:RuntimeIdentifiers=win `
     '/p:WixTargetsPath=C:\Program Files (x86)\MSBuild\Microsoft\WiX\v3.x\Wix.targets' `
     /v:minimal `
     /nologo
@@ -77,5 +79,5 @@ The successful build produces:
 
 Current non-blocking warnings:
 
-- `log4net` 2.0.15 has a reported moderate-severity vulnerability (`NU1902`).
+- `TabSwitcher.currentDocument` is never assigned (`CS0649`), an existing warning unrelated to CSV import.
 - The installer reports an existing `ICE69` warning because shortcut `ApplicationShortcut1` and target file `ProductExe` belong to different components in the same feature.

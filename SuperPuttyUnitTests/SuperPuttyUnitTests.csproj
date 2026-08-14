@@ -11,6 +11,7 @@
     <RootNamespace>SuperPuttyUnitTests</RootNamespace>
     <AssemblyName>SuperPuttyUnitTests</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <RuntimeIdentifiers>win-x86</RuntimeIdentifiers>
     <TargetFrameworkProfile>
     </TargetFrameworkProfile>
     <FileAlignment>512</FileAlignment>
@@ -55,9 +56,6 @@
     <StartupObject>SuperPuttyUnitTests.Program</StartupObject>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="log4net, Version=2.0.15.0, Culture=neutral, PublicKeyToken=669e0ddf0bb1aa2a, processorArchitecture=MSIL">
-      <HintPath>..\packages\log4net.2.0.15\lib\net45\log4net.dll</HintPath>
-    </Reference>
     <Reference Include="nunit-console-runner">
       <HintPath>NUnit\nunit-console-runner.dll</HintPath>
     </Reference>
@@ -112,6 +110,11 @@
     <None Include="NUnit\nunit.core.dll" />
     <None Include="packages.config" />
     <None Include="SuperPuTTY.nunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="log4net">
+      <Version>3.3.2</Version>
+    </PackageReference>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\SuperPutty\SuperPutty.csproj">
