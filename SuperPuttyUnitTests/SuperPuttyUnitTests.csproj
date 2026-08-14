@@ -89,6 +89,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="KeyboardShortcutsTests.cs" />
     <Compile Include="SessionCsvImporterTests.cs" />
+    <Compile Include="KeyboardHookStateTests.cs" />
     <Compile Include="Scp\FileTransferTests.cs" />
     <Compile Include="Scp\ScpTests.cs" />
     <Compile Include="Scp\LocalBrowserTests.cs" />

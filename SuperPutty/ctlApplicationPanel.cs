@@ -30,6 +30,7 @@ using System.Configuration;
 using System.Collections.Generic;
 using SuperPutty.Utils;
 using System.Text;
+using System.Threading;
 
 namespace SuperPutty
 {
@@ -55,6 +56,7 @@ namespace SuperPutty
         private List<NativeMethods.WinEventDelegate> lpfnWinEventProcs = new List<NativeMethods.WinEventDelegate>();
         private WindowActivator m_windowActivator = null;
         private SuperPutty.Data.ConnectionProtocol proto;
+        private int suppressNextForegroundActivation;
 
         internal PuttyClosedCallback m_CloseCallback;
 
@@ -164,8 +166,12 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 this.MoveWindow("RestoreTabSwitch");
             if (this.ExternalProcessCaptured && NativeMethods.GetForegroundWindow() != this.m_AppWin)
             {
-                settingForeground = true;
+                Interlocked.Exchange(ref suppressNextForegroundActivation, 1);
                 result = NativeMethods.SetForegroundWindow(this.m_AppWin);
+                if (!result)
+                {
+                    Interlocked.Exchange(ref suppressNextForegroundActivation, 0);
+                }
                 if (result)
                     NativeMethods.InvalidateRect(this.m_AppWin, IntPtr.Zero, false);
                 Log.InfoFormat("[{0}] ReFocusPuTTY - puttyTab={1}, caller={2}, result={3}", this.m_AppWin, this.Parent.Text, caller, result);
@@ -207,13 +213,8 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 NativeMethods.SetWindowLong(m_AppWin, NativeMethods.GWL_STYLE, lStyle);
                 NativeMethods.WinEventDelegate lpfnWinEventProc = new NativeMethods.WinEventDelegate(WinEventProc);
                 this.lpfnWinEventProcs.Add(lpfnWinEventProc);
-                uint eventType = (uint)NativeMethods.WinEvents.EVENT_OBJECT_NAMECHANGE;
-                this.m_hWinEventHooks.Add(NativeMethods.SetWinEventHook(eventType, eventType, IntPtr.Zero, lpfnWinEventProc, (uint)m_Process.Id, 0, NativeMethods.WINEVENT_OUTOFCONTEXT));
-                if ((lStyle & NativeMethods.WS_DLGFRAME) == 0)
-                {
-                    eventType = (uint)NativeMethods.WinEvents.EVENT_SYSTEM_FOREGROUND;
-                    this.m_hWinEventHooks.Add(NativeMethods.SetWinEventHook(eventType, eventType, IntPtr.Zero, lpfnWinEventProc, (uint)m_Process.Id, 0, NativeMethods.WINEVENT_OUTOFCONTEXT));
-                }
+                RegisterWinEventHook(NativeMethods.WinEvents.EVENT_OBJECT_NAMECHANGE, lpfnWinEventProc);
+                RegisterWinEventHook(NativeMethods.WinEvents.EVENT_SYSTEM_FOREGROUND, lpfnWinEventProc);
             }
             else
             {
@@ -307,7 +308,6 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
          * http://stackoverflow.com/questions/46030/c-sharp-force-form-focus
         */
 
-        bool settingForeground = false;
         bool isSwitchingViaAltTab = false;
 
         void OnSystemSwitch(object sender, GlobalWindowEventArgs e)
@@ -331,10 +331,13 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             switch (eventType)
             {
                 case (uint)NativeMethods.WinEvents.EVENT_OBJECT_NAMECHANGE:
-                    UpdateTitle();
+                    RunOnUiThread(UpdateTitle);
                     break;
                 case (uint)NativeMethods.WinEvents.EVENT_SYSTEM_FOREGROUND:
-                    UpdateForeground();
+                    if (Interlocked.Exchange(ref suppressNextForegroundActivation, 0) == 0)
+                    {
+                        RunOnUiThread(UpdateForeground);
+                    }
                     break;
             }
         }
@@ -342,14 +345,13 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         void UpdateForeground()
         {
             // if we got the EVENT_SYSTEM_FOREGROUND, and the hwnd is the putty terminal hwnd (m_AppWin)
-            // then bring the supperputty window to the foreground
-            Log.DebugFormat("[{0}] HandlingForegroundEvent: settingFG={1}", m_AppWin, settingForeground);
-            if (settingForeground)
+            // then bring the SuperPuTTY window to the foreground
+            if (m_AppWin != NativeMethods.GetForegroundWindow())
             {
-                settingForeground = false;
                 return;
             }
 
+            Log.DebugFormat("[{0}] HandlingForegroundEvent", m_AppWin);
 
             // This is the easiest way I found to get the superputty window to be brought to the top
             // if you leave TopMost = true; then the window will always be on top.
@@ -381,6 +383,52 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                         this.ReFocusPuTTY("WinEventProc-FG, AltTab=" + isSwitchingViaAltTab);
                     }
                 }
+            }
+        }
+
+        private void RegisterWinEventHook(NativeMethods.WinEvents eventType, NativeMethods.WinEventDelegate callback)
+        {
+            uint eventId = (uint)eventType;
+            IntPtr hook = NativeMethods.SetWinEventHook(eventId, eventId, IntPtr.Zero, callback,
+                (uint)m_Process.Id, 0, NativeMethods.WINEVENT_OUTOFCONTEXT);
+            if (hook == IntPtr.Zero)
+            {
+                Log.WarnFormat("Unable to register {0} for process {1}. Win32Error={2}",
+                    eventType, m_Process.Id, System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+            }
+            else
+            {
+                this.m_hWinEventHooks.Add(hook);
+            }
+        }
+
+        private void RunOnUiThread(Action action)
+        {
+            if (action == null || IsDisposed || Disposing || !IsHandleCreated)
+            {
+                return;
+            }
+
+            try
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new MethodInvoker(delegate
+                    {
+                        if (!IsDisposed && !Disposing)
+                        {
+                            action();
+                        }
+                    }));
+                }
+                else
+                {
+                    action();
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // The panel was disposed after the WinEvent callback was delivered.
             }
         }
 
