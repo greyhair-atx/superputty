@@ -108,6 +108,39 @@
       <Component Id="ProductLibSSH">
         <File Source="$(var.SuperPutty.TargetDir)\Renci.SshNet.dll" />
       </Component>
+      <Component Id="ProductLibBouncyCastle">
+        <File Source="$(var.SuperPutty.TargetDir)\BouncyCastle.Cryptography.dll" />
+      </Component>
+      <Component Id="ProductLibBclAsyncInterfaces">
+        <File Source="$(var.SuperPutty.TargetDir)\Microsoft.Bcl.AsyncInterfaces.dll" />
+      </Component>
+      <Component Id="ProductLibBclCryptography">
+        <File Source="$(var.SuperPutty.TargetDir)\Microsoft.Bcl.Cryptography.dll" />
+      </Component>
+      <Component Id="ProductLibDependencyInjectionAbstractions">
+        <File Source="$(var.SuperPutty.TargetDir)\Microsoft.Extensions.DependencyInjection.Abstractions.dll" />
+      </Component>
+      <Component Id="ProductLibLoggingAbstractions">
+        <File Source="$(var.SuperPutty.TargetDir)\Microsoft.Extensions.Logging.Abstractions.dll" />
+      </Component>
+      <Component Id="ProductLibSystemBuffers">
+        <File Source="$(var.SuperPutty.TargetDir)\System.Buffers.dll" />
+      </Component>
+      <Component Id="ProductLibSystemFormatsAsn1">
+        <File Source="$(var.SuperPutty.TargetDir)\System.Formats.Asn1.dll" />
+      </Component>
+      <Component Id="ProductLibSystemMemory">
+        <File Source="$(var.SuperPutty.TargetDir)\System.Memory.dll" />
+      </Component>
+      <Component Id="ProductLibSystemNumericsVectors">
+        <File Source="$(var.SuperPutty.TargetDir)\System.Numerics.Vectors.dll" />
+      </Component>
+      <Component Id="ProductLibSystemRuntimeCompilerServicesUnsafe">
+        <File Source="$(var.SuperPutty.TargetDir)\System.Runtime.CompilerServices.Unsafe.dll" />
+      </Component>
+      <Component Id="ProductLibSystemThreadingTasksExtensions">
+        <File Source="$(var.SuperPutty.TargetDir)\System.Threading.Tasks.Extensions.dll" />
+      </Component>
       <Component Id="ProductLibUITheme">
         <File Source="$(var.SuperPutty.TargetDir)\WeifenLuo.WinFormsUI.Docking.ThemeVS2005.dll" />
       </Component>

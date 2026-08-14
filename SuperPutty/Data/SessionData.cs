@@ -589,16 +589,57 @@ namespace SuperPutty.Data
         /// <param name="fileName">A path to a filename to save the data in</param>
         public static void SaveSessionsToFile(List<SessionData> sessions, string fileName)
         {
+            if (sessions == null)
+            {
+                throw new ArgumentNullException("sessions");
+            }
+            if (String.IsNullOrWhiteSpace(fileName))
+            {
+                throw new ArgumentException("A session file name must be provided.", "fileName");
+            }
+
             Log.InfoFormat("Saving {0} sessions to {1}", sessions.Count, fileName);
 
-            BackUpFiles(fileName, 20);
+            string fullPath = Path.GetFullPath(fileName);
+            string directory = Path.GetDirectoryName(fullPath);
+            string tempFile = Path.Combine(
+                directory,
+                Path.GetFileName(fullPath) + "." + Guid.NewGuid().ToString("N") + ".tmp");
 
-            // sort and save file
-            sessions.Sort();
-            XmlSerializer s = new XmlSerializer(sessions.GetType());
-            using (TextWriter w = new StreamWriter(fileName))
+            List<SessionData> sessionsToSave = new List<SessionData>(sessions);
+            sessionsToSave.Sort();
+            XmlSerializer serializer = new XmlSerializer(sessionsToSave.GetType());
+
+            try
             {
-                s.Serialize(w, sessions);
+                using (FileStream stream = new FileStream(
+                    tempFile,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None))
+                using (TextWriter writer = new StreamWriter(stream))
+                {
+                    serializer.Serialize(writer, sessionsToSave);
+                    writer.Flush();
+                    stream.Flush(true);
+                }
+
+                BackUpFiles(fullPath, 20);
+                if (File.Exists(fullPath))
+                {
+                    File.Replace(tempFile, fullPath, null);
+                }
+                else
+                {
+                    File.Move(tempFile, fullPath);
+                }
+            }
+            finally
+            {
+                if (File.Exists(tempFile))
+                {
+                    File.Delete(tempFile);
+                }
             }
         }
 
@@ -613,6 +654,7 @@ namespace SuperPutty.Data
                     string dirName = Path.GetDirectoryName(fileName);
                     string backupName = Path.Combine(dirName, string.Format("{0}.{1:yyyyMMdd_hhmmss}.XML", fileBaseName, DateTime.Now));
                     File.Copy(fileName, backupName, true);
+                    File.SetAttributes(backupName, File.GetAttributes(backupName) & ~FileAttributes.ReadOnly);
 
                     // limit last count saves
                     List<string> oldFiles = new List<string>(Directory.GetFiles(dirName, fileBaseName + ".*.XML"));
