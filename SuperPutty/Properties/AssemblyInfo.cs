@@ -1,7 +1,6 @@
 ﻿using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
-using System.Runtime.Versioning;
 
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
@@ -20,7 +19,6 @@ using System.Runtime.Versioning;
 // COM, set the ComVisible attribute to true on that type.
 [assembly: ComVisible(false)]
 [assembly: InternalsVisibleTo("SuperPuttyUnitTests")]
-[assembly: SupportedOSPlatform("windows")]
 
 // The following GUID is for the ID of the typelib if this project is exposed to COM
 [assembly: Guid("7f061c0e-1ca2-43a8-92f5-49563ff4ee81")]

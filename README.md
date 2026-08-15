@@ -10,23 +10,6 @@ SuperPuTTY is a Windows application for managing PuTTY SSH terminals. It also
 supports RDP sessions and provides a simple scripting language for common
 tasks.
 
-## Development
-
-The `sp-1.6.0` codebase targets .NET 10 for Windows x64. Install the .NET 10
-SDK, then build and test from PowerShell:
-
-```powershell
-dotnet build .\SuperPutty.sln -c Release
-dotnet test .\SuperPuttyUnitTests\SuperPuttyUnitTests.csproj -c Release --no-build --filter "TestCategory!~Net"
-```
-
-The release build produces a self-contained application in `bin\Release` and
-an x64 MSI at `SuperPuttyInstaller\bin\Release\SuperPuttySetup.msi`. The MSI
-includes the .NET runtime, so end users do not need to install .NET separately.
-
-Tests whose category contains `Net` require a configured PuTTY `pscp.exe` and
-a disposable SSH endpoint; they are excluded from the default CI test run.
-
 ## Project resources
 
 - [Official SuperPuTTY repository](https://github.com/jimradford/superputty)

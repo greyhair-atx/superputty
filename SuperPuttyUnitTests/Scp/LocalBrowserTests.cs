@@ -31,15 +31,12 @@ namespace SuperPuttyUnitTests.Scp
 
             // test notify
             string updatedProp = null;
-            using ManualResetEventSlim propertyChanged = new ManualResetEventSlim();
-            viewModel.PropertyChanged += (s, e) =>
+            viewModel.PropertyChanged += (s, e) =>  
             {
                 Log.InfoFormat("PropertyChanged: {0}", e.PropertyName);
                 updatedProp = e.PropertyName;
-                propertyChanged.Set();
             };
             viewModel.Status = "foobar";
-            Assert.IsTrue(propertyChanged.Wait(TimeSpan.FromSeconds(2)), "PropertyChanged was not raised.");
             Assert.AreEqual("Status", updatedProp);
 
             Assert.IsNotNull(viewModel.Files);

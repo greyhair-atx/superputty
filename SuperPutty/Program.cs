@@ -49,29 +49,22 @@ namespace SuperPutty
         [STAThread]
         static void Main(string[] args)
         {
+            System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
+
             // send log to console
             log4net.Config.BasicConfigurator.Configure();
 
             bool onlyInstance = false;
             mutex = new Mutex(true, "SuperPutty", out onlyInstance);
 
-            if (onlyInstance)
-            {
-                SingleInstanceHelper.StartServer();
-            }
-
             Log.InfoFormat(
                 "IsFirstRun={0}, SingleInstanceMode={1}, onlyInstance={2}", 
                 SuperPuTTY.IsFirstRun, SuperPuTTY.Settings.SingleInstanceMode, onlyInstance);
             if ((EnforceSingleInstance  || SuperPuTTY.Settings.SingleInstanceMode) && !SuperPuTTY.IsFirstRun && !onlyInstance)
             {
-                if (SingleInstanceHelper.LaunchInExistingInstance(args))
-                {
-                    Log.InfoFormat("Sent Command to Existing Instance: [{0}]", String.Join(" ", args));
-                    Environment.Exit(0);
-                }
-
-                Log.Warn("The existing instance did not accept the command; continuing startup.");
+                SingleInstanceHelper.LaunchInExistingInstance(args);
+                Log.InfoFormat("Sent Command to Existing Instance: [{0}]", String.Join(" ", args));
+                Environment.Exit(0);
             }
 
             // open full file

@@ -148,8 +148,6 @@ namespace SuperPutty
         private PuttyClosedCallback m_PuttyClosed;
 
         private Thread m_PscpThread;
-        private Process m_ProcessCopyToRemote;
-        private volatile bool m_CancelRequested;
         public PuttyClosedCallback PuttyClosed
         {
             get { return m_PuttyClosed; }
@@ -433,7 +431,6 @@ namespace SuperPutty
         /// <param name="callback">A callback to fire on success or error. On failure the files parameter will be null</param>
         public void BeginCopyFiles(string[] files, string target, TransferUpdateCallback callback)
         {
-            m_CancelRequested = false;
             if (String.IsNullOrEmpty(m_Session.Username))
             {
                 if (m_Login.ShowDialog(SuperPuTTY.MainForm) == System.Windows.Forms.DialogResult.OK)
@@ -447,7 +444,6 @@ namespace SuperPutty
             m_PscpThread = new Thread(delegate()
             {
                 Process processCopyToRemote = new Process();
-                m_ProcessCopyToRemote = processCopyToRemote;
                 try
                 {
                     processCopyToRemote.EnableRaisingEvents = true;
@@ -500,31 +496,14 @@ namespace SuperPutty
                         }
                     };
 
-                    if (m_CancelRequested)
-                    {
-                        return;
-                    }
-
                     processCopyToRemote.Start();
-                    if (m_CancelRequested && !processCopyToRemote.HasExited)
-                    {
-                        processCopyToRemote.Kill(true);
-                    }
                     processCopyToRemote.BeginOutputReadLine();
                     processCopyToRemote.WaitForExit();
                 }
-                catch (Exception ex)
+                catch (ThreadAbortException)
                 {
-                    Logger.Log("File upload failed: {0}", ex.Message);
-                }
-                finally
-                {
-                    if (ReferenceEquals(m_ProcessCopyToRemote, processCopyToRemote))
-                    {
-                        m_ProcessCopyToRemote = null;
-                    }
-
-                    processCopyToRemote.Dispose();
+                    if (!processCopyToRemote.HasExited)
+                        processCopyToRemote.Kill();
                 }
             })
             {
@@ -537,25 +516,8 @@ namespace SuperPutty
 
         internal void CancelTransfers()
         {
-            Logger.Log("Cancelling transfer in CancelTransfers");
-            m_CancelRequested = true;
-            Process process = m_ProcessCopyToRemote;
-            if (process == null)
-            {
-                return;
-            }
-
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(true);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Log("Unable to cancel file upload: {0}", ex.Message);
-            }
+            Logger.Log("Aborting Transfer in CancelTransfer");
+            m_PscpThread.Abort();
         }
     }
 }

@@ -26,9 +26,6 @@ namespace SuperPutty.Scp
     public class PscpClient
     {
         private static readonly ILog Log = LogManager.GetLogger(typeof(PscpClient));
-        private readonly object processSync = new object();
-        private Process activeProcess;
-        private volatile bool cancellationRequested;
 
         #region Putty string constants
         /*
@@ -82,19 +79,10 @@ namespace SuperPutty.Scp
         #endregion
 
 
-        public PscpClient(PscpOptions options, SessionData session)
+        public PscpClient(PscpOptions options, SessionData session) 
         {
             this.Options = options;
             this.Session = session;
-        }
-
-        public void Cancel()
-        {
-            cancellationRequested = true;
-            lock (processSync)
-            {
-                SafeKill(activeProcess);
-            }
         }
 
         #region ListDirectory (and helpers)
@@ -185,9 +173,9 @@ namespace SuperPutty.Scp
                 sb.AppendFormat("-pw {0} ", password);
             }
             
-            if (!string.IsNullOrEmpty(session.ExtraArgs))
+            if (!string.IsNullOrEmpty(session.ExtraArgs.ToString()))
             {
-                sb.AppendFormat(" {0} ", session.ExtraArgs);
+                sb.AppendFormat(" {0} ", session.ExtraArgs.ToString());
             }
 
             sb.AppendFormat("-P {0} ", session.Port);
@@ -304,12 +292,6 @@ namespace SuperPutty.Scp
             Func<string, bool> inlineErrHandler, 
             Action<string[]> successOutHandler)
         {
-            if (cancellationRequested)
-            {
-                result.SetError("Operation canceled", null);
-                return;
-            }
-
             if (!File.Exists(this.Options.PscpLocation))
             {
                 result.SetError(string.Format("Pscp missing, path={0}.", this.Options.PscpLocation), null);
@@ -338,14 +320,6 @@ namespace SuperPutty.Scp
                     // Start pscp
                     Log.InfoFormat("Starting process: file={0}, args={1}", this.Options.PscpLocation, argsToLog);
                     proc.Start();
-                    lock (processSync)
-                    {
-                        activeProcess = proc;
-                        if (cancellationRequested)
-                        {
-                            SafeKill(proc);
-                        }
-                    }
 
                     // Timeout when no output is received
                     timeoutTimer = new Timer(
@@ -449,13 +423,6 @@ namespace SuperPutty.Scp
                 }
                 finally
                 {
-                    lock (processSync)
-                    {
-                        if (ReferenceEquals(activeProcess, proc))
-                        {
-                            activeProcess = null;
-                        }
-                    }
                     SafeKill(proc);
                     SafeDispose(timeoutTimer, proc, outReader, errReader);
                 }
@@ -540,7 +507,6 @@ namespace SuperPutty.Scp
         public class AsyncStreamReader : IDisposable
         {
             private static readonly ILog Log = LogManager.GetLogger(typeof(AsyncStreamReader));
-            private volatile bool stopRequested;
 
             public AsyncStreamReader(string name, StreamReader reader, Func<string, bool> dataUpdated)
             {
@@ -562,7 +528,7 @@ namespace SuperPutty.Scp
                     // read char-by-char at first 10 lines
                     int linesRead = 0;
                     StringBuilder sb = new StringBuilder();
-                    while (!stopRequested && keepReading && this.Reader.Peek() != -1)
+                    while (keepReading && this.Reader.Peek() != -1)
                     {
                         char c = (char)this.Reader.Read();
                         sb.Append(c);
@@ -586,17 +552,19 @@ namespace SuperPutty.Scp
 
                     // after reading 1st line, assume we have a normal read and go by line
                     string line;
-                    while (!stopRequested && keepReading && (line = this.Reader.ReadLine()) != null)
+                    while (keepReading && (line = this.Reader.ReadLine()) != null)
                     {
                         keepReading = AppendLineAndNotify(line);
                     }
                 }
+                catch (ThreadAbortException)
+                {
+                    // signal to stop
+                    Log.Debug("Thread aborted to stop read");
+                }
                 catch (Exception ex)
                 {
-                    if (!stopRequested)
-                    {
-                        Log.Error("Error reading stream", ex);
-                    }
+                    Log.Error("Error reading stream", ex);
                 }
             }
 
@@ -624,11 +592,9 @@ namespace SuperPutty.Scp
             {
                 if (this.Thread.IsAlive)
                 {
-                    if (!this.Thread.Join(2000))
-                    {
-                        RequestStop();
-                        this.Thread.Join(2000);
-                    }
+                    // consider better way to know operation is done reading output...timed out join is ok but not great.
+                    this.Thread.Join(2000);
+                    this.Thread.Abort();
                 }
 
                 lock (this)
@@ -647,21 +613,7 @@ namespace SuperPutty.Scp
             {
                 if (this.Thread.IsAlive)
                 {
-                    RequestStop();
-                    this.Thread.Join(2000);
-                }
-            }
-
-            private void RequestStop()
-            {
-                stopRequested = true;
-                try
-                {
-                    Reader.Dispose();
-                }
-                catch (ObjectDisposedException)
-                {
-                    // The owning process may already have closed the stream.
+                    this.Thread.Abort();
                 }
             }
         }

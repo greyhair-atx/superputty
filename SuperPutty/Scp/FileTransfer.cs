@@ -15,8 +15,6 @@ namespace SuperPutty.Scp
         public event EventHandler Update;
 
         private Thread thread = null;
-        private PscpClient client;
-        private volatile bool cancellationRequested;
         Status status = Status.Initializing;
 
         public FileTransfer(PscpOptions options, FileTransferRequest request)
@@ -36,7 +34,6 @@ namespace SuperPutty.Scp
                     Log.InfoFormat("Starting transfer, id={0}", this.Id);
 
                     this.StartTime = DateTime.Now;
-                    this.cancellationRequested = false;
 
                     this.thread = new Thread(this.DoTransfer)
                     {
@@ -61,8 +58,7 @@ namespace SuperPutty.Scp
                 if (CanCancel(this.TransferStatus))
                 {
                     Log.InfoFormat("Canceling active transfer, id={0}", this.Id);
-                    this.cancellationRequested = true;
-                    this.client?.Cancel();
+                    this.thread.Abort();
                     Log.InfoFormat("Canceled active transfer, id={0}", this.Id);
                     this.UpdateStatus(this.PercentComplete, Status.Canceled, "Canceled");
                 }
@@ -77,10 +73,10 @@ namespace SuperPutty.Scp
         {
             try
             {
-                this.client = new PscpClient(this.Options, this.Request.Session);
+                PscpClient client = new PscpClient(this.Options, this.Request.Session);
 
                 int estSizeKB = Int32.MaxValue;
-                FileTransferResult res = this.client.CopyFiles(
+                FileTransferResult res = client.CopyFiles(
                     this.Request.SourceFiles,
                     this.Request.TargetFile,
                     (complete, cancelAll, s) =>
@@ -108,12 +104,6 @@ namespace SuperPutty.Scp
                     });
 
                 this.EndTime = DateTime.Now;
-                if (this.cancellationRequested)
-                {
-                    this.UpdateStatus(this.PercentComplete, Status.Canceled, "Canceled");
-                    return;
-                }
-
                 switch (res.StatusCode)
                 {
                     case ResultStatusCode.Success:
@@ -125,6 +115,10 @@ namespace SuperPutty.Scp
                         this.UpdateStatus(this.PercentComplete, Status.Error, res.ErrorMsg);
                         break;
                 }
+            }
+            catch (ThreadAbortException)
+            {
+                this.UpdateStatus(this.PercentComplete, Status.Canceled, "");
             }
             catch (Exception ex)
             {
