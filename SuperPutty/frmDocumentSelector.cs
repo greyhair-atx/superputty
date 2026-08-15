@@ -93,8 +93,14 @@ namespace SuperPutty
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             base.OnFormClosing(e);
-            e.Cancel = true;
-            this.Hide();
+
+            // Keep the selector reusable when the user closes only this tool
+            // window, but never veto shutdown of its owner or the application.
+            if (e.CloseReason == CloseReason.UserClosing)
+            {
+                e.Cancel = true;
+                this.Hide();
+            }
         }
 
         public bool IsDocumentSelected(ctlPuttyPanel document)
