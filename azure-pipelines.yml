@@ -15,8 +15,8 @@ pool:
 
 variables:
   solution: '**/*.sln'
-  buildPlatform: 'Mixed Platforms'
-  testPlatform: 'x86'
+  buildPlatform: 'x64'
+  testPlatform: 'x64'
   buildConfiguration: 'Release'
 
 steps:
@@ -44,6 +44,6 @@ steps:
 
 - task: PublishPipelineArtifact@1
   inputs:
-    targetPath: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x86\$(buildConfiguration)\SuperPuttySetup.msi'
+    targetPath: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x64\$(buildConfiguration)\SuperPuttySetup.msi'
     artifactType: 'pipeline'
-    artifactName: 'SuperPutty-1.6.0-win-x86'
+    artifactName: 'SuperPutty-1.6.0-win-x64'

@@ -75,7 +75,7 @@ namespace SuperPutty.Utils
 
         /// <summary>Send commands and keystrokes to the specified session</summary>
         /// <param name="handle">The Windows Handle to send to</param>
-        public void SendToTerminal(int handle)
+        public void SendToTerminal(IntPtr handle)
         {
             Log.InfoFormat("SendToTerminal: Handle={0}, Command=[{1}]", handle, this);
             if (!string.IsNullOrEmpty(this.Command))

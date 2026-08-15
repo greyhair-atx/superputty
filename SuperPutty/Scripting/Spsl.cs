@@ -99,10 +99,14 @@ namespace SuperPuTTY.Scripting
                         TryParseScriptLine(line, out command);
                         if (command != null)
                         {
-                            command.SendToTerminal(scriptArgs.Handle.ToInt32());                        
+                            command.SendToTerminal(scriptArgs.Handle);
                         }
                     }
-                }).Start();
+                })
+                {
+                    IsBackground = true,
+                    Name = "SPSL script execution"
+                }.Start();
             }
         }
 

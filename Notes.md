@@ -22,7 +22,11 @@ This file records build, test, and implementation details that are useful when w
 
 - Built the `SuperPutty` and `SuperPuttyUnitTests` solution targets successfully with Visual Studio MSBuild.
 - Built the complete Release solution, including the SDK-style WiX 6 installer, with Visual Studio 18 MSBuild.
-- Generated `SuperPuttyInstaller\bin\x86\Release\SuperPuttySetup.msi` successfully.
+- Generated `SuperPuttyInstaller\bin\x64\Release\SuperPuttySetup.msi` successfully.
+- Verified both executable PE headers report x64 and the MSI Summary Information template reports `x64;1033`.
+- Ran 17 architecture-independent keyboard and CSV tests in a 64-bit .NET Framework process: 17 passed, 0 failed.
+- Verified the x64 application starts and exits with code 0 through the title-bar close path after confirming exit.
+- Administratively extracted the MSI and verified its application payload is placed under `PFiles64` with all 47 theme icons.
 - Verified the installer contains SSH.NET 2026.0.0 and all of its runtime dependency DLLs.
 - Ran the ten CSV importer and persistence tests: 10 passed, 0 failed.
 - NuGet vulnerability audit reports no vulnerable direct or transitive packages in either project.
@@ -33,8 +37,8 @@ This file records build, test, and implementation details that are useful when w
 
 1. Install the .NET Framework 4.8 targeting/developer pack and Visual Studio or Build Tools with MSBuild.
 2. Restore the repository packages before building.
-3. Build through `SuperPutty.sln` so its AnyCPU application and x86 test-project platform mappings are applied correctly.
-4. Run the legacy NUnit 2.5 runner in a 32-bit process because `SuperPuttyUnitTests` targets x86. On 64-bit Windows, use the Windows PowerShell executable under `C:\Windows\SysWOW64\WindowsPowerShell\v1.0` to invoke `nunit-console-runner.dll`.
+3. Build through `SuperPutty.sln` using its x64 solution configuration. The application, test harness, and installer are 64-bit only.
+4. Run the legacy NUnit 2.5 runner in a 64-bit process because `SuperPuttyUnitTests` targets x64. Do not use executables under `C:\Windows\SysWOW64`.
 5. Set `SuperPuTTY.ScpTests.PscpLocation` in `SuperPuttyUnitTests/app.config` to an existing `pscp.exe`.
 6. Provide a disposable SSH/SCP test service matching the `UserName`, `Password`, `KnownHost`, and `UnKnownHost` values in `SuperPuttyUnitTests/app.config`. The known-host address must have its PuTTY host key cached; the unknown-host address must not be cached. The account must be able to list its home directory and accept a test file upload.
 7. Expect the SCP fixtures to make real localhost network connections, exercise bad-password and unknown-host behavior, and write temporary files. They are not isolated unit tests. One network-dependent test lacks the `NetworkTest` category and another category is misspelled `Netowk Tests`, so category exclusion alone does not reliably isolate them.
@@ -43,9 +47,9 @@ This file records build, test, and implementation details that are useful when w
 ## Complete solution and installer build
 
 - `SuperPuttyInstaller` uses `WixToolset.Sdk` 6.0.2 and restores its UI and Util extensions through NuGet. A separately installed WiX toolset is not required.
-- The application remains a non-SDK .NET Framework 4.8 project and the MSI remains x86.
-- The x86 unit-test project declares its `win-x86` runtime identifier so PackageReference restore works consistently.
-- Use the solution's `Mixed Platforms` configuration so the application builds as AnyCPU while the tests and installer build as x86.
+- The application remains a non-SDK .NET Framework 4.8 project and all supported outputs target x64.
+- The unit-test project declares its `win-x64` runtime identifier so PackageReference restore works consistently.
+- The solution intentionally exposes only `Debug|x64` and `Release|x64`; x86 and AnyCPU builds are unsupported.
 
 From PowerShell, restore and build the complete Release solution with:
 
@@ -55,7 +59,7 @@ From PowerShell, restore and build the complete Release solution with:
     /restore `
     /t:Build `
     /p:Configuration=Release `
-    '/p:Platform=Mixed Platforms' `
+    /p:Platform=x64 `
     /m `
     /v:minimal `
     /nologo
@@ -63,10 +67,10 @@ From PowerShell, restore and build the complete Release solution with:
 
 The successful build produces:
 
-- `bin\Release\SuperPutty.exe`
-- `SuperPuttyUnitTests\bin\Debug\SuperPuttyUnitTests.exe`
-- `SuperPuttyInstaller\bin\x86\Release\SuperPuttySetup.msi`
+- `bin\x64\Release\SuperPutty.exe`
+- `SuperPuttyUnitTests\bin\x64\Release\SuperPuttyUnitTests.exe`
+- `SuperPuttyInstaller\bin\x64\Release\SuperPuttySetup.msi`
 
-The WiX 6 MSI preserves the 1.6.0 product version, original upgrade code, x86 installation location, license UI, shortcuts, themes, and post-install launch option. Its ICE validation completes without warnings.
+The WiX 6 MSI preserves the 1.6.0 product version, original upgrade code, license UI, shortcuts, themes, and post-install launch option. It is an x64 package that installs under the native 64-bit Program Files directory, and its ICE validation completes without warnings.
 
 The complete Release build currently succeeds with zero warnings and zero errors.

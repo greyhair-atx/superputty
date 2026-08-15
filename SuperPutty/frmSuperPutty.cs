@@ -1333,8 +1333,7 @@ namespace SuperPutty
                         }
                         if (this.sendCommandsDocumentSelector.IsDocumentSelected(panel))
                         {
-                            System.IntPtr hPtr = panel.AppPanel.AppWindowHandle;
-                            int handle = hPtr.ToInt32();
+                            IntPtr handle = panel.AppPanel.AppWindowHandle;
                             //Log.InfoFormat("SendCommand: session={0}, command=[{1}], handle={2}", panel.Session.SessionId, command, handle);
 
                             command.SendToTerminal(handle);

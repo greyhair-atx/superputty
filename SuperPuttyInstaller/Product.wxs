@@ -41,13 +41,13 @@
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch SuperPuTTY" />    
     <Property Id="WixShellExecTarget" Value="[#ProductExe]" />
     <CustomAction Id="LaunchApplication"
-                  BinaryRef="Wix4UtilCA_X86"
+                  BinaryRef="Wix4UtilCA_X64"
                   DllEntry="WixShellExec"
                   Impersonate="yes" />
   </Package>
 
   <Fragment>
-    <StandardDirectory Id="ProgramFilesFolder">
+    <StandardDirectory Id="ProgramFiles6432Folder">
       <Directory Id="INSTALLFOLDER" Name="SuperPuTTY">
         <Directory Id="INSTALLTHEMEFOLDER" Name="themes">
           <Directory Id="INSTALLDEFAULTTHEME" Name="default">
@@ -59,7 +59,8 @@
 
     <StandardDirectory Id="ProgramMenuFolder">
       <Directory Id="ProgramMenuSubfolder" Name="SuperPuTTY">
-        <Component Id="ApplicationShortcuts" Guid="0CF406F3-901A-4C75-9DCB-BE6042BC70CE">
+        <!-- New component identity because the x64-only package installs to native Program Files. -->
+        <Component Id="ApplicationShortcuts" Guid="46262D1C-86F8-49A6-8A8B-7353B658FB13">
 
             <Shortcut Id="ApplicationShortcut1"
                       Name="SuperPuTTY" 
@@ -145,7 +146,7 @@
       </Component>
     </ComponentGroup>    
     <ComponentGroup Id="DefaultTheme" Directory="INSTALLTHEMEICONSFOLDER">
-      <Component Id="ThemeIconFiles" Guid="C834A688-708A-4DE1-8B64-7582CFF47F7C">
+      <Component Id="ThemeIconFiles" Guid="BF087426-7B24-4FC7-8353-0DD1732D35A9">
         <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\application_osx_terminal.png" />
         <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\application_xp_terminal.png" />
         <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\book.png" />

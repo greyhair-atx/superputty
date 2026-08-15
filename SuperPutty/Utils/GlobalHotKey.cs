@@ -28,7 +28,7 @@ namespace SuperPutty.Utils
             }
 
             // make uid
-            this.Id = this.Shortcut.GetHashCode() ^ this.Form.Handle.ToInt32();
+            this.Id = this.Shortcut.GetHashCode() ^ this.Form.Handle.GetHashCode();
 
             this.Register();
         }

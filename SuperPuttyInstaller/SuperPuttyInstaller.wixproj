@@ -2,12 +2,12 @@
 
   <PropertyGroup>
     <OutputName>SuperPuttySetup</OutputName>
-    <InstallerPlatform>x86</InstallerPlatform>
+    <InstallerPlatform>x64</InstallerPlatform>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SuperPutty\SuperPutty.csproj"
-                      AdditionalProperties="Platform=AnyCPU" />
+                      AdditionalProperties="Platform=x64" />
     <PackageReference Include="WixToolset.UI.wixext" Version="6.0.2" />
     <PackageReference Include="WixToolset.Util.wixext" Version="6.0.2" />
   </ItemGroup>

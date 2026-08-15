@@ -10,6 +10,24 @@ SuperPuTTY is a Windows application for managing PuTTY SSH terminals. It also
 supports RDP sessions and provides a simple scripting language for common
 tasks.
 
+## System requirements
+
+The `sp-1.6.0` branch produces **64-bit Windows builds only**. The application,
+test harness, portable package, and MSI installer all target x64; x86 and
+AnyCPU configurations are not supported.
+
+- 64-bit Windows 10 or Windows 11
+- .NET Framework 4.8
+- PuTTY and PSCP installed or supplied separately
+
+The x64 MSI installs under the native 64-bit Program Files directory. It cannot
+be installed on 32-bit Windows.
+
+Release artifacts use an explicit `x64` suffix:
+
+- `SuperPutty-1.6.0-standalone-net48-x64.zip` — portable .NET Framework 4.8 build
+- `SuperPutty-1.6.0-win-x64.msi` — 64-bit Windows installer
+
 ## Project resources
 
 - [Official SuperPuTTY repository](https://github.com/jimradford/superputty)
