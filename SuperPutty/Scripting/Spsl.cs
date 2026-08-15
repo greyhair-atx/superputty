@@ -4,6 +4,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using log4net;
 using SuperPutty;
 using SuperPutty.Utils;
@@ -91,23 +92,28 @@ namespace SuperPuTTY.Scripting
             if (scriptlines.Length > 0
                 && scriptArgs.IsSPSL)
             {
-                new System.Threading.Thread(delegate ()
-                {
-                    foreach (string line in scriptlines)
-                    {
-                        CommandData command;
-                        TryParseScriptLine(line, out command);
-                        if (command != null)
-                        {
-                            command.SendToTerminal(scriptArgs.Handle);
-                        }
-                    }
-                })
-                {
-                    IsBackground = true,
-                    Name = "SPSL script execution"
-                }.Start();
+                CreateExecutionThread(scriptArgs, scriptlines).Start();
             }
+        }
+
+        internal static Thread CreateExecutionThread(ExecuteScriptEventArgs scriptArgs, string[] scriptlines)
+        {
+            return new Thread(delegate ()
+            {
+                foreach (string line in scriptlines)
+                {
+                    CommandData command;
+                    TryParseScriptLine(line, out command);
+                    if (command != null)
+                    {
+                        command.SendToTerminal(scriptArgs.Handle);
+                    }
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "SPSL script execution"
+            };
         }
 
         /// <summary>Find Valid spsl script commands from lookup table and retrieve the Function to execute</summary>

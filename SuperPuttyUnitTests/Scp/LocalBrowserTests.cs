@@ -51,46 +51,56 @@ namespace SuperPuttyUnitTests.Scp
             // make mock dir
             String testDir = Path.Combine(Path.GetTempPath(), Path.GetTempFileName());
             File.Delete(testDir);
-            Directory.CreateDirectory(Path.Combine(testDir, "A"));
-            Directory.CreateDirectory(Path.Combine(testDir, "B"));
-            Directory.CreateDirectory(Path.Combine(testDir, "C"));
-            File.WriteAllText(Path.Combine(testDir, "file1"), "");
-            File.WriteAllText(Path.Combine(testDir, "file2"), "");
-            File.WriteAllText(Path.Combine(testDir, "file3"), "");
-            File.WriteAllText(Path.Combine(testDir, "file4"), "1");
-
-            // change to mode dir
-            presenter.ViewModel.PropertyChanged+= (s, e) => 
+            try
             {
-                if (presenter.ViewModel.BrowserState == BrowserState.Ready)
+                Directory.CreateDirectory(Path.Combine(testDir, "A"));
+                Directory.CreateDirectory(Path.Combine(testDir, "B"));
+                Directory.CreateDirectory(Path.Combine(testDir, "C"));
+                File.WriteAllText(Path.Combine(testDir, "file1"), "");
+                File.WriteAllText(Path.Combine(testDir, "file2"), "");
+                File.WriteAllText(Path.Combine(testDir, "file3"), "");
+                File.WriteAllText(Path.Combine(testDir, "file4"), "1");
+
+                // change to mode dir
+                presenter.ViewModel.PropertyChanged += (s, e) =>
                 {
-                    lock (this) { Monitor.Pulse(this);  }
+                    if (presenter.ViewModel.BrowserState == BrowserState.Ready)
+                    {
+                        lock (this) { Monitor.Pulse(this); }
+                    }
+                };
+                presenter.LoadDirectory(new BrowserFileInfo(new DirectoryInfo(testDir)));
+                lock (this)
+                {
+                    Monitor.Wait(this, 1000);
                 }
-            };
-            presenter.LoadDirectory(new BrowserFileInfo(new DirectoryInfo(testDir)));
-            lock (this)
-            {
-                Monitor.Wait(this, 1000);
+
+                foreach (BrowserFileInfo bfi in presenter.ViewModel.Files)
+                {
+                    Log.InfoFormat("BFI: {0}", bfi);
+                }
+                Assert.IsNotNull(viewModel.Files);
+                Assert.AreEqual(8, viewModel.Files.Count);
+                Assert.AreEqual("..", viewModel.Files[0].Name);
+                Assert.AreEqual(new DirectoryInfo(Path.GetTempPath()), new DirectoryInfo(viewModel.Files[0].Path));
+                Assert.AreEqual(FileType.ParentDirectory, viewModel.Files[0].Type);
+                Assert.AreEqual("A", viewModel.Files[1].Name);
+                Assert.AreEqual(FileType.Directory, viewModel.Files[1].Type);
+                Assert.AreEqual(0, viewModel.Files[1].Size);
+
+                Assert.AreEqual("file1", viewModel.Files[4].Name, "file1");
+                Assert.AreEqual(FileType.File, viewModel.Files[4].Type);
+                Assert.AreEqual(0, viewModel.Files[4].Size);
+
+                Assert.AreEqual(1, viewModel.Files[7].Size);
             }
-
-            foreach (BrowserFileInfo bfi in presenter.ViewModel.Files)
+            finally
             {
-                Log.InfoFormat("BFI: {0}", bfi);
+                if (Directory.Exists(testDir))
+                {
+                    Directory.Delete(testDir, true);
+                }
             }
-            Assert.IsNotNull(viewModel.Files);
-            Assert.AreEqual(8, viewModel.Files.Count);
-            Assert.AreEqual("..", viewModel.Files[0].Name);
-            Assert.AreEqual(new DirectoryInfo(Path.GetTempPath()), new DirectoryInfo(viewModel.Files[0].Path));
-            Assert.AreEqual(FileType.ParentDirectory, viewModel.Files[0].Type);
-            Assert.AreEqual("A", viewModel.Files[1].Name);
-            Assert.AreEqual(FileType.Directory, viewModel.Files[1].Type);
-            Assert.AreEqual(0, viewModel.Files[1].Size);
-
-            Assert.AreEqual("file1", viewModel.Files[4].Name, "file1");
-            Assert.AreEqual(FileType.File, viewModel.Files[4].Type);
-            Assert.AreEqual(0, viewModel.Files[4].Size);
-
-            Assert.AreEqual(1, viewModel.Files[7].Size);
         }
     }
 

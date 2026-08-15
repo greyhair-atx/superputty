@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Reflection;
-using NUnit.Gui;
 using SuperPuttyUnitTests.Scp;
 using System.Windows.Forms;
 using log4net;
@@ -57,19 +56,6 @@ namespace SuperPuttyUnitTests
             MessageBox.Show(msg, "Application_ThreadException");
         }
 
-
-        static void RunConsole()
-        {
-            string[] my_args = { Assembly.GetExecutingAssembly().Location };
-
-            int returnCode = NUnit.ConsoleRunner.Runner.Main(my_args);
-
-            if (returnCode != 0)
-                Console.Beep();
-
-            Console.WriteLine("Complete - Any key to kill");
-            Console.ReadLine();
-        }
 
     }
 

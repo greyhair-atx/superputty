@@ -1229,20 +1229,9 @@ namespace SuperPutty.Utils
         [DllImport("user32.dll", EntryPoint = "SendMessage", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
         public static extern bool SendMessage(IntPtr hWnd, uint Msg, int wParam, StringBuilder lParam);
 
-        [DllImport("USER32.DLL", EntryPoint = "PostMessageW", SetLastError = true,
-             CharSet = CharSet.Unicode, ExactSpelling = true,
-             CallingConvention = CallingConvention.StdCall)]
-        public static extern bool PostMessage(int hwnd, int Msg, int wParam, int lParam);
-
-        [DllImport("USER32.DLL", EntryPoint = "SendMessageW", SetLastError = true,
-             CharSet = CharSet.Unicode, ExactSpelling = true,
-             CallingConvention = CallingConvention.StdCall)]
-        public static extern bool SendMessage(int hwnd, int Msg, int wParam, int lParam);
-
         [DllImport("user32.dll")]
         public static extern short VkKeyScan(char ch);
 
-        public delegate bool CallBackPtr(int hwnd, int lParam);
         public delegate IntPtr LowLevelKMProc(int nCode, IntPtr wParam, IntPtr lParam);
         public delegate bool EnumWindowProc(IntPtr hWnd, IntPtr parameter);
 
@@ -1255,9 +1244,6 @@ namespace SuperPutty.Utils
         [DllImport("user32")]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool EnumChildWindows(IntPtr window, EnumWindowProc callback, IntPtr i);
-
-        [DllImport("user32.dll")]
-        public static extern int EnumWindows(CallBackPtr callPtr, int lPar);
 
         [DllImport("user32.dll")]
         public static extern IntPtr GetActiveWindow();

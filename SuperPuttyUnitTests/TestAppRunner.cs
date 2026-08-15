@@ -5,7 +5,6 @@ using System.Reflection;
 using log4net;
 using System.IO;
 using System.Threading;
-using NUnit.Gui;
 
 namespace SuperPuttyUnitTests
 {
@@ -128,22 +127,6 @@ namespace SuperPuttyUnitTests
             {
                 File.Delete(AutoStartFile);
             }
-        }
-    }
-
-    public class NUnitRunner
-    {
-        [TestView]
-        public void RunGui()
-        {
-            Thread t = new Thread((x) =>
-            {
-                AppEntry.Main(new[] { Assembly.GetEntryAssembly().Location });
-            });
-
-            t.SetApartmentState(ApartmentState.STA);
-            t.IsBackground = true;
-            t.Start();
         }
     }
 

@@ -28,6 +28,22 @@ Release artifacts use an explicit `x64` suffix:
 - `SuperPutty-1.6.0-standalone-net48-x64.zip` — portable .NET Framework 4.8 build
 - `SuperPutty-1.6.0-win-x64.msi` — 64-bit Windows installer
 
+## Automated tests
+
+`SuperPuttyUnitTests` is an SDK-style .NET Framework 4.8 project using NUnit 3,
+the NUnit 3 adapter, and Microsoft.NET.Test.Sdk. The default CI run executes the
+24 isolated tests and excludes tests categorized as `NetworkTest`.
+
+CI also verifies the x64 PE header, product version, runtime DLL set, WiX MSI
+architecture and payload, theme icons, title-bar shutdown with confirmation on
+and off, and File > Exit. The verification entry points are:
+
+- `build\Verify-ReleaseArtifacts.ps1`
+- `build\Test-ApplicationShutdown.ps1`
+
+The eight `NetworkTest` cases require a disposable SSH server and separately
+configured PuTTY/PSCP environment; they are not run on normal pull requests.
+
 ## Project resources
 
 - [Official SuperPuTTY repository](https://github.com/jimradford/superputty)

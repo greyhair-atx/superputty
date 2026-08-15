@@ -230,7 +230,7 @@ namespace SuperPuttyUnitTests.Scp
             Log.InfoFormat("Result: {0}", res);
         }
 
-        [Test]
+        [Test, Category("NetworkTest")]
         public void ListDirHostNoKey()
         {
             SessionData session = new SessionData
@@ -283,7 +283,7 @@ namespace SuperPuttyUnitTests.Scp
             Program.InitLoggingForUnitTests();
         }
 
-        [Test, Category("Netowk Tests")]
+        [Test, Category("NetworkTest")]
         public void LocalToRemote()
         {
             SessionData session = new SessionData

@@ -37,10 +37,35 @@ steps:
     configuration: '$(buildConfiguration)'
     msbuildArgs: '/restore'
 
-- task: VSTest@2
+- task: VSTest@3
+  displayName: 'Run isolated x64 tests'
   inputs:
+    testSelector: 'testAssemblies'
+    testAssemblyVer2: |
+      **\SuperPuttyUnitTests.exe
+      !**\obj\**
+    searchFolder: '$(Build.SourcesDirectory)'
+    testFiltercriteria: 'TestCategory!=NetworkTest'
     platform: '$(testPlatform)'
     configuration: '$(buildConfiguration)'
+    failOnMinTestsNotRun: true
+    minimumExpectedTests: '24'
+
+- task: PowerShell@2
+  displayName: 'Verify x64 application and MSI payload'
+  inputs:
+    targetType: 'filePath'
+    filePath: '$(Build.SourcesDirectory)\build\Verify-ReleaseArtifacts.ps1'
+    arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform) -ExpectedVersion 1.6.0.0'
+    pwsh: true
+
+- task: PowerShell@2
+  displayName: 'Test application shutdown paths'
+  inputs:
+    targetType: 'filePath'
+    filePath: '$(Build.SourcesDirectory)\build\Test-ApplicationShutdown.ps1'
+    arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform)'
+    pwsh: false
 
 - task: PublishPipelineArtifact@1
   inputs:
