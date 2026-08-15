@@ -505,12 +505,12 @@
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PostBuildEvent>IF NOT EXIST "$(SolutionDir)bin\Release\themes" mkdir "$(SolutionDir)bin\Release\themes"
-IF NOT EXIST "$(SolutionDir)bin\Release\themes\default" xcopy /E  /Y "$(ProjectDir)Resources\themes" "$(SolutionDir)bin\Release\themes\"
-IF EXIST "$(SolutionDir)bin\Release\themes\default\icons" xcopy /D "$(ProjectDir)Resources\themes\default\icons\*.png" "$(SolutionDir)bin\Release\themes\default\icons\"
-IF NOT EXIST "$(SolutionDir)bin\Debug\themes" mkdir "$(SolutionDir)bin\Debug\themes" 
-IF NOT EXIST "$(SolutionDir)bin\Debug\themes\default" xcopy /E  /Y "$(ProjectDir)Resources\themes" "$(SolutionDir)bin\Debug\themes\"
-IF EXIST "$(SolutionDir)bin\Debug\themes\default\icons" xcopy /D "$(ProjectDir)Resources\themes\default\icons\*.png" "$(SolutionDir)bin\Debug\themes\default\icons\"
+    <PostBuildEvent>IF NOT EXIST "$(ProjectDir)..\bin\Release\themes" mkdir "$(ProjectDir)..\bin\Release\themes"
+IF NOT EXIST "$(ProjectDir)..\bin\Release\themes\default" xcopy /E  /Y "$(ProjectDir)Resources\themes" "$(ProjectDir)..\bin\Release\themes\"
+IF EXIST "$(ProjectDir)..\bin\Release\themes\default\icons" xcopy /D "$(ProjectDir)Resources\themes\default\icons\*.png" "$(ProjectDir)..\bin\Release\themes\default\icons\"
+IF NOT EXIST "$(ProjectDir)..\bin\Debug\themes" mkdir "$(ProjectDir)..\bin\Debug\themes"
+IF NOT EXIST "$(ProjectDir)..\bin\Debug\themes\default" xcopy /E  /Y "$(ProjectDir)Resources\themes" "$(ProjectDir)..\bin\Debug\themes\"
+IF EXIST "$(ProjectDir)..\bin\Debug\themes\default\icons" xcopy /D "$(ProjectDir)Resources\themes\default\icons\*.png" "$(ProjectDir)..\bin\Debug\themes\default\icons\"
 SET errorlevel=</PostBuildEvent>
   </PropertyGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

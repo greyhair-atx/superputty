@@ -4,14 +4,19 @@
 # https://docs.microsoft.com/azure/devops/pipelines/apps/windows/dot-net
 
 trigger:
-- master
+  branches:
+    include:
+    - master
+    - integration
+    - sp-1.6.0
 
 pool:
   vmImage: 'windows-latest'
 
 variables:
   solution: '**/*.sln'
-  buildPlatform: 'Any CPU'
+  buildPlatform: 'Mixed Platforms'
+  testPlatform: 'x86'
   buildConfiguration: 'Release'
 
 steps:
@@ -30,15 +35,15 @@ steps:
     solution: '$(solution)'
     platform: '$(buildPlatform)'
     configuration: '$(buildConfiguration)'
-    msbuildArgs: '/p:RunWixToolsOutOfProc=true'
+    msbuildArgs: '/restore'
 
 - task: VSTest@2
   inputs:
-    platform: '$(buildPlatform)'
+    platform: '$(testPlatform)'
     configuration: '$(buildConfiguration)'
 
 - task: PublishPipelineArtifact@1
   inputs:
-    targetPath: '$(Pipeline.Workspace)'
+    targetPath: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x86\$(buildConfiguration)\SuperPuttySetup.msi'
     artifactType: 'pipeline'
-    artifactName: 'drop'
+    artifactName: 'SuperPutty-1.6.0-win-x86'

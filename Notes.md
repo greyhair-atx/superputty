@@ -21,8 +21,8 @@ This file records build, test, and implementation details that are useful when w
 ## Verification completed
 
 - Built the `SuperPutty` and `SuperPuttyUnitTests` solution targets successfully with Visual Studio MSBuild.
-- Built the complete Debug solution, including `SuperPuttyInstaller`, with Visual Studio 18 MSBuild and the explicit WiX v3 targets path documented below.
-- Generated `SuperPuttyInstaller\bin\Debug\SuperPuttySetup.msi` successfully.
+- Built the complete Release solution, including the SDK-style WiX 6 installer, with Visual Studio 18 MSBuild.
+- Generated `SuperPuttyInstaller\bin\x86\Release\SuperPuttySetup.msi` successfully.
 - Verified the installer contains SSH.NET 2026.0.0 and all of its runtime dependency DLLs.
 - Ran the ten CSV importer and persistence tests: 10 passed, 0 failed.
 - NuGet vulnerability audit reports no vulnerable direct or transitive packages in either project.
@@ -42,42 +42,31 @@ This file records build, test, and implementation details that are useful when w
 
 ## Complete solution and installer build
 
-- WiX Toolset command-line installations alone do not satisfy the legacy `.wixproj` import used by this solution.
-- A complete solution build requires WiX v3 MSBuild targets registered for the installed Visual Studio/MSBuild version, or an explicit valid `WixTargetsPath`.
-- On this machine, Visual Studio 18 does not discover the installed WiX v3 targets automatically. They are available at `C:\Program Files (x86)\MSBuild\Microsoft\WiX\v3.x\Wix.targets` and work when passed explicitly.
+- `SuperPuttyInstaller` uses `WixToolset.Sdk` 6.0.2 and restores its UI and Util extensions through NuGet. A separately installed WiX toolset is not required.
+- The application remains a non-SDK .NET Framework 4.8 project and the MSI remains x86.
 - The x86 unit-test project declares its `win-x86` runtime identifier so PackageReference restore works consistently.
-- Build the solution serially. Using MSBuild's `/m` switch can cause the application project and installer project reference to compile `SuperPutty.exe` concurrently, resulting in `CS2012` because the intermediate executable is locked.
+- Use the solution's `Mixed Platforms` configuration so the application builds as AnyCPU while the tests and installer build as x86.
 
-From PowerShell, restore packages with:
-
-```powershell
-& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe' `
-    .\SuperPutty.sln `
-    /t:Restore `
-    '/p:WixTargetsPath=C:\Program Files (x86)\MSBuild\Microsoft\WiX\v3.x\Wix.targets' `
-    /v:minimal `
-    /nologo
-```
-
-Then build the complete Debug solution without `/m`:
+From PowerShell, restore and build the complete Release solution with:
 
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe' `
     .\SuperPutty.sln `
+    /restore `
     /t:Build `
-    /p:Configuration=Debug `
-    '/p:WixTargetsPath=C:\Program Files (x86)\MSBuild\Microsoft\WiX\v3.x\Wix.targets' `
+    /p:Configuration=Release `
+    '/p:Platform=Mixed Platforms' `
+    /m `
     /v:minimal `
     /nologo
 ```
 
 The successful build produces:
 
-- `bin\Debug\SuperPutty.exe`
+- `bin\Release\SuperPutty.exe`
 - `SuperPuttyUnitTests\bin\Debug\SuperPuttyUnitTests.exe`
-- `SuperPuttyInstaller\bin\Debug\SuperPuttySetup.msi`
+- `SuperPuttyInstaller\bin\x86\Release\SuperPuttySetup.msi`
 
-Current non-blocking warnings:
+The WiX 6 MSI preserves the 1.6.0 product version, original upgrade code, x86 installation location, license UI, shortcuts, themes, and post-install launch option. Its ICE validation completes without warnings.
 
-- `TabSwitcher.currentDocument` is never assigned (`CS0649`), an existing warning unrelated to CSV import.
-- The installer reports an existing `ICE69` warning because shortcut `ApplicationShortcut1` and target file `ProductExe` belong to different components in the same feature.
+The complete Release build currently succeeds with zero warnings and zero errors.

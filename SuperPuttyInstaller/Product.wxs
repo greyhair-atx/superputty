@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
-     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension"
-     xmlns:netfx="http://schemas.microsoft.com/wix/NetFxExtension">  
-  <Product Id="*" Name="SuperPuTTY" Language="1033" Version="!(bind.fileVersion.ProductExe)" Manufacturer="Jim Radford" UpgradeCode="42567f59-2f27-4e5b-a900-9141dc2dd929">    
-    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Id="GreyhairATX.SuperPutty"
+           Name="SuperPuTTY"
+           Language="1033"
+           Version="1.6.0"
+           Manufacturer="Jim Radford"
+           UpgradeCode="42567f59-2f27-4e5b-a900-9141dc2dd929"
+           InstallerVersion="200"
+           Scope="perMachine">
 
     <Icon Id="ProductIcon" SourceFile="$(var.SuperPutty.ProjectDir)Apps-utilities-terminal.ico"/>
     <Property Id="ARPPRODUCTICON" Value="ProductIcon"/>
@@ -11,8 +17,8 @@
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/jimradford/superputty/wiki"/>
     <Property Id="ARPNOREPAIR" Value="1"/>
 
-    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />    
-      <Media Id="1" Cabinet="Cab1.cab" EmbedCab="yes" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
     
     <Feature Id="ProductFeature" Title="SuperPuTTY" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
@@ -20,49 +26,45 @@
       <ComponentRef Id="ApplicationShortcuts"/> 
     </Feature>
 
-    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
-
-    <WixVariable Id="WixUIBannerBmp" Value="WixUIBannerBmp.bmp"/>
-    <WixVariable Id="WixUIDialogBmp" Value="WixUIDialogBmp.bmp"/>
-
-    <WixVariable Id="WixUILicenseRtf" Value="$(var.SolutionDir)License.rtf" />
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUIBannerBmp" Value="WixUIBannerBmp.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="WixUIDialogBmp.bmp" />
+    <WixVariable Id="WixUILicenseRtf" Value="..\License.rtf" />
 
     <UI>
-      <UIRef Id="WixUI_InstallDir" />      
-      <Publish Dialog="ExitDialog" 
-            Control="Finish" 
-            Event="DoAction" 
-            Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed</Publish>
+      <Publish Dialog="ExitDialog"
+               Control="Finish"
+               Event="DoAction"
+               Value="LaunchApplication"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
     </UI>
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch SuperPuTTY" />    
     <Property Id="WixShellExecTarget" Value="[#ProductExe]" />
     <CustomAction Id="LaunchApplication"
-        BinaryKey="WixCA"
-        DllEntry="WixShellExec"
-        Impersonate="yes" />
-  </Product>
+                  BinaryRef="Wix4UtilCA_X86"
+                  DllEntry="WixShellExec"
+                  Impersonate="yes" />
+  </Package>
 
   <Fragment>
-    <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFilesFolder">
-        <Directory Id="INSTALLFOLDER" Name="SuperPuTTY">
-          <Directory Id="INSTALLTHEMEFOLDER" Name="themes">
-            <Directory Id="INSTALLDEFAULTTHEME" Name="default">
-              <Directory Id="INSTALLTHEMEICONSFOLDER" Name="icons"/>
-            </Directory>
+    <StandardDirectory Id="ProgramFilesFolder">
+      <Directory Id="INSTALLFOLDER" Name="SuperPuTTY">
+        <Directory Id="INSTALLTHEMEFOLDER" Name="themes">
+          <Directory Id="INSTALLDEFAULTTHEME" Name="default">
+            <Directory Id="INSTALLTHEMEICONSFOLDER" Name="icons" />
           </Directory>
         </Directory>
       </Directory>
+    </StandardDirectory>
 
-
-      <Directory Id="ProgramMenuFolder">
-        <Directory Id="ProgramMenuSubfolder" Name="SuperPuTTY">
-          <Component Id="ApplicationShortcuts" Guid="0CF406F3-901A-4C75-9DCB-BE6042BC70CE">
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ProgramMenuSubfolder" Name="SuperPuTTY">
+        <Component Id="ApplicationShortcuts" Guid="0CF406F3-901A-4C75-9DCB-BE6042BC70CE">
 
             <Shortcut Id="ApplicationShortcut1"
                       Name="SuperPuTTY" 
                       Description="SuperPuTTY SSH Window Manager"
-                      Target="[#ProductExe]" 
+                      Target="[INSTALLFOLDER]SuperPutty.exe"
                       WorkingDirectory="INSTALLFOLDER"/>
 
             <util:InternetShortcut Id="ProjectWebsiteShortcut"
@@ -82,19 +84,16 @@
                            Value="1" 
                            KeyPath="yes"/>
 
-            <RemoveFolder Id="ProgramMenuSubfolder" On="uninstall"/>
-          </Component>
-        </Directory>
+          <RemoveFolder Id="ProgramMenuSubfolder" On="uninstall" />
+        </Component>
       </Directory>
-    </Directory>
+    </StandardDirectory>
   </Fragment>
 
   <Fragment>
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <Component Id="ProductExe">
-        <File Id="ProductExe" Source="$(var.SuperPutty.TargetPath)">
-          <netfx:NativeImage Id="ngen_ProductExe" Platform="all" Priority="3"/>
-        </File>
+        <File Id="ProductExe" Source="$(var.SuperPutty.TargetPath)" KeyPath="yes" />
       </Component>
       <Component Id="ProductExeConfig">
         <File Source="$(var.SuperPutty.TargetPath).config" />
