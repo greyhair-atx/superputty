@@ -177,11 +177,26 @@ namespace SuperPutty
                 }
             }
 
+            if (IsDisposed || Disposing)
+                return;
+
             if (InvokeRequired)
-                Invoke(new Action(() => {
-                    if (newSessionToolStripMenuItem.DropDownItems.Count == 0)
-                        newSessionToolStripMenuItem.DropDownItems.AddRange(tsmi.ToArray());
-                }));
+            {
+                try
+                {
+                    BeginInvoke(new Action(() => {
+                        if (IsDisposed || Disposing)
+                            return;
+
+                        if (newSessionToolStripMenuItem.DropDownItems.Count == 0)
+                            newSessionToolStripMenuItem.DropDownItems.AddRange(tsmi.ToArray());
+                    }));
+                }
+                catch (InvalidOperationException)
+                {
+                    // The panel's window handle can disappear while the app is closing.
+                }
+            }
             else
                 if (newSessionToolStripMenuItem.DropDownItems.Count == 0)
                     newSessionToolStripMenuItem.DropDownItems.AddRange(tsmi.ToArray());
@@ -194,7 +209,11 @@ namespace SuperPutty
             {
                 newSessionToolStripMenuItem.DropDownItems.Clear();
 
-                new Thread(InitNewSessionToolStripMenuItems).Start();
+                new Thread(InitNewSessionToolStripMenuItems)
+                {
+                    IsBackground = true,
+                    Name = "Session menu initialization"
+                }.Start();
             }
 
             DockPane pane = GetDockPane();

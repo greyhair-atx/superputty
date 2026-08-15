@@ -2038,7 +2038,11 @@ namespace SuperPutty
                                 TrySendCommandsFromToolbar(command, false);
                             }
                         }
-                    }).Start();
+                    })
+                    {
+                        IsBackground = true,
+                        Name = "SPSL script execution"
+                    }.Start();
                 }
                 else // Not a spsl script
                 {

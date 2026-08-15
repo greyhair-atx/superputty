@@ -38,7 +38,11 @@ namespace SuperPutty.Scp
                     this.StartTime = DateTime.Now;
                     this.cancellationRequested = false;
 
-                    this.thread = new Thread(this.DoTransfer) {IsBackground = false};
+                    this.thread = new Thread(this.DoTransfer)
+                    {
+                        IsBackground = true,
+                        Name = "SCP file transfer " + this.Id
+                    };
                     this.thread.Start();
 
                     this.UpdateStatus(0, Status.Running, "Started transfer");
