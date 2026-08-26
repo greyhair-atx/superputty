@@ -73,3 +73,25 @@ The successful build produces:
 The WiX 6 MSI preserves the 1.6.0 product version, original upgrade code, license UI, shortcuts, themes, and post-install launch option. It is an x64 package that installs under the native 64-bit Program Files directory, and its ICE validation completes without warnings.
 
 The complete Release build currently succeeds with zero warnings and zero errors.
+
+## Recommended post-1.6.0 enhancements
+
+The following work is recommended for 1.6.1 and later, in priority order:
+
+1. **Authenticode signing.** Sign both `SuperPutty.exe` and the MSI through the release pipeline. Use a consistent, publicly trusted signing identity such as Microsoft Artifact Signing or an OV certificate; self-signed certificates are suitable only for controlled test environments. Verify both signatures before publishing.
+2. **Secure credential storage.** Replace persisted PuTTY `-pw` arguments with optional Windows Credential Manager storage, encourage key-based authentication and Pageant, and retain plaintext command-line passwords only as a clearly marked compatibility option. Continue redacting credentials from logs.
+3. **True RDP dynamic resolution.** The ActiveX client currently smart-scales a fixed 1920x1080 desktop. Use `IMsRdpClient9.UpdateSessionDisplaySettings` when the tab size changes so the remote session adopts the available resolution, with smart sizing retained as a compatibility fallback.
+4. **Per-session RDP controls.** Add settings for dynamic resolution versus scaling, clipboard redirection, desktop size, color depth, multi-monitor mode, audio, drives, printers, and RD Gateway. Do not force clipboard redirection on for security-sensitive sessions.
+5. **Configurable update channels.** The update checker currently queries the official upstream repository. Clearly expose official-upstream and community-fork channels so fork users can opt into the appropriate releases without confusing community builds with official releases.
+6. **Automated release publishing.** Extend CI so a version tag builds and tests the release, signs its executable and MSI, generates SHA-256 checksums and an SBOM, publishes matching GitHub and Gitea releases, and verifies the uploaded artifacts. Increase the minimum isolated-test threshold from 24 to the current 30 tests.
+7. **Incremental project modernization.** Keep .NET Framework 4.8 for the near term because it remains serviced and compatible with the current WinForms, COM, and ActiveX integration. First modernize the project structure and isolate native interoperability; evaluate a modern .NET migration separately after equivalent application, installer, and RDP tests exist.
+
+The `MsRdpClient*NotSafeForScripting` control is intentional for this managed desktop host. Microsoft documents the nonscriptable ActiveX control as the variant that exposes additional desktop-client functionality; its name alone is not a reason to replace it.
+
+Relevant Microsoft documentation:
+
+- [SmartScreen reputation for Windows app developers](https://learn.microsoft.com/windows/apps/package-and-deploy/smartscreen-reputation)
+- [Credential Locker for Windows apps](https://learn.microsoft.com/windows/apps/develop/security/credential-locker)
+- [IMsRdpClient9 interface](https://learn.microsoft.com/windows/win32/termserv/imsrdpclient9)
+- [Using the Remote Desktop ActiveX control](https://learn.microsoft.com/windows/win32/termserv/using-remote-desktop-web-connection)
+- [.NET Framework versions and dependencies](https://learn.microsoft.com/dotnet/framework/install/versions-and-dependencies)
