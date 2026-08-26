@@ -20,10 +20,9 @@
  */
 
 using System;
-using log4net;
 using SuperPutty.Data;
-using System.Text.RegularExpressions;
 using System.IO;
+using System.Text;
 
 namespace SuperPutty.Utils
 {
@@ -33,37 +32,22 @@ namespace SuperPutty.Utils
     /// </summary>
     public class RDPStartInfo
     {
-        private static readonly ILog Log = LogManager.GetLogger(typeof(RDPStartInfo));
-
-        private SessionData session;
+        private const string SmartSizingFileName = "smart-sizing.rdp";
+        private const string SmartSizingFileContents =
+            "screen mode id:i:1\r\n" +
+            "smart sizing:i:1\r\n" +
+            "use multimon:i:0\r\n";
+        private static readonly object SmartSizingFileLock = new object();
 
         public RDPStartInfo(SessionData session, String binName)
         {
-            this.session = session;
-            if (binName.EndsWith("\\wfreerdp.exe"))
+            if (IsFreeRdpExecutable(binName))
             {
-                this.Args = "/cert-ignore /size:1920x1080 +window-drag /disp /workarea /network:wan +auto-reconnect /auto-reconnect-max-retries:0 +bitmap-cache /v:" + session.Host;
-
-                if (session.Port != 0)
-                    this.Args += ":" + session.Port.ToString() + " ";
-                
-                if (session.Username != "")
-                    this.Args += "/u:"+session.Username;
-
-                if (!String.IsNullOrEmpty(session.ExtraArgs))
-                    this.Args += session.ExtraArgs + " ";
+                this.Args = BuildFreeRdpArgs(session);
             }
             else
             {
-                this.Args = "-v:" + session.Host;
-
-                if (session.Port != 0)
-                    this.Args += ":" + session.Port.ToString() + " ";
-
-                if (!String.IsNullOrEmpty(session.ExtraArgs))
-                    this.Args += session.ExtraArgs + " ";
-
-                this.Args += "/span";
+                this.Args = BuildMstscArgs(session);
             }
 
             this.StartingDir = "%userprofile%\\Desktop";
@@ -71,6 +55,65 @@ namespace SuperPutty.Utils
 
         public string Args { get; set; }
         public string StartingDir { get; set; }
+
+        public static bool IsFreeRdpExecutable(string binName)
+        {
+            return String.Equals(Path.GetFileName(binName), "wfreerdp.exe", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string BuildFreeRdpArgs(SessionData session)
+        {
+            StringBuilder args = new StringBuilder(
+                "/cert-ignore /size:1920x1080 /smart-sizing +window-drag /disp /workarea " +
+                "/network:wan +auto-reconnect /auto-reconnect-max-retries:0 +bitmap-cache");
+
+            args.Append(" /v:").Append(session.Host);
+            if (session.Port != 0)
+                args.Append(":").Append(session.Port);
+
+            if (!String.IsNullOrEmpty(session.Username))
+                args.Append(" /u:").Append(session.Username);
+
+            if (!String.IsNullOrWhiteSpace(session.ExtraArgs))
+                args.Append(" ").Append(session.ExtraArgs.Trim());
+
+            return args.ToString();
+        }
+
+        private static string BuildMstscArgs(SessionData session)
+        {
+            StringBuilder args = new StringBuilder();
+            args.Append('"').Append(GetSmartSizingConnectionFile()).Append('"');
+            args.Append(" /v:").Append(session.Host);
+            if (session.Port != 0)
+                args.Append(":").Append(session.Port);
+
+            if (!String.IsNullOrWhiteSpace(session.ExtraArgs))
+                args.Append(" ").Append(session.ExtraArgs.Trim());
+
+            return args.ToString();
+        }
+
+        /// <summary>
+        /// Creates the reusable MSTSC connection profile that enables scaling the
+        /// remote desktop to the size of its embedded client window.
+        /// </summary>
+        private static string GetSmartSizingConnectionFile()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "SuperPuTTY");
+            string fileName = Path.Combine(directory, SmartSizingFileName);
+
+            lock (SmartSizingFileLock)
+            {
+                Directory.CreateDirectory(directory);
+                if (!File.Exists(fileName) || File.ReadAllText(fileName) != SmartSizingFileContents)
+                {
+                    File.WriteAllText(fileName, SmartSizingFileContents, Encoding.Unicode);
+                }
+            }
+
+            return fileName;
+        }
 
     }
 }

@@ -72,7 +72,13 @@ namespace SuperPutty
 DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string ApplicationWorkingDirectory { get; set; }
 
-        public IntPtr AppWindowHandle { get { return this.m_AppWin; } } 
+        public virtual IntPtr AppWindowHandle { get { return this.m_AppWin; } }
+
+        /// <summary>
+        /// Managed child hosts override this to bypass the external-process window
+        /// capture and reparenting lifecycle.
+        /// </summary>
+        protected virtual bool UsesManagedChildHost { get { return false; } }
         
         // Some windows need closed with WM_DESTROY others need closed with WM_CLOSE or they leave zombies
         public bool ApplicationCloseWithDestroy { get; set; }
@@ -97,11 +103,19 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             this.m_windowActivator = (WindowActivator)Activator.CreateInstance(Type.GetType(typeName));
             //this.m_windowActivator = new SetFGCombinedWindowActivator();
             SuperPuTTY.Settings.SettingsSaving += Settings_SettingsSaving;
-            SuperPuTTY.WindowEvents.SystemSwitch += new EventHandler<GlobalWindowEventArgs>(OnSystemSwitch);
+            if (SuperPuTTY.WindowEvents != null)
+            {
+                SuperPuTTY.WindowEvents.SystemSwitch += new EventHandler<GlobalWindowEventArgs>(OnSystemSwitch);
+            }
         }
 
         void Settings_SettingsSaving(object sender, CancelEventArgs e)
         {
+            if (this.UsesManagedChildHost)
+            {
+                return;
+            }
+
             this.UpdateTitle();
         }
 
@@ -110,7 +124,10 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             this.Disposed -= new EventHandler(ApplicationPanel_Disposed);
             SuperPuTTY.LayoutChanged -= new EventHandler<Data.LayoutChangedEventArgs>(SuperPuTTY_LayoutChanged);
             SuperPuTTY.Settings.SettingsSaving -= Settings_SettingsSaving;
-            SuperPuTTY.WindowEvents.SystemSwitch -= new EventHandler<GlobalWindowEventArgs>(OnSystemSwitch);
+            if (SuperPuTTY.WindowEvents != null)
+            {
+                SuperPuTTY.WindowEvents.SystemSwitch -= new EventHandler<GlobalWindowEventArgs>(OnSystemSwitch);
+            }
             this.m_hWinEventHooks.ForEach(delegate(IntPtr hook) {
                 NativeMethods.UnhookWinEvent(hook);
             });
@@ -124,7 +141,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             this.MoveWindow("LayoutChanged");
         }
 
-        public void RefreshAppWindow()
+        public virtual void RefreshAppWindow()
         {
             this.MoveWindow("RefreshWindow");
         }
@@ -149,6 +166,11 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
         private void MoveWindow(string src, int x, int y)
         {
+            if (this.UsesManagedChildHost)
+            {
+                return;
+            }
+
             if (!SuperPuTTY.IsLayoutChanging)
             {
                 bool success = NativeMethods.MoveWindow(m_AppWin, x, y, this.Width, this.Height, this.Visible);
@@ -159,7 +181,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             }
         }
 
-        public bool ReFocusPuTTY(string caller)
+        public virtual bool ReFocusPuTTY(string caller)
         {
             bool result = false;
             if (this.proto == SuperPutty.Data.ConnectionProtocol.RDP) /* Otherwise window will be hidden and require SuperPutTTY minimize-restore cycle */
@@ -484,7 +506,13 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         /// </summary>
         /// <param name="e">Not used</param>
         protected override void OnVisibleChanged(EventArgs e)
-        {           
+        {
+            if (this.UsesManagedChildHost)
+            {
+                base.OnVisibleChanged(e);
+                return;
+            }
+
             if (!m_Created && !String.IsNullOrEmpty(ApplicationName)) // only allow one instance of the child
             {
                 m_Created = true;
@@ -618,6 +646,12 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         /// <param name="e"></param>
         protected override void OnHandleDestroyed(EventArgs e)
         {
+            if (this.UsesManagedChildHost)
+            {
+                base.OnHandleDestroyed(e);
+                return;
+            }
+
             if (this.ExternalProcessCaptured)
             {
                 // Send WM_DESTROY instead of WM_CLOSE, so that the Client doesn't
@@ -645,6 +679,12 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         /// <param name="e"></param>
         protected override void OnResize(EventArgs e)
         {
+            if (this.UsesManagedChildHost)
+            {
+                base.OnResize(e);
+                return;
+            }
+
             // if valid
             if (ExternalProcessCaptured)
             {
@@ -657,7 +697,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             base.OnResize(e);
         }
 
-        public bool ExternalProcessCaptured { get { return this.m_AppWin != IntPtr.Zero; } }
+        public virtual bool ExternalProcessCaptured { get { return this.m_AppWin != IntPtr.Zero; } }
 
         #endregion    
     

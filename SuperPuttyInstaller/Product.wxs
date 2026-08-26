@@ -144,6 +144,12 @@
       <Component Id="ProductLibUITheme">
         <File Source="$(var.SuperPutty.TargetDir)\WeifenLuo.WinFormsUI.Docking.ThemeVS2005.dll" />
       </Component>
+      <Component Id="ProductLibRdpActiveXInterop">
+        <File Source="$(var.SuperPutty.TargetDir)\Interop.MSTSCLib.dll" />
+      </Component>
+      <Component Id="ProductLibRdpActiveXWindowsFormsInterop">
+        <File Source="$(var.SuperPutty.TargetDir)\AxInterop.MSTSCLib.dll" />
+      </Component>
     </ComponentGroup>    
     <ComponentGroup Id="DefaultTheme" Directory="INSTALLTHEMEICONSFOLDER">
       <Component Id="ThemeIconFiles" Guid="BF087426-7B24-4FC7-8353-0DD1732D35A9">

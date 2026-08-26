@@ -50,12 +50,18 @@ namespace SuperPutty
 
         private PuttyStartInfo m_puttyStartInfo;
         private PuttyClosedCallback m_ApplicationExit;
+        private bool m_useRdpActiveX;
 
         public ctlPuttyPanel(SessionData session, PuttyClosedCallback callback)
         {
             Session = session;
             m_ApplicationExit = callback;
-            m_puttyStartInfo = new PuttyStartInfo(session);
+            string executable = PuttyStartInfo.GetExecutable(session);
+            m_useRdpActiveX = RdpClientPanel.ShouldUseActiveX(session, executable);
+            if (!m_useRdpActiveX)
+            {
+                m_puttyStartInfo = new PuttyStartInfo(session);
+            }
 
             InitializeComponent();
 
@@ -94,13 +100,37 @@ namespace SuperPutty
 
         private void CreatePanel()
         {
-            this.AppPanel = new ApplicationPanel(this.Session.Proto);
-            this.SuspendLayout();            
+            if (this.m_useRdpActiveX)
+            {
+                RdpClientPanel rdpPanel;
+                if (RdpClientPanel.TryCreate(this.Session, this.m_ApplicationExit, out rdpPanel))
+                {
+                    this.AppPanel = rdpPanel;
+                }
+                else
+                {
+                    Log.Warn("Falling back to external MSTSC hosting because the RDP ActiveX control is unavailable.");
+                }
+            }
+
+            if (this.AppPanel == null)
+            {
+                if (this.m_puttyStartInfo == null)
+                {
+                    this.m_puttyStartInfo = new PuttyStartInfo(this.Session);
+                }
+                this.AppPanel = new ApplicationPanel(this.Session.Proto);
+            }
+
+            this.SuspendLayout();
             this.AppPanel.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.AppPanel.ApplicationName = this.m_puttyStartInfo.Executable;
-            this.AppPanel.ApplicationParameters = this.m_puttyStartInfo.Args;
-            this.AppPanel.ApplicationWorkingDirectory = this.m_puttyStartInfo.WorkingDir;
-            this.AppPanel.ApplicationCloseWithDestroy = this.Session.Proto == ConnectionProtocol.Mintty ? false : true;
+            if (!(this.AppPanel is RdpClientPanel))
+            {
+                this.AppPanel.ApplicationName = this.m_puttyStartInfo.Executable;
+                this.AppPanel.ApplicationParameters = this.m_puttyStartInfo.Args;
+                this.AppPanel.ApplicationWorkingDirectory = this.m_puttyStartInfo.WorkingDir;
+                this.AppPanel.ApplicationCloseWithDestroy = this.Session.Proto == ConnectionProtocol.Mintty ? false : true;
+            }
             this.AppPanel.Location = new System.Drawing.Point(0, 0);
             this.AppPanel.Name = this.Session.SessionId; // "applicationControl1";
             this.AppPanel.Size = new System.Drawing.Size(this.Width, this.Height);
