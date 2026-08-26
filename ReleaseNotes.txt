@@ -1,3 +1,17 @@
+1.6.0
+ - RDP sessions now use Microsoft's in-process RDP ActiveX control for standard MSTSC connections, providing smart sizing as tabs and windows are resized. FreeRDP sessions and MSTSC sessions with custom command-line arguments retain the external-client path.
+ - Added File > Import Sessions > From CSV File, with quoted fields, comments, nested folders, protocol/port defaults, optional session properties, complete validation, and an example CSV file.
+ - Made session imports and Sessions.XML saves safer: invalid CSV files do not partially import, failed imports roll back, and session files are replaced atomically after a successful write.
+ - Added a Note field to saved sessions and session tooltips.
+ - Added Arch Linux, CentOS, Debian, Fedora, FreeBSD, Linux Mint, Red Hat, SUSE, Ubuntu, and Windows session icons.
+ - Added the SPSL private password prompt command for collecting sensitive input without displaying it.
+ - PSCP file transfers now honor a session's extra command-line arguments.
+ - Improved embedded-terminal focus activation and fixed intermittent Win+Arrow and modifier-key handling.
+ - Improved application shutdown so background terminal, file-transfer, and document-selector activity no longer prevents SuperPuTTY from exiting cleanly.
+ - Upgraded log4net from 2.0.15 to 3.3.2 and SSH.NET from 2020.0.2 to 2026.0.0.
+ - Standardized the application and installer on 64-bit Windows and .NET Framework 4.8, and upgraded the installer to WiX 6. Release artifacts now use an x64 suffix.
+ - Modernized the automated test and release-verification tooling, including checks for architecture, installer payload, runtime dependencies, and clean shutdown.
+
 1.5.0
  - Minor changes Fixes version issue with SuperPuTTY Update Checker Fixes Issues #887, #888, #889
  - Children attach improvement by @vityank in https://github.com/jimradford/superputty/pull/851
