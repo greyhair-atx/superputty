@@ -72,6 +72,8 @@
             this.checkSessionsShowSearch = new System.Windows.Forms.CheckBox();
             this.label18 = new System.Windows.Forms.Label();
             this.checkBoxCheckForUpdates = new System.Windows.Forms.CheckBox();
+            this.labelUpdateChannel = new System.Windows.Forms.Label();
+            this.comboBoxUpdateChannel = new System.Windows.Forms.ComboBox();
             this.checkSessionTreeFoldersFirst = new System.Windows.Forms.CheckBox();
             this.checkBoxPersistTsHistory = new System.Windows.Forms.CheckBox();
             this.numericUpDown1 = new System.Windows.Forms.NumericUpDown();
@@ -561,14 +563,33 @@
             // checkBoxCheckForUpdates
             // 
             this.checkBoxCheckForUpdates.AutoSize = true;
-            this.checkBoxCheckForUpdates.Location = new System.Drawing.Point(286, 66);
+            this.checkBoxCheckForUpdates.Location = new System.Drawing.Point(13, 66);
             this.checkBoxCheckForUpdates.Name = "checkBoxCheckForUpdates";
             this.checkBoxCheckForUpdates.Size = new System.Drawing.Size(193, 17);
             this.checkBoxCheckForUpdates.TabIndex = 30;
             this.checkBoxCheckForUpdates.Text = "Automatically Check for Updates";
             this.toolTip.SetToolTip(this.checkBoxCheckForUpdates, "Check for Updates when Application starts");
             this.checkBoxCheckForUpdates.UseVisualStyleBackColor = true;
-            // 
+            //
+            // labelUpdateChannel
+            //
+            this.labelUpdateChannel.AutoSize = true;
+            this.labelUpdateChannel.Location = new System.Drawing.Point(286, 67);
+            this.labelUpdateChannel.Name = "labelUpdateChannel";
+            this.labelUpdateChannel.Size = new System.Drawing.Size(88, 13);
+            this.labelUpdateChannel.TabIndex = 31;
+            this.labelUpdateChannel.Text = "Update channel:";
+            //
+            // comboBoxUpdateChannel
+            //
+            this.comboBoxUpdateChannel.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.comboBoxUpdateChannel.FormattingEnabled = true;
+            this.comboBoxUpdateChannel.Location = new System.Drawing.Point(380, 63);
+            this.comboBoxUpdateChannel.Name = "comboBoxUpdateChannel";
+            this.comboBoxUpdateChannel.Size = new System.Drawing.Size(214, 21);
+            this.comboBoxUpdateChannel.TabIndex = 32;
+            this.toolTip.SetToolTip(this.comboBoxUpdateChannel, "Choose releases from the official project or this community fork");
+            //
             // checkSessionTreeFoldersFirst
             // 
             this.checkSessionTreeFoldersFirst.AutoSize = true;
@@ -1217,6 +1238,8 @@
             this.groupBox4.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
             this.groupBox4.Controls.Add(this.checkBoxCheckForUpdates);
+            this.groupBox4.Controls.Add(this.labelUpdateChannel);
+            this.groupBox4.Controls.Add(this.comboBoxUpdateChannel);
             this.groupBox4.Controls.Add(this.checkEnableKeyboardShortcuts);
             this.groupBox4.Controls.Add(this.checkEnableControlTabSwitching);
             this.groupBox4.Controls.Add(this.checkSingleInstanceMode);
@@ -1385,6 +1408,8 @@
         private System.Windows.Forms.CheckBox checkPuttyEnableNewSessionMenu;
         private System.Windows.Forms.Label label18;
         private System.Windows.Forms.CheckBox checkBoxCheckForUpdates;
+        private System.Windows.Forms.Label labelUpdateChannel;
+        private System.Windows.Forms.ComboBox comboBoxUpdateChannel;
         private System.Windows.Forms.GroupBox groupBox7;
         private System.Windows.Forms.TextBox textBoxHomeDirPrefix;
         private System.Windows.Forms.Label label16;

@@ -192,6 +192,10 @@ namespace SuperPutty
             this.checkFilterWhileTyping.Checked = SuperPuTTY.Settings.FilterSessionsOnChange;
             this.checkPuttyEnableNewSessionMenu.Checked = SuperPuTTY.Settings.PuttyPanelShowNewSessionMenu;
             this.checkBoxCheckForUpdates.Checked = SuperPuTTY.Settings.AutoUpdateCheck;
+            this.comboBoxUpdateChannel.Items.AddRange(UpdateChannel.Names);
+            this.comboBoxUpdateChannel.SelectedItem = UpdateChannel.Names.Contains(SuperPuTTY.Settings.UpdateChannel)
+                ? SuperPuTTY.Settings.UpdateChannel
+                : UpdateChannel.OfficialUpstream;
             this.textBoxHomeDirPrefix.Text = SuperPuTTY.Settings.PscpHomePrefix;
             this.textBoxRootDirPrefix.Text = SuperPuTTY.Settings.PscpRootHomePrefix;
             this.checkSessionTreeFoldersFirst.Checked = SuperPuTTY.Settings.SessiontreeShowFoldersFirst;
@@ -381,6 +385,7 @@ namespace SuperPutty
                 SuperPuTTY.Settings.FilterSessionsOnChange = this.checkFilterWhileTyping.Checked;
                 SuperPuTTY.Settings.PuttyPanelShowNewSessionMenu = this.checkPuttyEnableNewSessionMenu.Checked;
                 SuperPuTTY.Settings.AutoUpdateCheck = this.checkBoxCheckForUpdates.Checked;
+                SuperPuTTY.Settings.UpdateChannel = (string)this.comboBoxUpdateChannel.SelectedItem;
                 SuperPuTTY.Settings.PscpHomePrefix = this.textBoxHomeDirPrefix.Text;
                 SuperPuTTY.Settings.PscpRootHomePrefix = this.textBoxRootDirPrefix.Text;
                 SuperPuTTY.Settings.SessiontreeShowFoldersFirst = this.checkSessionTreeFoldersFirst.Checked;

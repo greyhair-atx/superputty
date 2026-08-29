@@ -5,6 +5,7 @@
 
 using System;
 using System.ComponentModel;
+using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
@@ -30,12 +31,16 @@ namespace SuperPutty
         private bool connecting;
         private bool closing;
         private int closeNotified;
+        private readonly System.Threading.Timer displayResizeTimer;
+        private Size lastSessionDisplaySize = Size.Empty;
 
         private RdpClientPanel(SessionData session, PuttyClosedCallback closeCallback)
             : base(ConnectionProtocol.RDP)
         {
             this.session = session;
             this.m_CloseCallback = closeCallback;
+            this.displayResizeTimer = new System.Threading.Timer(this.UpdateSessionDisplaySettings, null,
+                Timeout.Infinite, Timeout.Infinite);
             this.InitializeClient();
         }
 
@@ -196,6 +201,18 @@ namespace SuperPutty
             }
         }
 
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+
+            if (this.configured && !this.closing && this.displayResizeTimer != null)
+            {
+                // Docking and splitter drags generate many intermediate sizes. Let
+                // the final tab size settle before asking the server to resize.
+                this.displayResizeTimer.Change(200, Timeout.Infinite);
+            }
+        }
+
         protected override void OnHandleDestroyed(EventArgs e)
         {
             this.CloseClient();
@@ -209,6 +226,7 @@ namespace SuperPutty
                 // This must happen before base.Dispose tears down the AxHost and
                 // separates its COM object from the runtime callable wrapper.
                 this.CloseClient();
+                this.displayResizeTimer.Dispose();
                 this.DetachClientEvents();
             }
 
@@ -256,6 +274,67 @@ namespace SuperPutty
             Log.InfoFormat("RDP ActiveX connected to {0}:{1}",
                 this.session.Host,
                 this.session.Port == 0 ? 3389 : this.session.Port);
+            this.displayResizeTimer.Change(0, Timeout.Infinite);
+        }
+
+        private void UpdateSessionDisplaySettings(object state)
+        {
+            if (this.IsDisposed || this.Disposing || !this.IsHandleCreated)
+            {
+                return;
+            }
+
+            try
+            {
+                this.BeginInvoke(new MethodInvoker(this.UpdateSessionDisplaySettings));
+            }
+            catch (InvalidOperationException)
+            {
+                // The panel can lose its handle while a delayed resize is queued.
+            }
+        }
+
+        private void UpdateSessionDisplaySettings()
+        {
+            if (this.client == null || this.closing || this.client.Connected == 0)
+            {
+                return;
+            }
+
+            Size displaySize = this.client.ClientSize;
+            int width = Math.Max(200, Math.Min(8192, displaySize.Width));
+            int height = Math.Max(200, Math.Min(8192, displaySize.Height));
+            width -= width % 2;
+            displaySize = new Size(width, height);
+            if (displaySize == this.lastSessionDisplaySize)
+            {
+                return;
+            }
+
+            try
+            {
+                IMsRdpClient9 rdpClient9 = (IMsRdpClient9)this.client.GetOcx();
+                uint dpi = (uint)Math.Max(96, this.DeviceDpi);
+                uint physicalWidth = (uint)Math.Max(10, Math.Round(width * 25.4 / dpi));
+                uint physicalHeight = (uint)Math.Max(10, Math.Round(height * 25.4 / dpi));
+
+                rdpClient9.UpdateSessionDisplaySettings(
+                    (uint)width,
+                    (uint)height,
+                    physicalWidth,
+                    physicalHeight,
+                    0,
+                    100,
+                    100);
+                this.lastSessionDisplaySize = displaySize;
+                Log.DebugFormat("RDP session display resized to {0}x{1}", width, height);
+            }
+            catch (Exception ex)
+            {
+                // SmartSizing remains enabled throughout the connection, so older
+                // clients and servers continue to scale the original desktop.
+                Log.Debug("Dynamic RDP display resizing is unavailable; retaining smart sizing.", ex);
+            }
         }
 
         private void Client_OnLoginComplete(object sender, EventArgs e)

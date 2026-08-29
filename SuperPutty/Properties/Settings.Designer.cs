@@ -685,6 +685,19 @@ namespace SuperPutty.Properties {
                 this["AutoUpdateCheck"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Configuration.SettingsProviderAttribute(typeof(SuperPutty.Utils.PortableSettingsProvider))]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("Official upstream")]
+        public string UpdateChannel {
+            get {
+                return ((string)(this["UpdateChannel"]));
+            }
+            set {
+                this["UpdateChannel"] = value;
+            }
+        }
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Configuration.SettingsProviderAttribute(typeof(SuperPutty.Utils.PortableSettingsProvider))]

@@ -92,7 +92,9 @@ namespace SuperPutty
 
             InitializeComponent();
 
-            var theme = new VS2005Theme();
+            // Modern DockPanelSuite themes render a close button on each
+            // document tab instead of a single button at the strip's far edge.
+            var theme = new VS2015LightTheme();
             this.DockPanel.Theme = theme;
 
             FixDpiScalingIssues();
@@ -1936,7 +1938,10 @@ namespace SuperPutty
             Log.Info("Checking for application update");
             try {
                 httpRequest httpUpdateRequest = new httpRequest();
-                httpUpdateRequest.MakeRequest("https://api.github.com/repos/jimradford/superputty/releases/latest", delegate (bool success, string content)
+                string updateChannel = SuperPuTTY.Settings.UpdateChannel;
+                string releaseApiUrl = UpdateChannel.GetReleaseApiUrl(updateChannel);
+                Log.InfoFormat("Using {0} update channel ({1})", updateChannel, releaseApiUrl);
+                httpUpdateRequest.MakeRequest(releaseApiUrl, delegate (bool success, string content)
                 {
                     if (success)
                     {
@@ -1945,7 +1950,7 @@ namespace SuperPutty
                         GitRelease latest = (GitRelease)js.ReadObject(ms);
                         ms.Close();
 
-                        Version latest_version = new Version(latest.version.Trim());
+                        Version latest_version = latest.GetVersion();
                         Version SuperPuTTY_version = new Version(SuperPuTTY.Version);
 
                         if (latest_version.CompareTo(SuperPuTTY_version) > 0)

@@ -1,3 +1,8 @@
+1.6.1
+ - RDP ActiveX sessions now update the remote desktop resolution when their tab is resized, while retaining smart sizing as a compatibility fallback.
+ - Added selectable official-upstream and community-fork update channels, including support for prefixed community release tags such as sp-1.6.1.
+ - Switched the docking UI to the DockPanelSuite VS2015 Light theme so every document tab has its own close button.
+
 1.6.0
  - RDP sessions now use Microsoft's in-process RDP ActiveX control for standard MSTSC connections, providing smart sizing as tabs and windows are resized. FreeRDP sessions and MSTSC sessions with custom command-line arguments retain the external-client path.
  - Added File > Import Sessions > From CSV File, with quoted fields, comments, nested folders, protocol/port defaults, optional session properties, complete validation, and an example CSV file.

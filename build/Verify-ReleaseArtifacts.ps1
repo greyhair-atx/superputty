@@ -2,7 +2,7 @@
 param(
     [string] $Configuration = 'Release',
     [string] $Platform = 'x64',
-    [string] $ExpectedVersion = '1.6.0.0'
+    [string] $ExpectedVersion = '1.6.1.0'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -65,7 +65,7 @@ $requiredDlls = @(
     'System.Runtime.CompilerServices.Unsafe.dll',
     'System.Threading.Tasks.Extensions.dll',
     'WeifenLuo.WinFormsUI.Docking.dll',
-    'WeifenLuo.WinFormsUI.Docking.ThemeVS2005.dll'
+    'WeifenLuo.WinFormsUI.Docking.ThemeVS2015.dll'
 )
 
 $missingDlls = @($requiredDlls | Where-Object { -not (Test-Path -LiteralPath (Join-Path $appDirectory $_)) })
