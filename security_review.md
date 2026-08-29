@@ -126,6 +126,159 @@ Recommendations:
 
 Reference: [Microsoft Authenticode signing guidance](https://learn.microsoft.com/windows/win32/dxtecharts/authenticode-signing-for-game-developers).
 
+#### Implementation guide for this repository
+
+Implement these controls in stages. Branch protection and repeatable restore can be enabled without a signing certificate; artifact signing and automated public releases should follow after the release workflow is proven with test artifacts.
+
+##### Stage 1: Protect `master` and release tags
+
+1. Make the existing Azure Pipeline run for pull requests targeting `master`. Add this top-level block to [`azure-pipelines.yml`](azure-pipelines.yml):
+
+   ```yaml
+   pr:
+     branches:
+       include:
+       - master
+   ```
+
+2. Open the GitHub repository's **Settings > Rules > Rulesets** (or **Settings > Branches > Add branch protection rule**) and create a rule for `master` with:
+
+   - pull requests required before merging;
+   - the Azure Pipelines build/test result required;
+   - conversation resolution required;
+   - force pushes and branch deletion blocked;
+   - administrator bypass disabled except for a documented emergency role; and
+   - signed commits required after maintainer signing keys are configured.
+
+3. If this remains a single-maintainer project, do not require an approval that nobody else can provide. Still require a pull request and passing CI so GitHub records the proposed change and validation result.
+4. Add a tag ruleset matching `sp-*` that restricts tag creation, update, and deletion to the release role or release workflow.
+5. Enable **Settings > General > Releases > Enable release immutability**. Create future releases as drafts, attach every asset, and only then publish them. Immutability locks the published tag and assets and produces a release attestation; it applies only to future releases.
+
+GitHub documents the available [protected-branch controls](https://docs.github.com/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches) and [immutable-release behavior](https://docs.github.com/code-security/concepts/supply-chain-security/immutable-releases).
+
+##### Stage 2: Lock dependencies and the build environment
+
+1. Add this property to all three project files. A root `Directory.Build.props` is less repetitive, but use it only after confirming the classic non-SDK application project and both SDK-style projects all import it:
+
+   ```xml
+   <Project>
+     <PropertyGroup>
+       <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+     </PropertyGroup>
+   </Project>
+   ```
+
+2. Restore the solution once without locked mode and confirm that it generates `packages.lock.json` files for the application, tests, and installer. If the root property was not honored by any project, put the property directly in that project file. Review and commit all three transitive dependency graphs.
+3. Change CI restore to locked mode. With MSBuild, use `/restore /p:RestoreLockedMode=true`; with `dotnet restore`, use `--locked-mode`. A dependency change must then include an intentional lock-file update.
+4. Add a `global.json` using an SDK version that is installed on both maintainer machines and the CI image. Prefer `rollForward: latestPatch` to accept security patches within the selected feature band, or `rollForward: disable` when exact SDK reproducibility is more important and the CI image is explicitly provisioned with that version.
+5. Replace `windows-latest` with a reviewed fixed runner image such as `windows-2025`, pin `NuGetToolInstaller@1` with `versionSpec`, and record the expected Visual Studio, Windows SDK, .NET SDK, and WiX versions in the release notes.
+6. When adding GitHub Actions, pin every third-party action to a full 40-character commit SHA. A version tag can be left in a comment for readability. GitHub identifies a full commit SHA as the only immutable way to reference an action.
+
+Microsoft documents [NuGet lock files and locked restore](https://learn.microsoft.com/nuget/consume-packages/package-references-in-project-files); GitHub documents [secure workflow use and action pinning](https://docs.github.com/actions/reference/security/secure-use).
+
+##### Stage 3: Obtain and protect a public code-signing identity
+
+The preferred CI option is Microsoft Artifact Signing (formerly Trusted Signing) with a Public Trust certificate profile and workload-identity/OIDC authentication. The private signing key remains in the managed service instead of being copied into a repository secret. Create the Artifact Signing account, complete public identity validation, create a certificate profile, grant only the signing identity the **Artifact Signing Certificate Profile Signer** role, and authorize only the protected GitHub release environment.
+
+If Artifact Signing is unavailable, obtain an OV or EV Authenticode certificate from a public certificate authority and keep its key in a hardware token, HSM, or dedicated signing service. A PFX stored as a GitHub secret is a compatibility fallback, not the preferred long-term design. Never commit a certificate, PFX, password, client secret, or exported private key.
+
+See Microsoft's [Artifact Signing quickstart](https://learn.microsoft.com/azure/artifact-signing/quickstart) and [supported signing integrations](https://learn.microsoft.com/azure/artifact-signing/how-to-signing-integrations).
+
+##### Stage 4: Sign in the correct build order
+
+The current solution build creates the application and installer together. Split the release job so the MSI embeds the signed application:
+
+1. Restore in locked mode.
+2. Build and test `SuperPutty` and `SuperPuttyUnitTests` without building the installer.
+3. Sign `bin\x64\Release\SuperPutty.exe` and any project-owned executable DLLs intended to carry the publisher identity.
+4. Verify those signatures and fail immediately if verification fails.
+5. Build `SuperPuttyInstaller\SuperPuttyInstaller.wixproj`; it will now package the signed EXE.
+6. Sign `SuperPuttyInstaller\bin\x64\Release\SuperPuttySetup.msi`.
+7. Verify the MSI signature and extract it using [`Verify-ReleaseArtifacts.ps1`](build/Verify-ReleaseArtifacts.ps1) to confirm the embedded EXE is the already signed file.
+
+For a locally available certificate, the equivalent SignTool operations are:
+
+```powershell
+signtool sign /fd SHA256 /tr <RFC3161-timestamp-url> /td SHA256 /a `
+  bin\x64\Release\SuperPutty.exe
+signtool verify /pa /all /v bin\x64\Release\SuperPutty.exe
+
+signtool sign /fd SHA256 /tr <RFC3161-timestamp-url> /td SHA256 /a `
+  SuperPuttyInstaller\bin\x64\Release\SuperPuttySetup.msi
+signtool verify /pa /all /v `
+  SuperPuttyInstaller\bin\x64\Release\SuperPuttySetup.msi
+```
+
+Use the Artifact Signing integration rather than `/a` when the managed signing service is selected. In both cases, SHA-256 file and RFC 3161 timestamp digests should be explicit. Timestamping allows a valid signature to remain verifiable after the certificate expires. SignTool returns `0` for success, `1` for failure, and `2` for a warning; treat every nonzero result as a failed release. See the current [SignTool command reference](https://learn.microsoft.com/windows/win32/seccrypto/signtool).
+
+##### Stage 5: Add a least-privilege GitHub release workflow
+
+Create `.github/workflows/release.yml` only after the commands above work locally or in a nonpublishing CI job. Recommended controls:
+
+- Trigger it with `workflow_dispatch` for a specific version and commit, or with a protected `sp-*` tag.
+- Use a protected GitHub environment named `public-release`; require manual approval initially and limit which tags can deploy to it.
+- Set workflow-level `permissions: contents: read`. Grant `contents: write` only to the release job and grant `id-token: write` only to the signing/attestation job that uses OIDC.
+- Do not use `pull_request_target` or expose signing credentials to pull-request builds.
+- Pin actions to full commit SHAs and use only GitHub- or Microsoft-maintained actions in the privileged job.
+- Ensure the requested version matches the EXE/MSI version and that the tag resolves to the checked-out commit.
+- Build from a clean checkout; never upload binaries produced on a maintainer workstation.
+
+The release job should create these files in a new staging directory:
+
+- `SuperPuttySetup.msi`;
+- an optional ZIP containing the signed portable application;
+- `SHA256SUMS.txt` generated with `Get-FileHash -Algorithm SHA256`;
+- a CycloneDX or SPDX SBOM generated from the locked dependency graph; and
+- release notes identifying the source commit, toolchain, and signing certificate subject.
+
+Attest the final MSI, ZIP, checksum file, and SBOM with the full commit SHA corresponding to the reviewed `actions/attest` v4 release. The job requires only these additional permissions:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+```
+
+Use the attestation action's `subject-path` for the staged release files. GitHub documents the exact syntax and consumer verification command in [Using artifact attestations](https://docs.github.com/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations). Build attestations establish provenance; they supplement Authenticode and do not claim the binaries are vulnerability-free.
+
+Create a draft release, upload all staged assets, verify their signatures and hashes once more, and then publish it. With release immutability enabled, assets cannot be repaired in place after publication, so a bad release must be superseded with a new version.
+
+##### Stage 6: Sign commits and release tags
+
+GitHub supports GPG, SSH, and S/MIME signatures. SSH signing is usually the simplest for an individual maintainer using Git 2.34 or later:
+
+```powershell
+git config --global gpg.format ssh
+git config --global user.signingkey <path-to-public-ssh-key>
+git config --global commit.gpgsign true
+git config --global tag.gpgSign true
+```
+
+Add the public key to GitHub as a **signing** key. Create an annotated signed release tag only after CI passes, verify it locally, and push that exact tag:
+
+```powershell
+git tag -s sp-1.6.2 -m "SuperPuTTY 1.6.2"
+git tag -v sp-1.6.2
+git push origin sp-1.6.2
+```
+
+Do not move or reuse a published release tag. See GitHub's [tag-signing instructions](https://docs.github.com/authentication/managing-commit-signature-verification/signing-tags).
+
+##### Stage 7: Define release acceptance checks
+
+Before publishing, make the workflow fail unless all of these are true:
+
+1. locked restore, build, unit tests, shutdown tests, and release-artifact validation pass;
+2. the source commit is the protected, expected commit and has the requested version;
+3. Authenticode verification succeeds for both the EXE and MSI;
+4. the MSI contains the same signed EXE that was verified before packaging;
+5. SHA-256 checksums are regenerated from the final signed artifacts;
+6. the SBOM and GitHub build attestations exist and refer to those final artifacts; and
+7. a clean Windows sandbox can install, launch, close, and uninstall the MSI.
+
+Adopt the stages in this order: branch/tag protection, locked restore, signing identity, split signed build, nonpublishing workflow test, then immutable automated release. This avoids making release automation authoritative before its inputs and signing path are protected.
+
 ## Lower-priority findings
 
 ### 6. Incomplete SSH.NET prototype contains insecure placeholder behavior
