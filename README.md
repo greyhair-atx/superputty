@@ -51,9 +51,32 @@ and off, and File > Exit. The verification entry points are:
 
 - `build\Verify-ReleaseArtifacts.ps1`
 - `build\Test-ApplicationShutdown.ps1`
+- `build\Verify-CodeSignatures.ps1` (signed builds only)
 
 The eight `NetworkTest` cases require a disposable SSH server and separately
 configured PuTTY/PSCP environment; they are not run on normal pull requests.
+
+## Code signing
+
+The Azure pipeline supports optional public-trust Authenticode signing through
+Microsoft Azure Artifact Signing. Signing is disabled by default so normal CI
+builds do not require access to the signing service.
+
+To configure a signed build:
+
+1. Install Microsoft's Artifact Signing extension in the Azure DevOps
+   organization.
+2. Create an Azure Resource Manager service connection that uses workload
+   identity federation.
+3. Assign its service principal the `Artifact Signing Certificate Profile
+   Signer` role on the `greyhair-atx` signing account.
+4. Manually run the pipeline, enable **Sign release artifacts with Azure
+   Artifact Signing**, and enter the service-connection name.
+
+The pipeline signs `SuperPutty.exe` before WiX embeds it, signs the completed
+MSI, and verifies that both signatures are publicly trusted, identify
+`Christopher Thornton`, and contain timestamps before publishing the installer.
+The signing key remains managed by Azure and is never exported to the pipeline.
 
 ## Project resources
 

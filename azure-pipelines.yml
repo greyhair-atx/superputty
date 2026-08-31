@@ -1,7 +1,14 @@
-# .NET Desktop
-# Build and run tests for .NET Desktop or Windows classic desktop solutions.
-# Add steps that publish symbols, save build artifacts, and more:
-# https://docs.microsoft.com/azure/devops/pipelines/apps/windows/dot-net
+# .NET Desktop build and optional Azure Artifact Signing.
+
+parameters:
+- name: enableCodeSigning
+  displayName: 'Sign release artifacts with Azure Artifact Signing'
+  type: boolean
+  default: false
+- name: azureServiceConnection
+  displayName: 'Azure Resource Manager service connection'
+  type: string
+  default: 'not-configured'
 
 trigger:
   branches:
@@ -31,9 +38,18 @@ steps:
     restoreSolution: '$(solution)'
 
 - task: VSBuild@1
+  displayName: 'Build SuperPuTTY x64 application'
   inputs:
-    solution: '$(solution)'
+    solution: 'SuperPutty\SuperPutty.csproj'
     platform: '$(buildPlatform)'
+    configuration: '$(buildConfiguration)'
+    msbuildArgs: '/restore'
+
+- task: VSBuild@1
+  displayName: 'Build x64 unit tests'
+  inputs:
+    solution: 'SuperPuttyUnitTests\SuperPuttyUnitTests.csproj'
+    platform: '$(testPlatform)'
     configuration: '$(buildConfiguration)'
     msbuildArgs: '/restore'
 
@@ -51,6 +67,84 @@ steps:
     failOnMinTestsNotRun: true
     minimumExpectedTests: '24'
 
+- ${{ if eq(parameters.enableCodeSigning, true) }}:
+  - task: AzureCLI@2
+    displayName: 'Authenticate to Azure with workload identity federation'
+    inputs:
+      azureSubscription: '${{ parameters.azureServiceConnection }}'
+      scriptType: 'pscore'
+      scriptLocation: 'inlineScript'
+      addSpnToEnvironment: true
+      inlineScript: |
+        Write-Host "##vso[task.setvariable variable=ARM_CLIENT_ID;issecret=true]$env:servicePrincipalId"
+        Write-Host "##vso[task.setvariable variable=ARM_ID_TOKEN;issecret=true]$env:idToken"
+        Write-Host "##vso[task.setvariable variable=ARM_TENANT_ID;issecret=true]$env:tenantId"
+
+  - task: PowerShell@2
+    displayName: 'Establish federated Azure CLI session'
+    inputs:
+      targetType: 'inline'
+      pwsh: true
+      script: |
+        az login `
+          --service-principal `
+          --username "$(ARM_CLIENT_ID)" `
+          --tenant "$(ARM_TENANT_ID)" `
+          --federated-token "$(ARM_ID_TOKEN)" `
+          --allow-no-subscriptions `
+          --output none
+
+  - task: ArtifactSigning@1
+    displayName: 'Sign SuperPutty.exe'
+    inputs:
+      Endpoint: 'https://cus.codesigning.azure.net/'
+      ArtifactSigningAccountName: 'greyhair-atx'
+      CertificateProfileName: 'greyhair-atx-superputty'
+      Files: '$(Build.SourcesDirectory)\bin\x64\$(buildConfiguration)\SuperPutty.exe'
+      FileDigest: 'SHA256'
+      TimestampRfc3161: 'http://timestamp.acs.microsoft.com'
+      TimestampDigest: 'SHA256'
+      ExcludeEnvironmentCredential: true
+      ExcludeWorkloadIdentityCredential: true
+      ExcludeManagedIdentityCredential: true
+      ExcludeSharedTokenCacheCredential: true
+      ExcludeVisualStudioCredential: true
+      ExcludeVisualStudioCodeCredential: true
+      ExcludeAzureCliCredential: false
+      ExcludeAzurePowershellCredential: true
+      ExcludeAzureDeveloperCliCredential: true
+      ExcludeInteractiveBrowserCredential: true
+
+- task: VSBuild@1
+  displayName: 'Package x64 MSI'
+  inputs:
+    solution: 'SuperPuttyInstaller\SuperPuttyInstaller.wixproj'
+    platform: '$(buildPlatform)'
+    configuration: '$(buildConfiguration)'
+    msbuildArgs: '/restore /p:BuildProjectReferences=false'
+
+- ${{ if eq(parameters.enableCodeSigning, true) }}:
+  - task: ArtifactSigning@1
+    displayName: 'Sign SuperPuttySetup.msi'
+    inputs:
+      Endpoint: 'https://cus.codesigning.azure.net/'
+      ArtifactSigningAccountName: 'greyhair-atx'
+      CertificateProfileName: 'greyhair-atx-superputty'
+      Files: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x64\$(buildConfiguration)\SuperPuttySetup.msi'
+      FileDigest: 'SHA256'
+      TimestampRfc3161: 'http://timestamp.acs.microsoft.com'
+      TimestampDigest: 'SHA256'
+      ExcludeEnvironmentCredential: true
+      ExcludeWorkloadIdentityCredential: true
+      ExcludeManagedIdentityCredential: true
+      ExcludeSharedTokenCacheCredential: true
+      ExcludeVisualStudioCredential: true
+      ExcludeVisualStudioCodeCredential: true
+      ExcludeAzureCliCredential: false
+      ExcludeAzurePowershellCredential: true
+      ExcludeAzureDeveloperCliCredential: true
+      ExcludeInteractiveBrowserCredential: true
+
 - task: PowerShell@2
   displayName: 'Verify x64 application and MSI payload'
   inputs:
@@ -66,6 +160,15 @@ steps:
     filePath: '$(Build.SourcesDirectory)\build\Test-ApplicationShutdown.ps1'
     arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform)'
     pwsh: false
+
+- ${{ if eq(parameters.enableCodeSigning, true) }}:
+  - task: PowerShell@2
+    displayName: 'Verify Authenticode signatures'
+    inputs:
+      targetType: 'filePath'
+      filePath: '$(Build.SourcesDirectory)\build\Verify-CodeSignatures.ps1'
+      arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform) -ExpectedSigner "Christopher Thornton"'
+      pwsh: true
 
 - task: PublishPipelineArtifact@1
   inputs:
