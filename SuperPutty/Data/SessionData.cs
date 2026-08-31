@@ -33,7 +33,6 @@ using System.Drawing.Design;
 using System.Drawing;
 using SuperPutty.Utils;
 using System.Web;
-using System.Text.RegularExpressions;
 using System.Net;
 using System.Text;
 
@@ -53,6 +52,7 @@ namespace SuperPutty.Data
         RDP,
         WINCMD,
         PS,
+        // Retained for compatibility with saved prototype sessions; handled as ordinary SSH.
         SSHNet
     }
 
@@ -60,6 +60,9 @@ namespace SuperPutty.Data
     public class SessionData : IComparable, ICloneable
     {
         private static readonly ILog Log = LogManager.GetLogger(typeof(SessionData));
+        internal const int MaximumRemoteCollectionBytes = 1024 * 1024;
+        internal const int MaximumCollectionDepth = 16;
+        private const int RemoteCollectionTimeoutMilliseconds = 10000;
         public delegate void OnPropertyChangedHandler(SessionData Session, String AttributeName);
         public delegate void OnPropertyChangingHandler(SessionData Session, String AttributeName, Object NewValue, ref bool CancelChange);
 
@@ -245,10 +248,20 @@ namespace SuperPutty.Data
         public string ExtraArgs
         {
             get { return _ExtraArgs; }
-            set 
+            set
             {
                 UpdateField(ref _ExtraArgs, value, "ExtraArgs");
             }
+        }
+
+        private bool _IgnoreRdpCertificateErrors;
+        [XmlAttribute]
+        [DisplayName("Ignore RDP Certificate Errors")]
+        [Description("Allows FreeRDP to bypass certificate validation. This weakens connection security.")]
+        public bool IgnoreRdpCertificateErrors
+        {
+            get { return _IgnoreRdpCertificateErrors; }
+            set { UpdateField(ref _IgnoreRdpCertificateErrors, value, "IgnoreRdpCertificateErrors"); }
         }
 
         private DockState m_LastDockstate = DockState.Document;
@@ -412,99 +425,163 @@ namespace SuperPutty.Data
         /// <param name="location">The filename or URL containing the settings</param>
         public static List<SessionData> LoadSessionsFromFile(string location)
         {
-            List<SessionData> sessions = new List<SessionData>();
+            return LoadSessionsFromFile(
+                location,
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                0);
+        }
+
+        private static List<SessionData> LoadSessionsFromFile(
+            string location,
+            HashSet<string> activeCollections,
+            int depth)
+        {
+            if (String.IsNullOrWhiteSpace(location))
+                return new List<SessionData>();
+            if (depth > MaximumCollectionDepth)
+                throw new InvalidDataException("Session collection nesting exceeds the supported depth.");
 
             WorkaroundCygwinBug();
+            List<SessionData> sessions = new List<SessionData>();
             XmlSerializer s = new XmlSerializer(sessions.GetType());
+            Uri remoteUri;
+            bool isWebLocation = Uri.TryCreate(location, UriKind.Absolute, out remoteUri) &&
+                (String.Equals(remoteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+                 String.Equals(remoteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
 
-            if (Regex.IsMatch(location, @"^https?:\/\/", RegexOptions.IgnoreCase))
+            if (isWebLocation &&
+                (!String.Equals(remoteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                 String.IsNullOrEmpty(remoteUri.Host) ||
+                 !String.IsNullOrEmpty(remoteUri.UserInfo)))
             {
-                try
-                {
-                    var uri = new Uri(location);
-                    HttpWebRequest req = WebRequest.CreateHttp(uri);
-                    var response = req.GetResponse();
-                    using (StreamReader r = new StreamReader(response.GetResponseStream()))
-                    {
-                        sessions = (List<SessionData>)s.Deserialize(r);
-                    }
-                    Log.InfoFormat("Loaded {0} sessions from {1}", sessions.Count, location);
-
-                    //convert any relative paths to absolute paths based on the URL of the parent file
-                    foreach(var session in sessions)
-                    {
-                        if(!string.IsNullOrEmpty(session.SPSLFileName))
-                        {
-                            session.SPSLFileName = new Uri(uri, session.SPSLFileName).ToString();
-                        }
-                        
-                        if(!string.IsNullOrEmpty(session.CollectionLocation))
-                        {
-                            session.SPSLFileName = new Uri(uri, session.CollectionLocation).ToString();
-                        }
-                    }
-                }
-                catch (Exception)
-                {
-                    Log.WarnFormat("Could not load sessions, URL did not return a success status code. file={0}", location);
-                }
+                Log.Warn("Blocked insecure remote session collection. Remote collections require HTTPS without embedded credentials.");
+                return sessions;
             }
-            else
-            {
-                if (location.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
-                {
-                    location = location.Substring("file://".Length);
-                }
 
-                if (File.Exists(location))
+            string localLocation = location;
+            if (!isWebLocation && location.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+                localLocation = new Uri(location).LocalPath;
+
+            string collectionKey = isWebLocation
+                ? remoteUri.AbsoluteUri
+                : Path.GetFullPath(localLocation);
+            if (!activeCollections.Add(collectionKey))
+                throw new InvalidDataException("Circular session collection reference detected.");
+
+            try
+            {
+                if (isWebLocation)
                 {
-                    using (StreamReader r = new StreamReader(location))
+                    try
+                    {
+                        sessions = LoadRemoteSessions(s, remoteUri);
+                        Log.InfoFormat("Loaded {0} sessions from HTTPS host {1}", sessions.Count, remoteUri.Host);
+                        ResolveRemoteSessionLocations(sessions, remoteUri);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Warn("Could not securely load sessions from HTTPS host " + remoteUri.Host, ex);
+                    }
+                }
+                else if (File.Exists(localLocation))
+                {
+                    using (StreamReader r = new StreamReader(localLocation))
                     {
                         sessions = (List<SessionData>)s.Deserialize(r);
                     }
-                    Log.InfoFormat("Loaded {0} sessions from {1}", sessions.Count, location);
+                    Log.InfoFormat("Loaded {0} sessions from {1}", sessions.Count, localLocation);
                 }
                 else
                 {
-                    Log.WarnFormat("Could not load sessions, file doesn't exist.  file={0}", location);
+                    Log.WarnFormat("Could not load sessions, file doesn't exist. file={0}", localLocation);
                 }
-            }
 
-            //If there are any collections specified, then load those in now
-            for(var i = 0; i < sessions.Count; i++)
-            {
-                if(!string.IsNullOrEmpty(sessions[i].CollectionLocation))
+                // If there are any collections specified, load and replace their placeholders.
+                for(var i = 0; i < sessions.Count; i++)
                 {
-                    var collectionLocation = sessions[i].CollectionLocation;
-                    var collectionName = sessions[i].CollectionID;
-
-                    if(!string.IsNullOrEmpty(collectionName))
+                    if(!string.IsNullOrEmpty(sessions[i].CollectionLocation))
                     {
-                        collectionName = collectionName.Trim('/');
-                    }
+                        var collectionLocation = sessions[i].CollectionLocation;
+                        var collectionName = sessions[i].CollectionID;
 
-                    var sessionsToAdd = LoadSessionsFromFile(collectionLocation);
+                        if(!string.IsNullOrEmpty(collectionName))
+                            collectionName = collectionName.Trim('/');
 
-                    sessions.RemoveAt(i);
+                        var sessionsToAdd = LoadSessionsFromFile(collectionLocation, activeCollections, depth + 1);
+                        sessions.RemoveAt(i);
 
-                    if(sessions.Count > 0)
-                    {
                         foreach (var session in sessionsToAdd)
                         {
                             if(!string.IsNullOrEmpty(collectionName))
                             {
-                                session.SessionId = collectionName + "/" + session.SessionId.TrimStart('/');
+                                string childSessionId = session.SessionId ?? session.SessionName ?? String.Empty;
+                                session.SessionId = collectionName + "/" + childSessionId.TrimStart('/');
                             }
 
                             sessions.Insert(i++, session);
                         }
+
+                        i--;
+                    }
+                }
+
+                return sessions;
+            }
+            finally
+            {
+                activeCollections.Remove(collectionKey);
+            }
+        }
+
+        private static List<SessionData> LoadRemoteSessions(XmlSerializer serializer, Uri location)
+        {
+            HttpWebRequest request = WebRequest.CreateHttp(location);
+            request.AllowAutoRedirect = false;
+            request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+            request.Timeout = RemoteCollectionTimeoutMilliseconds;
+            request.ReadWriteTimeout = RemoteCollectionTimeoutMilliseconds;
+            request.UserAgent = "SuperPuTTY-Sessions";
+
+            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+            {
+                if ((int)response.StatusCode < 200 || (int)response.StatusCode >= 300)
+                    throw new InvalidDataException("Remote session collection returned " + response.StatusCode + ".");
+                if (response.ContentLength > MaximumRemoteCollectionBytes)
+                    throw new InvalidDataException("Remote session collection exceeds the 1 MiB limit.");
+
+                using (Stream input = response.GetResponseStream())
+                using (MemoryStream output = new MemoryStream())
+                {
+                    byte[] buffer = new byte[8192];
+                    int read;
+                    while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        if (output.Length + read > MaximumRemoteCollectionBytes)
+                            throw new InvalidDataException("Remote session collection exceeds the 1 MiB limit.");
+                        output.Write(buffer, 0, read);
                     }
 
-                    i--;
+                    output.Position = 0;
+                    return (List<SessionData>)serializer.Deserialize(output);
                 }
             }
+        }
 
-            return sessions;
+        internal static void ResolveRemoteSessionLocations(IEnumerable<SessionData> sessions, Uri parentLocation)
+        {
+            if (sessions == null)
+                throw new ArgumentNullException("sessions");
+            if (parentLocation == null || !parentLocation.IsAbsoluteUri)
+                throw new ArgumentException("The parent collection location must be an absolute URI.", "parentLocation");
+
+            foreach (SessionData session in sessions)
+            {
+                if (!String.IsNullOrEmpty(session.SPSLFileName))
+                    session.SPSLFileName = new Uri(parentLocation, session.SPSLFileName).AbsoluteUri;
+
+                if (!String.IsNullOrEmpty(session.CollectionLocation))
+                    session.CollectionLocation = new Uri(parentLocation, session.CollectionLocation).AbsoluteUri;
+            }
         }
 
         /// <summary>Load session configuration data from files located in a specified folder</summary>

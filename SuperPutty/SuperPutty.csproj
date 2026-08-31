@@ -92,12 +92,6 @@
     <Compile Include="AboutBox1.Designer.cs">
       <DependentUpon>AboutBox1.cs</DependentUpon>
     </Compile>
-    <Compile Include="ctlSshNetPanel.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="ctlSshNetPanel.Designer.cs">
-      <DependentUpon>ctlSshNetPanel.cs</DependentUpon>
-    </Compile>
     <Compile Include="Data\HistoryEntry.cs" />
     <Compile Include="Data\KeyboardShortcut.cs" />
     <Compile Include="dlgScriptEditor.cs">
@@ -113,9 +107,6 @@
     <Compile Include="Gui\DpiUtils.cs" />
     <Compile Include="Gui\ImageListPopup.cs">
       <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Gui\ImageListPopup.designer.cs">
-      <DependentUpon>ImageListPopup.cs</DependentUpon>
     </Compile>
     <Compile Include="frmDocumentSelector.cs">
       <SubType>Form</SubType>
@@ -178,6 +169,7 @@
     <Compile Include="Scripting\OpenSessionCommand.cs" />
     <Compile Include="Scripting\PromptCommand.cs" />
     <Compile Include="Scripting\PwdpromptCommand.cs" />
+    <Compile Include="Scripting\RemoteSpslLoader.cs" />
     <Compile Include="Scripting\SendCharCommand.cs" />
     <Compile Include="Scripting\SendKeyCommand.cs" />
     <Compile Include="Scripting\SendLineCommand.cs" />
@@ -210,12 +202,6 @@
     <Compile Include="Data\SessionCsvImporter.cs" />
     <Compile Include="Data\SessionData.cs" />
     <Compile Include="Data\SessionDataStartInfo.cs" />
-    <Compile Include="DebugLogViewer.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="DebugLogViewer.Designer.cs">
-      <DependentUpon>DebugLogViewer.cs</DependentUpon>
-    </Compile>
     <Compile Include="dlgMouseFeedback.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -227,12 +213,6 @@
     </Compile>
     <Compile Include="Gui\dlgRenameItem.Designer.cs">
       <DependentUpon>dlgRenameItem.cs</DependentUpon>
-    </Compile>
-    <Compile Include="frmTransferStatus.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="frmTransferStatus.Designer.cs">
-      <DependentUpon>frmTransferStatus.cs</DependentUpon>
     </Compile>
     <Compile Include="LayoutsList.cs">
       <SubType>Form</SubType>
@@ -246,17 +226,10 @@
     <Compile Include="Log4netDebugLogForm.Designer.cs">
       <DependentUpon>Log4netDebugLogForm.cs</DependentUpon>
     </Compile>
-    <Compile Include="Logger.cs" />
     <Compile Include="Properties\Settings.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <DependentUpon>Settings.settings</DependentUpon>
-    </Compile>
-    <Compile Include="RemoteFileListPanel.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="RemoteFileListPanel.Designer.cs">
-      <DependentUpon>RemoteFileListPanel.cs</DependentUpon>
     </Compile>
     <Compile Include="dlgFindPutty.cs">
       <SubType>Form</SubType>
@@ -287,7 +260,6 @@
     <Compile Include="Utils\CommandLineOptions.cs" />
     <Compile Include="Utils\ExternalApplications.cs" />
     <Compile Include="Utils\FormUtils.cs" />
-    <Compile Include="Utils\GlobalHotKey.cs" />
     <Compile Include="Utils\GlobalWindowEvents.cs" />
     <Compile Include="Utils\HostConnectionString.cs" />
     <Compile Include="Utils\KeyboardHookState.cs" />
@@ -315,15 +287,8 @@
       <DependentUpon>dlgScriptEditor.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
-    <EmbeddedResource Include="Gui\ImageListPopup.resx">
-      <DependentUpon>ImageListPopup.cs</DependentUpon>
-    </EmbeddedResource>
     <EmbeddedResource Include="ctlApplicationPanel.resx">
       <DependentUpon>ctlApplicationPanel.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="DebugLogViewer.resx">
-      <DependentUpon>DebugLogViewer.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
     <EmbeddedResource Include="dlgMouseFeedback.resx">
@@ -336,9 +301,6 @@
     <EmbeddedResource Include="frmDocumentSelector.resx">
       <DependentUpon>frmDocumentSelector.cs</DependentUpon>
       <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="frmTransferStatus.resx">
-      <DependentUpon>frmTransferStatus.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Gui\KeyboardShortcutEditor.resx">
       <DependentUpon>KeyboardShortcutEditor.cs</DependentUpon>
@@ -353,9 +315,6 @@
     <EmbeddedResource Include="Log4netDebugLogForm.resx">
       <DependentUpon>Log4netDebugLogForm.cs</DependentUpon>
       <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="RemoteFileListPanel.resx">
-      <DependentUpon>RemoteFileListPanel.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="dlgFindPutty.resx">
       <DependentUpon>dlgFindPutty.cs</DependentUpon>
@@ -406,7 +365,6 @@
       <DependentUpon>Resources.resx</DependentUpon>
       <DesignTime>True</DesignTime>
     </Compile>
-    <Compile Include="PscpTransfer.cs" />
     <Compile Include="SessionTreeview.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -517,9 +475,6 @@
     </PackageReference>
     <PackageReference Include="Microsoft.VisualBasic">
       <Version>10.3.0</Version>
-    </PackageReference>
-    <PackageReference Include="SSH.NET">
-      <Version>2026.0.0</Version>
     </PackageReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

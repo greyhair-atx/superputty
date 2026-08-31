@@ -11,6 +11,17 @@ using System.Threading;
 
 namespace SuperPutty.Scp
 {
+    public delegate void TransferUpdateCallback(bool fileComplete, bool cancelAll, FileTransferStatus status);
+
+    public struct FileTransferStatus
+    {
+        public string Filename;
+        public int BytesTransferred;
+        public float TransferRate;
+        public string TimeLeft;
+        public int PercentComplete;
+    }
+
     #region IBrowserPresenter
     public interface IBrowserPresenter
     {
@@ -263,6 +274,7 @@ namespace SuperPutty.Scp
     {
         Success,
         RetryAuthentication,
+        Canceled,
         Error
     }
 }

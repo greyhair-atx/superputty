@@ -51,19 +51,7 @@ Assert-Condition ($version.FileVersion -eq $ExpectedVersion) "Unexpected file ve
 Assert-Condition ($version.ProductVersion -eq $ExpectedVersion) "Unexpected product version: $($version.ProductVersion)"
 
 $requiredDlls = @(
-    'BouncyCastle.Cryptography.dll',
     'log4net.dll',
-    'Microsoft.Bcl.AsyncInterfaces.dll',
-    'Microsoft.Bcl.Cryptography.dll',
-    'Microsoft.Extensions.DependencyInjection.Abstractions.dll',
-    'Microsoft.Extensions.Logging.Abstractions.dll',
-    'Renci.SshNet.dll',
-    'System.Buffers.dll',
-    'System.Formats.Asn1.dll',
-    'System.Memory.dll',
-    'System.Numerics.Vectors.dll',
-    'System.Runtime.CompilerServices.Unsafe.dll',
-    'System.Threading.Tasks.Extensions.dll',
     'WeifenLuo.WinFormsUI.Docking.dll',
     'WeifenLuo.WinFormsUI.Docking.ThemeVS2015.dll'
 )

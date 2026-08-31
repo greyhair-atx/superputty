@@ -63,20 +63,12 @@ namespace SuperPutty
             if ((EnforceSingleInstance  || SuperPuTTY.Settings.SingleInstanceMode) && !SuperPuTTY.IsFirstRun && !onlyInstance)
             {
                 SingleInstanceHelper.LaunchInExistingInstance(args);
-                Log.InfoFormat("Sent Command to Existing Instance: [{0}]", String.Join(" ", args));
+                Log.InfoFormat("Sent Command to Existing Instance: [{0}]", CommandLineOptions.RedactSensitiveArguments(args));
                 Environment.Exit(0);
             }
 
             // open full file
             log4net.Config.XmlConfigurator.Configure();
-
-#if DEBUG
-            Logger.OnLog += delegate(string logMessage)
-            {
-                //Console.WriteLine(logMessage);
-                Log.Info(logMessage);
-            };
-#endif
 
             try
             {

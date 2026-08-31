@@ -56,6 +56,7 @@ namespace SuperPutty
             this.label7 = new System.Windows.Forms.Label();
             this.openFileDialog1 = new System.Windows.Forms.OpenFileDialog();
             this.buttonClearSPSLFile = new System.Windows.Forms.Button();
+            this.checkBoxIgnoreRdpCertificateErrors = new System.Windows.Forms.CheckBox();
             this.groupBoxFileTransferOptions = new System.Windows.Forms.GroupBox();
             this.textBoxRemotePathSesion = new System.Windows.Forms.TextBox();
             this.lbRemotePath = new System.Windows.Forms.Label();
@@ -180,7 +181,7 @@ namespace SuperPutty
             // buttonSave
             // 
             this.buttonSave.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
-            this.buttonSave.Location = new System.Drawing.Point(318, 472);
+            this.buttonSave.Location = new System.Drawing.Point(318, 496);
             this.buttonSave.Name = "buttonSave";
             this.buttonSave.Size = new System.Drawing.Size(75, 23);
             this.buttonSave.TabIndex = 8;
@@ -193,7 +194,7 @@ namespace SuperPutty
             this.buttonCancel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
             this.buttonCancel.CausesValidation = false;
             this.buttonCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel;
-            this.buttonCancel.Location = new System.Drawing.Point(399, 472);
+            this.buttonCancel.Location = new System.Drawing.Point(399, 496);
             this.buttonCancel.Name = "buttonCancel";
             this.buttonCancel.Size = new System.Drawing.Size(75, 23);
             this.buttonCancel.TabIndex = 9;
@@ -289,7 +290,7 @@ namespace SuperPutty
             // 
             // buttonImageSelect
             // 
-            this.buttonImageSelect.Location = new System.Drawing.Point(14, 459);
+            this.buttonImageSelect.Location = new System.Drawing.Point(14, 483);
             this.buttonImageSelect.Name = "buttonImageSelect";
             this.buttonImageSelect.Size = new System.Drawing.Size(29, 29);
             this.buttonImageSelect.TabIndex = 7;
@@ -352,7 +353,20 @@ namespace SuperPutty
             this.groupBoxFileTransferOptions.Controls.Add(this.textBoxLocalPathSesion);
             this.groupBoxFileTransferOptions.Controls.Add(this.lbLocalPath);
             this.groupBoxFileTransferOptions.Font = new System.Drawing.Font("Segoe UI", 9F);
-            this.groupBoxFileTransferOptions.Location = new System.Drawing.Point(14, 353);
+            // checkBoxIgnoreRdpCertificateErrors
+            //
+            this.checkBoxIgnoreRdpCertificateErrors.AutoSize = true;
+            this.checkBoxIgnoreRdpCertificateErrors.Location = new System.Drawing.Point(150, 345);
+            this.checkBoxIgnoreRdpCertificateErrors.Name = "checkBoxIgnoreRdpCertificateErrors";
+            this.checkBoxIgnoreRdpCertificateErrors.Size = new System.Drawing.Size(267, 17);
+            this.checkBoxIgnoreRdpCertificateErrors.TabIndex = 7;
+            this.checkBoxIgnoreRdpCertificateErrors.Text = "Ignore FreeRDP certificate errors (insecure)";
+            this.checkBoxIgnoreRdpCertificateErrors.UseVisualStyleBackColor = true;
+            this.checkBoxIgnoreRdpCertificateErrors.Visible = false;
+            //
+            // groupBoxFileTransferOptions
+            //
+            this.groupBoxFileTransferOptions.Location = new System.Drawing.Point(14, 377);
             this.groupBoxFileTransferOptions.Name = "groupBoxFileTransferOptions";
             this.groupBoxFileTransferOptions.Size = new System.Drawing.Size(460, 100);
             this.groupBoxFileTransferOptions.TabIndex = 19;
@@ -412,8 +426,9 @@ namespace SuperPutty
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.CancelButton = this.buttonCancel;
-            this.ClientSize = new System.Drawing.Size(490, 502);
+            this.ClientSize = new System.Drawing.Size(490, 526);
             this.Controls.Add(this.groupBoxFileTransferOptions);
+            this.Controls.Add(this.checkBoxIgnoreRdpCertificateErrors);
             this.Controls.Add(this.groupBox2);
             this.Controls.Add(this.buttonCancel);
             this.Controls.Add(this.buttonClearSPSLFile);
@@ -476,6 +491,7 @@ namespace SuperPutty
         private System.Windows.Forms.Button buttonBrowse;
         private System.Windows.Forms.OpenFileDialog openFileDialog1;
         private System.Windows.Forms.Button buttonClearSPSLFile;
+        private System.Windows.Forms.CheckBox checkBoxIgnoreRdpCertificateErrors;
         private System.Windows.Forms.GroupBox groupBoxFileTransferOptions;
         private System.Windows.Forms.TextBox textBoxRemotePathSesion;
         private System.Windows.Forms.Label lbRemotePath;

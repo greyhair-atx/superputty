@@ -19,131 +19,91 @@
  * THE SOFTWARE.
  */
 using System;
+using System.IO;
 using System.Net;
 using System.Reflection;
 using System.Text;
-using System.IO;
+using System.Threading;
 
 namespace SuperPutty
 {
-    public class RequestState
+    internal sealed class UpdateRequestClient
     {
-        const int BufferSize = 1024;
-        public StringBuilder RequestData;
-        public byte[] BufferRead;
-        public WebRequest Request;
-        public Stream ResponseStream;
-        // Create Decoder for appropriate enconding type.
-        public Decoder StreamDecode = Encoding.UTF8.GetDecoder();
-        public Action<bool, string> Callback;
-        public RequestState()
-        {
-            BufferRead = new byte[BufferSize];
-            RequestData = new StringBuilder(String.Empty);
-            Request = null;
-            ResponseStream = null;
-        }
-    }
-
-    public class httpRequest
-    {
-        const int BufferSize = 1024;
-        public StringBuilder RequestData;
-        public byte[] BufferRead;
-        public WebRequest Request;
-        public Stream ResponseStream;
-        // Create Decoder for appropriate enconding type.
-        public Decoder StreamDecode = Encoding.UTF8.GetDecoder();
+        internal const int MaximumResponseBytes = 1024 * 1024;
+        private const int RequestTimeoutMilliseconds = 10000;
 
         public void MakeRequest(string url, Action<bool, string> callback)
         {
-            WebRequest request = WebRequest.Create(url);
-            RequestState state = new RequestState
+            if (callback == null)
+                throw new ArgumentNullException("callback");
+
+            ThreadPool.QueueUserWorkItem(delegate
             {
-                Request = request,
-                Callback = callback
-            };
-            ((HttpWebRequest)request).UserAgent = "SuperPuTTY/" + Assembly.GetExecutingAssembly().GetName().Version;
-
-            IAsyncResult result = (IAsyncResult)request.BeginGetResponse(new AsyncCallback(RespCallback), state);     
-        }
-
-        private static void RespCallback(IAsyncResult ar)
-        {
-            // Get the RequestState object from the async result.
-            RequestState rs = (RequestState)ar.AsyncState;
-            try {                
-                // Get the WebRequest from RequestState.
-                WebRequest req = rs.Request;
-
-                // Call EndGetResponse, which produces the WebResponse object
-                //  that came from the request issued above.
-                WebResponse resp = req.EndGetResponse(ar);
-
-                //  Start reading data from the response stream.
-                Stream ResponseStream = resp.GetResponseStream();
-
-                // Store the response stream in RequestState to read 
-                // the stream asynchronously.
-                rs.ResponseStream = ResponseStream;
-
-                //  Pass rs.BufferRead to BeginRead. Read data into rs.BufferRead
-                IAsyncResult iarRead = ResponseStream.BeginRead(rs.BufferRead, 0,
-                   BufferSize, new System.AsyncCallback(ReadCallBack), rs);
-            }
-            catch (WebException ex)
-            {
-                // Fire the callback so we can inform the user what went wrong
-                rs.Callback(false, ex.Message);
-            }
-        }
-
-        private static void ReadCallBack(IAsyncResult asyncResult)
-        {
-            // Get the RequestState object from AsyncResult.
-            RequestState rs = (RequestState)asyncResult.AsyncState;
-
-            // Retrieve the ResponseStream that was set in RespCallback. 
-            Stream responseStream = rs.ResponseStream;
-
-            // Read rs.BufferRead to verify that it contains data. 
-            int read = responseStream.EndRead(asyncResult);
-            if (read > 0)
-            {
-                // Prepare a Char array buffer for converting to Unicode.
-                Char[] charBuffer = new Char[BufferSize];
-
-                // Convert byte stream to Char array and then to String.
-                // len contains the number of characters converted to Unicode.
-                int len =
-                   rs.StreamDecode.GetChars(rs.BufferRead, 0, read, charBuffer, 0);
-
-                String str = new String(charBuffer, 0, len);
-
-                // Append the recently read data to the RequestData stringbuilder
-                // object contained in RequestState.
-                rs.RequestData.Append(
-                   Encoding.ASCII.GetString(rs.BufferRead, 0, read));
-
-                // Continue reading data until 
-                // responseStream.EndRead returns –1.
-                IAsyncResult ar = responseStream.BeginRead(
-                   rs.BufferRead, 0, BufferSize,
-                   new System.AsyncCallback(ReadCallBack), rs);
-            }
-            else
-            {
-                if (rs.RequestData.Length > 0)
+                bool success;
+                string content;
+                try
                 {
-                    //  Display data to the console.
-                    string strContent = rs.RequestData.ToString();
-                    rs.Callback(true, strContent);
+                    content = DownloadJson(url);
+                    success = true;
                 }
-                // Close down the response stream.
-                responseStream.Close();
+                catch (Exception ex)
+                {
+                    content = ex.Message;
+                    success = false;
+                }
+                callback(success, content);
+            });
+        }
 
+        internal static bool TryGetSecureUri(string url, out Uri uri)
+        {
+            return Uri.TryCreate(url, UriKind.Absolute, out uri) &&
+                String.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+                !String.IsNullOrEmpty(uri.Host) &&
+                String.IsNullOrEmpty(uri.UserInfo);
+        }
+
+        internal static string DownloadJson(string url)
+        {
+            Uri uri;
+            if (!TryGetSecureUri(url, out uri))
+                throw new InvalidOperationException("Update requests require HTTPS without embedded credentials.");
+
+            HttpWebRequest request = WebRequest.CreateHttp(uri);
+            request.AllowAutoRedirect = false;
+            request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+            request.Timeout = RequestTimeoutMilliseconds;
+            request.ReadWriteTimeout = RequestTimeoutMilliseconds;
+            request.UserAgent = "SuperPuTTY/" + Assembly.GetExecutingAssembly().GetName().Version;
+            request.Accept = "application/json";
+
+            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+            {
+                if ((int)response.StatusCode < 200 || (int)response.StatusCode >= 300)
+                    throw new InvalidDataException("Update request returned " + response.StatusCode + ".");
+                if (String.IsNullOrEmpty(response.ContentType) ||
+                    response.ContentType.IndexOf("json", StringComparison.OrdinalIgnoreCase) < 0)
+                    throw new InvalidDataException("Update response was not JSON.");
+                if (response.ContentLength > MaximumResponseBytes)
+                    throw new InvalidDataException("Update response exceeds the 1 MiB limit.");
+
+                using (Stream input = response.GetResponseStream())
+                using (MemoryStream output = new MemoryStream())
+                {
+                    byte[] buffer = new byte[8192];
+                    int read;
+                    while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        if (output.Length + read > MaximumResponseBytes)
+                            throw new InvalidDataException("Update response exceeds the 1 MiB limit.");
+                        output.Write(buffer, 0, read);
+                    }
+
+                    output.Position = 0;
+                    using (StreamReader reader = new StreamReader(output, Encoding.UTF8, true))
+                        return reader.ReadToEnd();
+                }
             }
-            return;
         }
     }
 

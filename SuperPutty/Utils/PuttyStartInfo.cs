@@ -59,6 +59,7 @@ namespace SuperPutty.Utils
             {
                 VNCStartInfo vnc = new VNCStartInfo(session);
                 this.Args = vnc.Args;
+                argsToLog = vnc.ArgsForLog;
                 this.WorkingDir = vnc.StartingDir;
             }
             else if (session.Proto == ConnectionProtocol.RDP)
@@ -88,7 +89,7 @@ namespace SuperPutty.Utils
             // attempt to parse env vars
             this.Args = this.Args.Contains('%') ? TryParseEnvVars(this.Args) : this.Args;
 
-            Log.InfoFormat("Putty Args: '{0}'", argsToLog ?? this.Args);
+            Log.InfoFormat("Putty Args: '{0}'", CommandLineOptions.RedactSensitiveArguments(argsToLog ?? this.Args));
         }
 
         static string MakeArgs(SessionData session, bool includePassword)
@@ -96,20 +97,23 @@ namespace SuperPutty.Utils
             if (!String.IsNullOrEmpty(session.Password) && includePassword && !SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
                 Log.Warn("SuperPuTTY is set to NOT allow the use of the -pw <password> argument, this can be overriden in Tools -> Options -> GUI");
 
-            string args = "-" + session.Proto.ToString().ToLower() + " ";
+            string protocol = session.Proto == ConnectionProtocol.SSHNet
+                ? "ssh"
+                : session.Proto.ToString().ToLower();
+            string args = "-" + protocol + " ";
             args += !String.IsNullOrEmpty(session.Password) && session.Password.Length > 0 && SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg 
-                ? "-pw " + (includePassword ? session.Password : "XXXXX") + " " 
+                ? "-pw " + (includePassword ? CommandLineOptions.QuoteArgument(session.Password) : "XXXXX") + " "
                 : "";
             args += "-P " + session.Port + " ";
-            args += !String.IsNullOrEmpty(session.PuttySession) ? "-load \"" + session.PuttySession + "\" " : "";
+            args += !String.IsNullOrEmpty(session.PuttySession) ? "-load " + CommandLineOptions.QuoteArgument(session.PuttySession) + " " : "";
 
             args += !String.IsNullOrEmpty(SuperPuTTY.Settings.PuttyDefaultParameters) ? SuperPuTTY.Settings.PuttyDefaultParameters + " " : "";
 
             //If extra args contains the password, delete it (it's in session.password)
             string extraArgs = CommandLineOptions.replacePassword(session.ExtraArgs,"");            
             args += !String.IsNullOrEmpty(extraArgs) ? extraArgs + " " : "";
-            args += !String.IsNullOrEmpty(session.Username) && session.Username.Length > 0 ? " -l " + session.Username + " " : "";
-            args += session.Host;
+            args += !String.IsNullOrEmpty(session.Username) && session.Username.Length > 0 ? " -l " + CommandLineOptions.QuoteArgument(session.Username) + " " : "";
+            args += CommandLineOptions.QuoteArgument(session.Host);
 
             return args;
         }

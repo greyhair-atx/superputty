@@ -86,6 +86,44 @@ namespace SuperPuttyUnitTests
 
         }
 
+        [Test]
+        public void SensitiveArgumentsAreRedactedBeforeLogging()
+        {
+            const string secret = "do-not-log-this";
+            string redacted = CommandLineOptions.RedactSensitiveArguments(
+                "-ssh -pw \"" + secret + "\" sftp://user:" + secret + "@example.com -password=" + secret);
+
+            StringAssert.DoesNotContain(secret, redacted);
+            StringAssert.Contains("-pw XXXXX", redacted);
+            StringAssert.Contains("sftp://user:XXXXX@example.com", redacted);
+            StringAssert.Contains("-password=XXXXX", redacted);
+
+            string[] args = { "-ssh", "-pw", "secret with spaces", "example.com" };
+            string redactedArray = CommandLineOptions.RedactSensitiveArguments(args);
+            StringAssert.DoesNotContain("secret", redactedArray);
+            StringAssert.DoesNotContain("spaces", redactedArray);
+        }
+
+        [Test]
+        public void WindowsArgumentsAreQuotedWithoutLosingEmbeddedQuotes()
+        {
+            Assert.AreEqual("simple", CommandLineOptions.QuoteArgument("simple"));
+            Assert.AreEqual("\"two words\"", CommandLineOptions.QuoteArgument("two words"));
+            Assert.AreEqual("\"a\\\"b\"", CommandLineOptions.QuoteArgument("a\"b"));
+        }
+
+        [Test]
+        public void PasswordSwitchesAreRemovedFromForwardedExtraArguments()
+        {
+            string sanitized = CommandLineOptions.RemoveSensitiveArguments(
+                "-batch -pw secret -password=other +clipboard");
+
+            StringAssert.Contains("-batch", sanitized);
+            StringAssert.Contains("+clipboard", sanitized);
+            StringAssert.DoesNotContain("secret", sanitized);
+            StringAssert.DoesNotContain("other", sanitized);
+        }
+
         [TestView]
         public void DialogBasicTest()
         {

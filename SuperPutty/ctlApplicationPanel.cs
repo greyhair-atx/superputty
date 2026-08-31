@@ -285,22 +285,36 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
         private void bgWinTracker_DoWork(object sender, DoWorkEventArgs e)
         {
-            while (true)
+            BackgroundWorker worker = (BackgroundWorker)sender;
+            while (!worker.CancellationPending)
             {
                 System.Threading.Thread.Sleep(1000);
-                m_Process.Refresh();
+                if (worker.CancellationPending)
+                    break;
+
+                try
+                {
+                    if (m_Process == null || m_Process.HasExited)
+                        break;
+                    m_Process.Refresh();
+                }
+                catch (InvalidOperationException)
+                {
+                    break;
+                }
                 if (this.IsWindowAppliesForInherit(m_Process.MainWindowHandle))
                 {
                     e.Result = m_Process.MainWindowHandle;
-                    break;
+                    return;
                 }
             }
+            e.Cancel = true;
         }
 
         private void bgWinTracker_Done(
             object sender, RunWorkerCompletedEventArgs e)
         {
-            if (e.Error != null || e.Cancelled)
+            if (e.Error != null || e.Cancelled || IsDisposed || Disposing || !IsHandleCreated)
                 return;
 
             m_AppWin = (IntPtr)e.Result;

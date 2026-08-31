@@ -62,6 +62,7 @@ namespace SuperPutty
                 this.textBoxExtraArgs.Text = Session.ExtraArgs;
                 this.textBoxUsername.Text = Session.Username;
                 this.textBoxSPSLScriptFile.Text = Session.SPSLFileName;
+                this.checkBoxIgnoreRdpCertificateErrors.Checked = Session.IgnoreRdpCertificateErrors;
                 this.textBoxRemotePathSesion.Text = Session.RemotePath;
                 this.textBoxLocalPathSesion.Text = Session.LocalPath;
                 this.textBoxNote.Text = Session.Note;
@@ -71,6 +72,8 @@ namespace SuperPutty
                     if ((int)protoEntry.Value == (int)Session.Proto)
                         comboBoxProto.SelectedItem = (string)protoEntry.Key;
                 }
+                if (Session.Proto == ConnectionProtocol.SSHNet)
+                    comboBoxProto.SelectedItem = "SSH";
 
                 comboBoxPuttyProfile.DropDownStyle = ComboBoxStyle.DropDownList;
                 foreach(String settings in this.comboBoxPuttyProfile.Items){
@@ -99,6 +102,7 @@ namespace SuperPutty
             this.toolTip.SetToolTip(this.buttonImageSelect, buttonImageSelect.ImageKey);
 
             this.isInitialized = true;
+            UpdateRdpCertificateOptionVisibility();
         }
 
         protected override void OnLoad(EventArgs e)
@@ -131,8 +135,6 @@ namespace SuperPutty
             this.protoTypesMap["RDP"] = ConnectionProtocol.RDP;
             this.protoTypesMap["Win CMD"] = ConnectionProtocol.WINCMD;
             this.protoTypesMap["PowerShell"] = ConnectionProtocol.PS;
-            this.protoTypesMap["SSH.Net"] = ConnectionProtocol.SSHNet;
-
             foreach (System.Collections.DictionaryEntry protoEntry in this.protoTypesMap)
                 comboBoxProto.Items.Add(protoEntry.Key);
             comboBoxProto.SelectedItem = "SSH";
@@ -169,6 +171,7 @@ namespace SuperPutty
             Session.SessionId    = SessionData.CombineSessionIds(SessionData.GetSessionParentId(Session.SessionId), Session.SessionName);
             Session.ImageKey     = buttonImageSelect.ImageKey;
             Session.SPSLFileName = textBoxSPSLScriptFile.Text.Trim();
+            Session.IgnoreRdpCertificateErrors = checkBoxIgnoreRdpCertificateErrors.Checked;
             Session.RemotePath = textBoxRemotePathSesion.Text.Trim();
             Session.LocalPath = textBoxLocalPathSesion.Text.Trim();
             Session.Note = textBoxNote.Text.Trim();
@@ -191,6 +194,7 @@ namespace SuperPutty
                 return;
 
             ConnectionProtocol proto = this.protoTypesMap.ContainsKey(comboBoxProto.SelectedItem) ? (ConnectionProtocol)this.protoTypesMap[comboBoxProto.SelectedItem] : ConnectionProtocol.SSH;
+            UpdateRdpCertificateOptionVisibility();
             if (proto == ConnectionProtocol.Cygterm || proto == ConnectionProtocol.Mintty || proto == ConnectionProtocol.WINCMD || proto == ConnectionProtocol.PS)
             {
                 this.textBoxPort.Enabled = false;
@@ -213,6 +217,14 @@ namespace SuperPutty
                 if (proto != ConnectionProtocol.Raw)
                     this.textBoxPort.Text = dlgEditSession.GetDefaultPort(proto).ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
+        }
+
+        private void UpdateRdpCertificateOptionVisibility()
+        {
+            ConnectionProtocol proto = this.protoTypesMap != null && this.protoTypesMap.ContainsKey(comboBoxProto.SelectedItem)
+                ? (ConnectionProtocol)this.protoTypesMap[comboBoxProto.SelectedItem]
+                : ConnectionProtocol.SSH;
+            this.checkBoxIgnoreRdpCertificateErrors.Visible = proto == ConnectionProtocol.RDP;
         }
 
         public static int GetDefaultPort(ConnectionProtocol protocol)

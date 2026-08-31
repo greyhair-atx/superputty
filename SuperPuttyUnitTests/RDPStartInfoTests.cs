@@ -34,12 +34,40 @@ namespace SuperPuttyUnitTests
         {
             SessionData session = CreateSession();
             session.Port = 0;
-            session.ExtraArgs = "  +clipboard  ";
+            session.ExtraArgs = "  /cert-ignore /cert:ignore +clipboard  ";
 
             RDPStartInfo startInfo = new RDPStartInfo(session, "WFREERDP.EXE");
 
             StringAssert.Contains("/smart-sizing", startInfo.Args);
             StringAssert.Contains(" /v:rdp.example.com /u:test-user +clipboard", startInfo.Args);
+            StringAssert.DoesNotContain("/cert-ignore", startInfo.Args);
+            StringAssert.DoesNotContain("/cert:ignore", startInfo.Args);
+        }
+
+        [Test]
+        public void FreeRdpCertificateBypassRequiresExplicitSessionOptIn()
+        {
+            SessionData session = CreateSession();
+            session.IgnoreRdpCertificateErrors = true;
+
+            RDPStartInfo startInfo = new RDPStartInfo(session, "wfreerdp.exe");
+
+            StringAssert.Contains("/cert-ignore", startInfo.Args);
+        }
+
+        [Test]
+        public void RdpHostAndUsernameArePassedAsSingleArguments()
+        {
+            SessionData session = CreateSession();
+            session.Host = "rdp.example.com /admin";
+            session.Username = "domain user /p:secret";
+
+            RDPStartInfo freeRdp = new RDPStartInfo(session, "wfreerdp.exe");
+            RDPStartInfo mstsc = new RDPStartInfo(session, @"C:\Windows\System32\mstsc.exe");
+
+            StringAssert.Contains("\"/v:rdp.example.com /admin:3390\"", freeRdp.Args);
+            StringAssert.Contains("\"/u:domain user /p:secret\"", freeRdp.Args);
+            StringAssert.Contains("\"/v:rdp.example.com /admin:3390\"", mstsc.Args);
         }
 
         private static SessionData CreateSession()

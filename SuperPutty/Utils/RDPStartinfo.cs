@@ -23,6 +23,7 @@ using System;
 using SuperPutty.Data;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace SuperPutty.Utils
 {
@@ -64,29 +65,46 @@ namespace SuperPutty.Utils
         private static string BuildFreeRdpArgs(SessionData session)
         {
             StringBuilder args = new StringBuilder(
-                "/cert-ignore /size:1920x1080 /smart-sizing +window-drag /disp /workarea " +
+                "/size:1920x1080 /smart-sizing +window-drag /disp /workarea " +
                 "/network:wan +auto-reconnect /auto-reconnect-max-retries:0 +bitmap-cache");
 
-            args.Append(" /v:").Append(session.Host);
+            if (session.IgnoreRdpCertificateErrors)
+                args.Append(" /cert-ignore");
+
+            string endpoint = session.Host ?? String.Empty;
             if (session.Port != 0)
-                args.Append(":").Append(session.Port);
+                endpoint += ":" + session.Port;
+            args.Append(" ").Append(CommandLineOptions.QuoteArgument("/v:" + endpoint));
 
             if (!String.IsNullOrEmpty(session.Username))
-                args.Append(" /u:").Append(session.Username);
+                args.Append(" ").Append(CommandLineOptions.QuoteArgument("/u:" + session.Username));
 
-            if (!String.IsNullOrWhiteSpace(session.ExtraArgs))
-                args.Append(" ").Append(session.ExtraArgs.Trim());
+            string extraArgs = RemoveCertificateBypassArguments(session.ExtraArgs);
+            if (!String.IsNullOrWhiteSpace(extraArgs))
+                args.Append(" ").Append(extraArgs);
 
             return args.ToString();
+        }
+
+        private static string RemoveCertificateBypassArguments(string extraArgs)
+        {
+            if (String.IsNullOrWhiteSpace(extraArgs))
+                return String.Empty;
+
+            return Regex.Replace(
+                extraArgs,
+                @"(?i)(?:^|\s)/(?:cert-ignore|cert:ignore)(?=\s|$)",
+                " ").Trim();
         }
 
         private static string BuildMstscArgs(SessionData session)
         {
             StringBuilder args = new StringBuilder();
             args.Append('"').Append(GetSmartSizingConnectionFile()).Append('"');
-            args.Append(" /v:").Append(session.Host);
+            string endpoint = session.Host ?? String.Empty;
             if (session.Port != 0)
-                args.Append(":").Append(session.Port);
+                endpoint += ":" + session.Port;
+            args.Append(" ").Append(CommandLineOptions.QuoteArgument("/v:" + endpoint));
 
             if (!String.IsNullOrWhiteSpace(session.ExtraArgs))
                 args.Append(" ").Append(session.ExtraArgs.Trim());

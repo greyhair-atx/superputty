@@ -15,7 +15,14 @@ namespace SuperPutty.Scp
         public event EventHandler Update;
 
         private Thread thread = null;
+        private CancellationTokenSource cancellation;
+        private readonly object syncRoot = new object();
+        private int generation;
         Status status = Status.Initializing;
+        private int percentComplete;
+        private string transferStatusMsg;
+        private DateTime? startTime;
+        private DateTime? endTime;
 
         public FileTransfer(PscpOptions options, FileTransferRequest request)
         {
@@ -27,49 +34,75 @@ namespace SuperPutty.Scp
 
         public void Start()
         {
-            lock (this)
+            EventHandler handler = null;
+            lock (syncRoot)
             {
-                if (this.TransferStatus == Status.Initializing || CanRestart(this.TransferStatus))
+                if ((this.status == Status.Initializing || CanRestart(this.status)) &&
+                    (this.thread == null || !this.thread.IsAlive))
                 {
                     Log.InfoFormat("Starting transfer, id={0}", this.Id);
 
-                    this.StartTime = DateTime.Now;
+                    this.cancellation?.Dispose();
+                    this.cancellation = new CancellationTokenSource();
+                    int operationGeneration = ++this.generation;
+                    this.startTime = DateTime.Now;
+                    this.endTime = null;
+                    this.percentComplete = 0;
+                    this.status = Status.Running;
+                    this.transferStatusMsg = "Started transfer";
 
-                    this.thread = new Thread(this.DoTransfer)
+                    CancellationToken cancellationToken = this.cancellation.Token;
+                    this.thread = new Thread(() => this.DoTransfer(operationGeneration, cancellationToken))
                     {
                         IsBackground = true,
                         Name = "SCP file transfer " + this.Id
                     };
                     this.thread.Start();
-
-                    this.UpdateStatus(0, Status.Running, "Started transfer");
+                    handler = this.Update;
                 }
                 else
                 {
                     Log.WarnFormat("Attempted to start active transfer, id={0}", this.Id);
                 }
             }
+            handler?.Invoke(this, EventArgs.Empty);
         }
 
         public void Cancel()
         {
-            lock (this)
+            CancellationTokenSource activeCancellation = null;
+            EventHandler handler = null;
+            bool canceled = false;
+            lock (syncRoot)
             {
-                if (CanCancel(this.TransferStatus))
+                if (CanCancel(this.status))
                 {
                     Log.InfoFormat("Canceling active transfer, id={0}", this.Id);
-                    this.thread.Abort();
-                    Log.InfoFormat("Canceled active transfer, id={0}", this.Id);
-                    this.UpdateStatus(this.PercentComplete, Status.Canceled, "Canceled");
+                    this.status = Status.Canceling;
+                    this.transferStatusMsg = "Canceling";
+                    activeCancellation = this.cancellation;
+                    handler = this.Update;
+                    canceled = true;
                 }
                 else
                 {
                     Log.WarnFormat("Attempted to cancel inactive transfer, id={0}", this.Id);
                 }
             }
+            try
+            {
+                activeCancellation?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // A completed worker may have been restarted after the state changed to Canceled.
+            }
+            handler?.Invoke(this, EventArgs.Empty);
+            if (canceled)
+                Log.InfoFormat("Cancellation requested for active transfer, id={0}", this.Id);
         }
 
-        void DoTransfer()
+        void DoTransfer(int operationGeneration, CancellationToken cancellationToken)
         {
             try
             {
@@ -100,42 +133,80 @@ namespace SuperPutty.Scp
                             // < 1% completed
                             msg = string.Format("{0}, ({1} KB, {2})", s.Filename, s.BytesTransferred, s.TimeLeft);
                         }
-                        this.UpdateStatus(s.PercentComplete, Status.Running, msg);
-                    });
+                        this.UpdateStatus(operationGeneration, s.PercentComplete, Status.Running, msg);
+                    },
+                    cancellationToken);
 
-                this.EndTime = DateTime.Now;
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    this.CompleteCancellation(operationGeneration);
+                    return;
+                }
+
+                lock (syncRoot)
+                {
+                    if (operationGeneration == this.generation)
+                        this.endTime = DateTime.Now;
+                }
                 switch (res.StatusCode)
                 {
                     case ResultStatusCode.Success:
                         double duration = (EndTime.Value - StartTime.Value).TotalSeconds;
-                        this.UpdateStatus(100, Status.Complete, String.Format("Duration {0:#,###} s", duration));
+                        this.UpdateStatus(operationGeneration, 100, Status.Complete, String.Format("Duration {0:#,###} s", duration));
+                        break;
+                    case ResultStatusCode.Canceled:
+                        this.CompleteCancellation(operationGeneration);
                         break;
                     case ResultStatusCode.RetryAuthentication:
                     case ResultStatusCode.Error:
-                        this.UpdateStatus(this.PercentComplete, Status.Error, res.ErrorMsg);
+                        this.UpdateStatus(operationGeneration, this.PercentComplete, Status.Error, res.ErrorMsg);
                         break;
                 }
             }
-            catch (ThreadAbortException)
-            {
-                this.UpdateStatus(this.PercentComplete, Status.Canceled, "");
-            }
             catch (Exception ex)
             {
-                Log.Error("Error running transfer, id=" + this.Id, ex);
-                this.UpdateStatus(0, Status.Error, ex.Message);
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    this.CompleteCancellation(operationGeneration);
+                }
+                else
+                {
+                    Log.Error("Error running transfer, id=" + this.Id, ex);
+                    this.UpdateStatus(operationGeneration, 0, Status.Error, ex.Message);
+                }
             }
         }
 
-        void UpdateStatus(int percentageComplete, Status status, string message)
+        void CompleteCancellation(int operationGeneration)
         {
-            this.PercentComplete = percentageComplete;
-            this.TransferStatus = status;
-            this.TransferStatusMsg = message;
-            if (this.Update != null)
+            EventHandler handler;
+            lock (syncRoot)
             {
-                this.Update(this, EventArgs.Empty);
+                if (operationGeneration != this.generation)
+                    return;
+                this.status = Status.Canceled;
+                this.transferStatusMsg = "Canceled";
+                this.endTime = DateTime.Now;
+                handler = this.Update;
             }
+            handler?.Invoke(this, EventArgs.Empty);
+        }
+
+        void UpdateStatus(int operationGeneration, int percentageComplete, Status newStatus, string message)
+        {
+            EventHandler handler;
+            lock (syncRoot)
+            {
+                if (operationGeneration != this.generation)
+                    return;
+                if (this.status == Status.Canceling && newStatus == Status.Running)
+                    return;
+                this.percentComplete = percentageComplete;
+                this.status = newStatus;
+                this.transferStatusMsg = message;
+                handler = this.Update;
+            }
+            handler?.Invoke(this, EventArgs.Empty);
         }
 
         public static bool CanRestart(Status status)
@@ -154,14 +225,13 @@ namespace SuperPutty.Scp
 
         public Status TransferStatus
         {
-            get { lock (this) { return this.status; } }
-            private set { lock (this) { this.status = value; } }
+            get { lock (syncRoot) { return this.status; } }
         }
 
-        public int PercentComplete { get; private set; }
-        public string TransferStatusMsg { get; private set; }
-        public DateTime? StartTime { get; private set; }
-        public DateTime? EndTime { get; private set; }
+        public int PercentComplete { get { lock (syncRoot) { return this.percentComplete; } } }
+        public string TransferStatusMsg { get { lock (syncRoot) { return this.transferStatusMsg; } } }
+        public DateTime? StartTime { get { lock (syncRoot) { return this.startTime; } } }
+        public DateTime? EndTime { get { lock (syncRoot) { return this.endTime; } } }
 
         public enum Status
         {
@@ -169,6 +239,7 @@ namespace SuperPutty.Scp
             Running,
             Complete,
             Error,
+            Canceling,
             Canceled
         }
     } 

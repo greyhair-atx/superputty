@@ -41,22 +41,45 @@ namespace SuperPutty.Utils
         {
             this.session = session;
             this.Args = "-scale=auto ";
+            this.ArgsForLog = "-scale=auto ";
 
             if (session.Port != 0)
+            {
                 this.Args += "-port=" + session.Port.ToString() + " ";
+                this.ArgsForLog += "-port=" + session.Port.ToString() + " ";
+            }
 
             if (!String.IsNullOrEmpty(session.Password))
-                this.Args += "-password=\"" + session.Password + "\" ";
+            {
+                if (SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
+                {
+                    this.Args += "-password=" + CommandLineOptions.QuoteArgument(session.Password) + " ";
+                    this.ArgsForLog += "-password=XXXXX ";
+                }
+                else
+                {
+                    Log.Warn("VNC password was not placed on the command line because plaintext password arguments are disabled");
+                }
+            }
 
             if (!String.IsNullOrEmpty(session.ExtraArgs))
-                this.Args += session.ExtraArgs + " ";
+            {
+                string safeExtraArgs = CommandLineOptions.RemoveSensitiveArguments(session.ExtraArgs);
+                if (!String.IsNullOrEmpty(safeExtraArgs))
+                {
+                    this.Args += safeExtraArgs + " ";
+                    this.ArgsForLog += safeExtraArgs + " ";
+                }
+            }
 
-            this.Args += "\"" + session.Host + "\"";
+            this.Args += CommandLineOptions.QuoteArgument(session.Host);
+            this.ArgsForLog += CommandLineOptions.QuoteArgument(session.Host);
 
             this.StartingDir = "%userprofile%\\Desktop";
         }
 
         public string Args { get; set; }
+        public string ArgsForLog { get; private set; }
         public string StartingDir { get; set; }
 
     }

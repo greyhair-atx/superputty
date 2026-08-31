@@ -1936,59 +1936,82 @@ namespace SuperPutty
         private void checkForUpdatesToolStripMenuItem_Click(object sender, EventArgs e)
         {
             Log.Info("Checking for application update");
-            try {
-                httpRequest httpUpdateRequest = new httpRequest();
+            try
+            {
+                UpdateRequestClient updateRequestClient = new UpdateRequestClient();
                 string updateChannel = SuperPuTTY.Settings.UpdateChannel;
                 string releaseApiUrl = UpdateChannel.GetReleaseApiUrl(updateChannel);
+                bool showCurrentVersion = Object.ReferenceEquals(sender, checkForUpdatesToolStripMenuItem);
                 Log.InfoFormat("Using {0} update channel ({1})", updateChannel, releaseApiUrl);
-                httpUpdateRequest.MakeRequest(releaseApiUrl, delegate (bool success, string content)
+                updateRequestClient.MakeRequest(releaseApiUrl, delegate (bool success, string content)
                 {
-                    if (success)
+                    if (IsDisposed || Disposing || !IsHandleCreated)
+                        return;
+                    try
                     {
-                        DataContractJsonSerializer js = new DataContractJsonSerializer(typeof(GitRelease));
-                        MemoryStream ms = new MemoryStream(Encoding.ASCII.GetBytes(content));
-                        GitRelease latest = (GitRelease)js.ReadObject(ms);
-                        ms.Close();
-
-                        Version latest_version = latest.GetVersion();
-                        Version SuperPuTTY_version = new Version(SuperPuTTY.Version);
-
-                        if (latest_version.CompareTo(SuperPuTTY_version) > 0)
-                        {
-                            Log.Info("New Application version found! " + latest.version);
-
-                            if (MessageBox.Show("An updated version of SuperPuTTY (" + latest.version + ") is Available Would you like to visit the download page to upgrade?",
-                                "SuperPutty Update Found",
-                                MessageBoxButtons.YesNo,
-                                MessageBoxIcon.Question,
-                                MessageBoxDefaultButton.Button1,
-                                MessageBoxOptions.DefaultDesktopOnly) == DialogResult.Yes)
-                            {
-                                Process.Start(latest.release_url);
-                            }
-                        }
-                        else
-                        {
-                            if (sender.ToString().Equals(checkForUpdatesToolStripMenuItem.Text))
-                            {
-                                MessageBox.Show("You are running the latest version of SuperPutty", "SuperPuTTY Update Check", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                            }
-                        }
+                        BeginInvoke(new Action(() => HandleUpdateResponse(success, content, showCurrentVersion)));
                     }
-                    else
+                    catch (InvalidOperationException)
                     {
-                        MessageBox.Show("There was an error while checking for updates. Please try again later.", "Error during update check", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        Log.Warn("An Error occurred trying to check for program updates: " + content);                        
+                        // The form was closed between the lifecycle check and BeginInvoke.
                     }
                 });
             }
-            catch (System.Net.WebException ex)
+            catch (Exception ex)
             {
-                Log.Warn("An Exception occurred while trying to check for program updates: " + ex.ToString());
+                Log.Warn("An exception occurred while starting the update check", ex);
             }
-            catch (System.FormatException ex)
+        }
+
+        private void HandleUpdateResponse(bool success, string content, bool showCurrentVersion)
+        {
+            if (!success)
             {
-                Log.Warn("An Exception occurred while trying to check for program updates: " + ex.ToString());
+                MessageBox.Show("There was an error while checking for updates. Please try again later.", "Error during update check", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Log.Warn("An error occurred trying to check for program updates: " + content);
+                return;
+            }
+
+            try
+            {
+                GitRelease latest;
+                DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(GitRelease));
+                using (MemoryStream stream = new MemoryStream(Encoding.UTF8.GetBytes(content)))
+                    latest = (GitRelease)serializer.ReadObject(stream);
+
+                Version latestVersion = latest.GetVersion();
+                Version currentVersion = new Version(SuperPuTTY.Version);
+                if (latestVersion.CompareTo(currentVersion) > 0)
+                {
+                    Log.Info("New application version found: " + latest.version);
+                    if (MessageBox.Show(
+                        "An updated version of SuperPuTTY (" + latest.version + ") is available. Would you like to visit the download page?",
+                        "SuperPuTTY Update Found",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question,
+                        MessageBoxDefaultButton.Button1) == DialogResult.Yes)
+                    {
+                        Uri releaseUri;
+                        if (Uri.TryCreate(latest.release_url, UriKind.Absolute, out releaseUri) &&
+                            String.Equals(releaseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                        {
+                            Process.Start(releaseUri.AbsoluteUri);
+                        }
+                        else
+                        {
+                            throw new InvalidDataException("The release URL was not a valid HTTPS URL.");
+                        }
+                    }
+                }
+                else if (showCurrentVersion)
+                {
+                    MessageBox.Show("You are running the latest version of SuperPuTTY", "SuperPuTTY Update Check", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("Unable to process the update response", ex);
+                MessageBox.Show("The update service returned an invalid response.", "Error during update check", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
         #endregion

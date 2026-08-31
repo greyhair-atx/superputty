@@ -61,7 +61,7 @@ namespace SuperPutty.Utils
 
         public void Run(String[] args)
         {
-            Log.InfoFormat("Received remote Run command: [{0}]", String.Join(" ", args));
+            Log.InfoFormat("Received remote Run command: [{0}]", CommandLineOptions.RedactSensitiveArguments(args));
             CommandLineOptions cmd = new CommandLineOptions(args);
             SessionDataStartInfo ssi = cmd.ToSessionStartInfo();
             SuperPuTTY.OpenSession(ssi);

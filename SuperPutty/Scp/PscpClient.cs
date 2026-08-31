@@ -15,7 +15,7 @@ using SuperPutty.Utils;
 namespace SuperPutty.Scp
 {
     /// <summary>
-    /// Simplified version of PscpTransfer class
+    /// Runs PSCP directory listings and file transfers.
     /// - Movied LoginDialog calls outside
     /// - Made calls synchronous...move async outside
     /// - Make pieces unit-testable
@@ -159,9 +159,9 @@ namespace SuperPutty.Scp
             StringBuilder sb = new StringBuilder();
             sb.Append("-ls ");
 
-            if (session.PuttySession != null)
+            if (!String.IsNullOrEmpty(session.PuttySession))
             {
-                sb.AppendFormat("-load \"{0}\" ", session.PuttySession);
+                sb.AppendFormat("-load {0} ", CommandLineOptions.QuoteArgument(session.PuttySession));
             }
 
             //only send the password if AllowPlainTextPuttyPasswordArg is checked
@@ -170,16 +170,19 @@ namespace SuperPutty.Scp
             //fix: use the parameter "password"
             if (!string.IsNullOrEmpty(password) && SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
             {
-                sb.AppendFormat("-pw {0} ", password);
+                sb.AppendFormat("-pw {0} ", CommandLineOptions.QuoteArgument(password));
             }
-            
-            if (!string.IsNullOrEmpty(session.ExtraArgs.ToString()))
+
+            if (!String.IsNullOrEmpty(session.ExtraArgs))
             {
-                sb.AppendFormat(" {0} ", session.ExtraArgs.ToString());
+                string safeExtraArgs = CommandLineOptions.RemoveSensitiveArguments(session.ExtraArgs);
+                if (!String.IsNullOrEmpty(safeExtraArgs))
+                    sb.AppendFormat(" {0} ", safeExtraArgs);
             }
 
             sb.AppendFormat("-P {0} ", session.Port);
-            sb.AppendFormat("{0}@{1}:\"{2}\"", session.Username, session.Host, path);
+            sb.Append(CommandLineOptions.QuoteArgument(
+                String.Format("{0}@{1}:{2}", session.Username, session.Host, path)));
 
             return sb.ToString();
         }
@@ -196,6 +199,15 @@ namespace SuperPutty.Scp
         /// <param name="callback"></param>
         /// <returns></returns>
         public FileTransferResult CopyFiles(List<BrowserFileInfo> sourceFiles, BrowserFileInfo target, TransferUpdateCallback callback)
+        {
+            return CopyFiles(sourceFiles, target, callback, CancellationToken.None);
+        }
+
+        public FileTransferResult CopyFiles(
+            List<BrowserFileInfo> sourceFiles,
+            BrowserFileInfo target,
+            TransferUpdateCallback callback,
+            CancellationToken cancellationToken)
         {
             lock(this)
             {
@@ -225,28 +237,34 @@ namespace SuperPutty.Scp
                         }
                         return completed;
                     }, 
-                    null, null);
+                    null, null, cancellationToken);
 
                 return result;
             }
         }
 
-        private static string ToArgs(SessionData session, string password, List<BrowserFileInfo> source, BrowserFileInfo target)
+        internal static string ToArgs(SessionData session, string password, List<BrowserFileInfo> source, BrowserFileInfo target)
         {
             StringBuilder sb = new StringBuilder();
 
             sb.Append("-r -agent ");  // default arguments
             if (!String.IsNullOrEmpty(session.PuttySession))
             {
-                sb.Append("-load \"").Append(session.PuttySession).Append("\" ");
+                sb.Append("-load ").Append(CommandLineOptions.QuoteArgument(session.PuttySession)).Append(" ");
             }
-            if (!String.IsNullOrEmpty(password))
+            if (!String.IsNullOrEmpty(password) && SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
             {
-                sb.Append("-pw ").Append(password).Append(" ");
+                sb.Append("-pw ").Append(CommandLineOptions.QuoteArgument(password)).Append(" ");
             }
-            if (!string.IsNullOrEmpty(session.ExtraArgs.ToString()))
+            else if (!String.IsNullOrEmpty(password))
             {
-                sb.AppendFormat(" {0} ", session.ExtraArgs.ToString());
+                Log.Warn("PSCP password was not placed on the command line because plaintext password arguments are disabled");
+            }
+            if (!String.IsNullOrEmpty(session.ExtraArgs))
+            {
+                string safeExtraArgs = CommandLineOptions.RemoveSensitiveArguments(session.ExtraArgs);
+                if (!String.IsNullOrEmpty(safeExtraArgs))
+                    sb.AppendFormat(" {0} ", safeExtraArgs);
             }
             sb.AppendFormat("-P {0} ", session.Port);
 
@@ -255,9 +273,10 @@ namespace SuperPutty.Scp
                 // possible to send multiple files remotely at a time
                 foreach(BrowserFileInfo file in source)
                 {
-                    sb.AppendFormat("\"{0}\" ", file.Path);
+                    sb.Append(CommandLineOptions.QuoteArgument(file.Path)).Append(" ");
                 }
-                sb.AppendFormat(" {0}@{1}:\"{2}\"", session.Username, session.Host, target.Path);
+                sb.Append(" ").Append(CommandLineOptions.QuoteArgument(
+                    String.Format("{0}@{1}:{2}", session.Username, session.Host, target.Path)));
             }
             else
             {
@@ -265,8 +284,9 @@ namespace SuperPutty.Scp
                 {
                     Log.WarnFormat("Not possible to transfer multiple remote files locally at one time.  Transferring first file only!");
                 }
-                sb.AppendFormat(" {0}@{1}:\"{2}\" ", session.Username, session.Host, source[0].Path);
-                sb.AppendFormat("\"{0}\"", target.Path);
+                sb.Append(" ").Append(CommandLineOptions.QuoteArgument(
+                    String.Format("{0}@{1}:{2}", session.Username, session.Host, source[0].Path))).Append(" ");
+                sb.Append(CommandLineOptions.QuoteArgument(target.Path));
             }
 
             return sb.ToString();
@@ -290,7 +310,8 @@ namespace SuperPutty.Scp
             string argsToLog, 
             Func<string, bool> inlineOutHandler, 
             Func<string, bool> inlineErrHandler, 
-            Action<string[]> successOutHandler)
+            Action<string[]> successOutHandler,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             if (!File.Exists(this.Options.PscpLocation))
             {
@@ -315,19 +336,24 @@ namespace SuperPutty.Scp
                 Timer timeoutTimer = null;
                 AsyncStreamReader outReader = null;
                 AsyncStreamReader errReader = null;
+                CancellationTokenRegistration cancellationRegistration = default(CancellationTokenRegistration);
+                int terminalState = 0;
                 try
                 {
                     // Start pscp
                     Log.InfoFormat("Starting process: file={0}, args={1}", this.Options.PscpLocation, argsToLog);
                     proc.Start();
+                    cancellationRegistration = cancellationToken.Register(() => SafeKill(proc));
 
                     // Timeout when no output is received
                     timeoutTimer = new Timer(
-                        (x) => 
-                        { 
-                            // timeout
-                            SafeKill(proc);
-                            result.SetErrorFormat("Process timed out, args={0}", argsToLog);
+                        (x) =>
+                        {
+                            if (Interlocked.CompareExchange(ref terminalState, 1, 0) == 0)
+                            {
+                                result.SetErrorFormat("Process timed out, args={0}", argsToLog);
+                                SafeKill(proc);
+                            }
                         }, 
                         null, this.Options.TimeoutMs, Timeout.Infinite);
 
@@ -343,16 +369,19 @@ namespace SuperPutty.Scp
                             bool completed = false;
                             if (strOut == PUTTY_INTERACTIVE_AUTH || strOut.Contains("assword:"))
                             {
-                                result.StatusCode = ResultStatusCode.RetryAuthentication;
-                                Log.Debug("Username/Password invalid or not sent");
-                                SafeKill(proc);
+                                if (Interlocked.CompareExchange(ref terminalState, 1, 0) == 0)
+                                {
+                                    result.StatusCode = ResultStatusCode.RetryAuthentication;
+                                    Log.Debug("Username/Password invalid or not sent");
+                                    SafeKill(proc);
+                                }
                                 keepReading = false;
                             }
                             else if (inlineOutHandler != null)
                             {
                                 completed = inlineOutHandler(strOut);
                             }
-                            timeoutTimer.Change(completed ? Timeout.Infinite : this.Options.TimeoutMs, Timeout.Infinite);
+                            SafeChangeTimer(timeoutTimer, completed ? Timeout.Infinite : this.Options.TimeoutMs);
                             return keepReading;
                         });
                     errReader = new AsyncStreamReader(
@@ -364,15 +393,18 @@ namespace SuperPutty.Scp
                             bool completed = false;
                             if (strErr != null && strErr.Contains(PUTTY_NO_KEY))
                             {
-                                result.SetError("Host key not cached.  Connect via putty to cache key then try again", null);
-                                SafeKill(proc);
+                                if (Interlocked.CompareExchange(ref terminalState, 1, 0) == 0)
+                                {
+                                    result.SetError("Host key not cached.  Connect via putty to cache key then try again", null);
+                                    SafeKill(proc);
+                                }
                                 keepReading = false;
                             }
                             else if (inlineErrHandler != null)
                             {
                                 completed = inlineErrHandler(strErr);
                             }
-                            timeoutTimer.Change(completed ? Timeout.Infinite : this.Options.TimeoutMs, Timeout.Infinite);
+                            SafeChangeTimer(timeoutTimer, completed ? Timeout.Infinite : this.Options.TimeoutMs);
                             return keepReading;
                         });
 
@@ -381,9 +413,27 @@ namespace SuperPutty.Scp
                     proc.WaitForExit();
 
                     Log.InfoFormat("Process exited, pid={0}, exitCode={1}", proc.Id, proc.ExitCode);
-                    timeoutTimer.Change(Timeout.Infinite, Timeout.Infinite);
+                    Timer completedTimer = timeoutTimer;
+                    timeoutTimer = null;
+                    if (completedTimer != null)
+                    {
+                        using (ManualResetEvent timerStopped = new ManualResetEvent(false))
+                        {
+                            if (completedTimer.Dispose(timerStopped))
+                                timerStopped.WaitOne();
+                        }
+                    }
                     string[] output = outReader.StopAndGetData();
                     string[] err = errReader.StopAndGetData();
+
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        Interlocked.Exchange(ref terminalState, 1);
+                        result.StatusCode = ResultStatusCode.Canceled;
+                        return;
+                    }
+                    if (Interlocked.CompareExchange(ref terminalState, 1, 0) != 0)
+                        return;
 
                     string outputStr = String.Join("\r\n", output);
                     if (proc.ExitCode == 0 && outputStr.Contains(PUTTY_UNABLE_TO_OPEN))
@@ -409,7 +459,7 @@ namespace SuperPutty.Scp
                         }
                         else if (output.Contains(PUTTY_ARGUMENTS_HELP_HEADER))
                         {
-                            result.SetErrorFormat("Invalid arguments sent to pscp, args={0}, output={1}", args, output);
+                            result.SetErrorFormat("Invalid arguments sent to pscp, args={0}, output={1}", argsToLog, output);
                         }
                         else if (err.Contains(PUTTY_HOST_DOES_NOT_EXIST))
                         {
@@ -423,6 +473,7 @@ namespace SuperPutty.Scp
                 }
                 finally
                 {
+                    cancellationRegistration.Dispose();
                     SafeKill(proc);
                     SafeDispose(timeoutTimer, proc, outReader, errReader);
                 }
@@ -473,7 +524,20 @@ namespace SuperPutty.Scp
             }
             catch (Exception ex)
             {
-                Log.Error("Error killing proc, pid=" + proc.Id, ex);
+                Log.Error("Error killing PSCP process", ex);
+            }
+        }
+
+        private static void SafeChangeTimer(Timer timer, int dueTime)
+        {
+            if (timer == null) return;
+            try
+            {
+                timer.Change(dueTime, Timeout.Infinite);
+            }
+            catch (ObjectDisposedException)
+            {
+                // A reader callback can arrive while the owning operation is being disposed.
             }
         }
 
@@ -481,7 +545,7 @@ namespace SuperPutty.Scp
         {
             foreach (IDisposable disposable in disposables)
             {
-                if (disposable == null) return;
+                if (disposable == null) continue;
                 try
                 {
                     disposable.Dispose();
@@ -557,10 +621,10 @@ namespace SuperPutty.Scp
                         keepReading = AppendLineAndNotify(line);
                     }
                 }
-                catch (ThreadAbortException)
+                catch (ObjectDisposedException)
                 {
-                    // signal to stop
-                    Log.Debug("Thread aborted to stop read");
+                    // Disposing the reader is the cooperative signal used to unblock a pending read.
+                    Log.Debug("Stream reader disposed to stop read");
                 }
                 catch (Exception ex)
                 {
@@ -592,9 +656,11 @@ namespace SuperPutty.Scp
             {
                 if (this.Thread.IsAlive)
                 {
-                    // consider better way to know operation is done reading output...timed out join is ok but not great.
-                    this.Thread.Join(2000);
-                    this.Thread.Abort();
+                    if (!this.Thread.Join(2000))
+                    {
+                        this.Reader.Dispose();
+                        this.Thread.Join(2000);
+                    }
                 }
 
                 lock (this)
@@ -613,7 +679,8 @@ namespace SuperPutty.Scp
             {
                 if (this.Thread.IsAlive)
                 {
-                    this.Thread.Abort();
+                    this.Reader.Dispose();
+                    this.Thread.Join(2000);
                 }
             }
         }

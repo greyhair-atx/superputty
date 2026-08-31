@@ -13,8 +13,6 @@ namespace SuperPutty.Utils
 
         public const int WM_CLOSE = 0x10;
         public const int WM_DESTROY = 0x02;
-        public const short WM_COPYDATA = 74;
-
         public const int WM_KEYDOWN = 0x100;
         public const int WM_KEYUP = 0x101;
         public const int WM_CHAR = 0x102;
@@ -23,8 +21,6 @@ namespace SuperPutty.Utils
 
         public const int WM_GETTEXTLENGTH = 0XE;
         public const int WM_GETTEXT = 0XD;
-
-        public const int WM_HOTKEY_MSG_ID = 0x0312;
 
         public const int
             VK_CONTROL = 0x11,
@@ -139,28 +135,7 @@ namespace SuperPutty.Utils
             public ushort wParamH;
         }
 
-        [Flags]
-        public enum AnimateWindowFlags
-        {
-            AW_HOR_POSITIVE = 0x00000001,
-            AW_HOR_NEGATIVE = 0x00000002,
-            AW_VER_POSITIVE = 0x00000004,
-            AW_VER_NEGATIVE = 0x00000008,
-            AW_CENTER = 0x00000010,
-            AW_HIDE = 0x00010000,
-            AW_ACTIVATE = 0x00020000,
-            AW_SLIDE = 0x00040000,
-            AW_BLEND = 0x00080000
-        }
-
         public const int EM_SETPASSWORDCHAR       = 0x00CC;
-
-        public struct COPYDATA
-        {
-            public int dwData;
-            public uint cbData;
-            public IntPtr lpData;
-        }
 
         /// <summary>Enumeration of the different ways of showing a window using
         /// ShowWindow</summary>
@@ -221,18 +196,6 @@ namespace SuperPutty.Utils
             /// minimizing windows from a different thread.</summary>
             /// <remarks>See SW_FORCEMINIMIZE</remarks>
             ForceMinimized = 11
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        public struct WINDOWPLACEMENT
-        {
-            public int length;
-            public int flags;
-            public WindowShowStyle showCmd;
-            public System.Drawing.Point ptMinPosition;
-            public System.Drawing.Point ptMaxPosition;
-            public System.Drawing.Rectangle rcNormalPosition;
-            public System.Drawing.Rectangle rcDevice;
         }
 
         #region Windows Messages Enum
@@ -1157,27 +1120,9 @@ namespace SuperPutty.Utils
         }
         #endregion
 
-        public static class HotKeysConstants
-        {
-            public const int NOMOD = 0x0000;
-            public const int ALT = 0x0001;
-            public const int CTRL = 0x0002;
-            public const int SHIFT = 0x0004;
-            public const int WIN = 0x0008;
-        }
-
         #endregion
 
         #region Pinvoke/Win32 Methods
-
-        [DllImport("user32.dll")]
-        public static extern bool SetWindowPlacement(IntPtr hWnd, [In] ref WINDOWPLACEMENT lpwndpl);
-
-        [DllImport("user32.dll")]
-        public static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
-
-        [DllImport("user32.dll")]
-        public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern long SetParent(IntPtr hWndChild, IntPtr hWndParent);
@@ -1219,9 +1164,6 @@ namespace SuperPutty.Utils
 
         [DllImport("user32.dll")]
         public static extern bool ShowWindow(IntPtr hWnd, WindowShowStyle nCmdShow);
-
-        [DllImport("user32")]
-        public static extern bool AnimateWindow(IntPtr hwnd, int time, AnimateWindowFlags flags);
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, int wParam, IntPtr lParam);

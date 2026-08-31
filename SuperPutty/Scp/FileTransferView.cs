@@ -51,7 +51,7 @@ namespace SuperPutty.Scp
 
         private void grid_CellMouseDown(object sender, DataGridViewCellMouseEventArgs e)
         {
-            if (MouseButtons == MouseButtons.Right)
+            if (MouseButtons == MouseButtons.Right && e.RowIndex >= 0)
             {
                 if (!grid.Rows[e.RowIndex].Selected)
                 {

@@ -77,7 +77,8 @@ namespace SuperPutty.Utils
         /// <param name="handle">The Windows Handle to send to</param>
         public void SendToTerminal(IntPtr handle)
         {
-            Log.InfoFormat("SendToTerminal: Handle={0}, Command=[{1}]", handle, this);
+            // Command text may contain passwords, tokens, or other secrets. Never log it.
+            Log.DebugFormat("SendToTerminal: Handle={0}", handle);
             if (!string.IsNullOrEmpty(this.Command))
             {
                 // send normal string command

@@ -5,6 +5,7 @@ using SuperPutty.Data;
 using log4net;
 using System.Web;
 using System.Text.RegularExpressions;
+using System.Linq;
 
 namespace SuperPutty.Utils
 {
@@ -34,6 +35,12 @@ namespace SuperPutty.Utils
     public class CommandLineOptions
     {
         private static readonly ILog Log = LogManager.GetLogger(typeof(CommandLineOptions));
+        private static readonly Regex SensitiveArgumentRegex = new Regex(
+            @"(?ix)(?<prefix>(?:^|\s)(?:-pw|-password|/password|/p)(?:\s+|=|:))(?<value>""[^""]*""|\S+)",
+            RegexOptions.Compiled);
+        private static readonly Regex UriPasswordRegex = new Regex(
+            @"(?i)(?<prefix>\b[a-z][a-z0-9+.-]*://[^\s/:@]+:)[^\s]*(?<suffix>@)",
+            RegexOptions.Compiled);
 
         public CommandLineOptions(string[] args)
         {
@@ -59,14 +66,14 @@ namespace SuperPutty.Utils
             }
             catch (Exception ex)
             {
-                Log.Error(string.Format("Error parsing args [{0}]", String.Join(" ", args)), ex);
+                Log.Error(string.Format("Error parsing args [{0}]", RedactSensitiveArguments(args)), ex);
                 this.IsValid = false;
             }
         }
 
         void Parse(string[] args)
         {
-            Log.InfoFormat("CommandLine: [{0}]", String.Join(" ", args));
+            Log.InfoFormat("CommandLine: [{0}]", RedactSensitiveArguments(args));
             Queue<string> queue = new Queue<string>(args);
             string arg = null;
             while(queue.Count > 0)
@@ -182,6 +189,98 @@ namespace SuperPutty.Utils
                 }
             }
             return allCommands;
+        }
+
+        /// <summary>Remove credentials from a command line before it is logged.</summary>
+        public static string RedactSensitiveArguments(string commandLine)
+        {
+            if (String.IsNullOrEmpty(commandLine))
+            {
+                return commandLine ?? String.Empty;
+            }
+
+            string redacted = SensitiveArgumentRegex.Replace(
+                commandLine,
+                match => match.Groups["prefix"].Value + "XXXXX");
+            return UriPasswordRegex.Replace(
+                redacted,
+                match => match.Groups["prefix"].Value + "XXXXX" + match.Groups["suffix"].Value);
+        }
+
+        public static string RedactSensitiveArguments(IEnumerable<string> args)
+        {
+            if (args == null)
+                return String.Empty;
+
+            List<string> redacted = new List<string>();
+            bool redactNext = false;
+            foreach (string argument in args)
+            {
+                string value = argument ?? String.Empty;
+                if (redactNext)
+                {
+                    redacted.Add("XXXXX");
+                    redactNext = false;
+                    continue;
+                }
+
+                if (String.Equals(value, "-pw", StringComparison.OrdinalIgnoreCase) ||
+                    String.Equals(value, "-password", StringComparison.OrdinalIgnoreCase) ||
+                    String.Equals(value, "/password", StringComparison.OrdinalIgnoreCase) ||
+                    String.Equals(value, "/p", StringComparison.OrdinalIgnoreCase))
+                {
+                    redacted.Add(value);
+                    redactNext = true;
+                }
+                else
+                {
+                    redacted.Add(RedactSensitiveArguments(value));
+                }
+            }
+            return String.Join(" ", redacted);
+        }
+
+        /// <summary>Remove password-bearing switches before forwarding user-supplied extra arguments.</summary>
+        public static string RemoveSensitiveArguments(string commandLine)
+        {
+            return String.IsNullOrEmpty(commandLine)
+                ? String.Empty
+                : SensitiveArgumentRegex.Replace(commandLine, " ").Trim();
+        }
+
+        /// <summary>Quote one argument according to the Windows CommandLineToArgvW rules.</summary>
+        public static string QuoteArgument(string value)
+        {
+            if (String.IsNullOrEmpty(value))
+            {
+                return "\"\"";
+            }
+            if (!value.Any(c => Char.IsWhiteSpace(c) || c == '"'))
+            {
+                return value;
+            }
+
+            StringBuilder result = new StringBuilder("\"");
+            int backslashes = 0;
+            foreach (char c in value)
+            {
+                if (c == '\\')
+                {
+                    backslashes++;
+                }
+                else if (c == '"')
+                {
+                    result.Append('\\', backslashes * 2 + 1).Append(c);
+                    backslashes = 0;
+                }
+                else
+                {
+                    result.Append('\\', backslashes).Append(c);
+                    backslashes = 0;
+                }
+            }
+            result.Append('\\', backslashes * 2).Append('"');
+            return result.ToString();
         }
 
         public SessionDataStartInfo ToSessionStartInfo()

@@ -19,8 +19,8 @@ namespace SuperPutty.Utils
                 Log.Warn("SuperPuTTY is set to NOT allow the use of the -pw <password> argument, this can be overriden in Tools -> Options -> GUI");
 
             // open filezilla with the session info (https://wiki.filezilla-project.org/Command-line_arguments_%28Client%29)
-            String pw = session.Password;
-            String user = Uri.EscapeDataString(session.Username);
+            String pw = Uri.EscapeDataString(session.Password ?? String.Empty);
+            String user = Uri.EscapeDataString(session.Username ?? String.Empty);
             String userPw =    !String.IsNullOrEmpty(user) ? (!String.IsNullOrEmpty(pw) && SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg ? user + ":" + pw      + "@" : user + "@") : "";
             String userPwLog = !String.IsNullOrEmpty(user) ? (!String.IsNullOrEmpty(pw) && SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg ? user + ":" + "XXXXX" + "@" : user + "@") : "";
             String rp = String.IsNullOrEmpty(session.RemotePath) ? "" : session.RemotePath;
@@ -41,12 +41,12 @@ namespace SuperPutty.Utils
                 Log.Warn("SuperPuTTY is set to NOT allow the use of the -pw <password> argument, this can be overriden in Tools -> Options -> GUI");
 
             // open WinSCP with the session info (https://winscp.net/eng/docs/commandline)           
-            String pw = Uri.EscapeDataString(session.Password);
-            String user = Uri.EscapeDataString(session.Username);
+            String pw = Uri.EscapeDataString(session.Password ?? String.Empty);
+            String user = Uri.EscapeDataString(session.Username ?? String.Empty);
             String userPw =    !String.IsNullOrEmpty(user) ? (!String.IsNullOrEmpty(pw) && SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg ? user + ":" + pw      + "@" : user + "@") : "";
             String userPwLog = !String.IsNullOrEmpty(user) ? (!String.IsNullOrEmpty(pw) && SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg ? user + ":" + "XXXXX" + "@" : user + "@") : "";
             String rp = String.IsNullOrEmpty(session.RemotePath) ? "" : session.RemotePath;
-            if (!rp.Substring(rp.Length).Equals("/"))
+            if (!String.IsNullOrEmpty(rp) && !rp.EndsWith("/", StringComparison.Ordinal))
             {
                 rp += "/";
             }

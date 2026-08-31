@@ -475,18 +475,37 @@ namespace SuperPutty
 
                         if(Regex.IsMatch(fileName, @"^https?:\/\/", RegexOptions.IgnoreCase))
                         {
-                            try
+                            Uri scriptUri;
+                            if (!RemoteSpslLoader.TryGetSecureUri(fileName, out scriptUri))
                             {
-                                HttpWebRequest req = WebRequest.CreateHttp(fileName);
-                                var response = req.GetResponse();
-                                using (var stream = new StreamReader(response.GetResponseStream()))
-                                {
-                                    script = stream.ReadToEnd();
-                                }
+                                MessageBox.Show(
+                                    "Remote SPSL scripts must use HTTPS. The script was not executed.\n\n" + fileName,
+                                    "Blocked Insecure Remote Script",
+                                    MessageBoxButtons.OK,
+                                    MessageBoxIcon.Warning);
                             }
-                            catch(Exception)
+                            else if (MessageBox.Show(
+                                "This remote SPSL script can type commands into the session.\n\n" +
+                                scriptUri.AbsoluteUri +
+                                "\n\nDownload and run this script?",
+                                "Trust Remote SPSL Script?",
+                                MessageBoxButtons.YesNo,
+                                MessageBoxIcon.Warning,
+                                MessageBoxDefaultButton.Button2) == DialogResult.Yes)
                             {
-                                script = String.Empty;
+                                try
+                                {
+                                    script = RemoteSpslLoader.Download(scriptUri);
+                                }
+                                catch(Exception ex)
+                                {
+                                    Log.Warn("Unable to securely download remote SPSL script from host " + scriptUri.Host, ex);
+                                    MessageBox.Show(
+                                        "The remote SPSL script could not be downloaded securely and was not executed.",
+                                        "Remote Script Error",
+                                        MessageBoxButtons.OK,
+                                        MessageBoxIcon.Warning);
+                                }
                             }
                         }
                         else
@@ -528,24 +547,25 @@ namespace SuperPutty
         public static void OpenScpSession(SessionData session)
         {
             Log.InfoFormat("Opening scp session, id={0}", session == null ? "" : session.SessionId);
-            if (!IsScpEnabled)
+            if (session == null)
+            {
+                Log.Warn("Could not open null session");
+            }
+            else if (!IsScpEnabled)
             {
                 ReportStatus($"Could not open session, pscp not found: {session.SessionId} [SCP]");
             }
-            else if (session != null)
+            else
             {
-                var homePrefix = session.Username.ToLower().Equals("root") ? Settings.PscpRootHomePrefix : Settings.PscpHomePrefix;
+                var homePrefix = String.Equals(session.Username, "root", StringComparison.OrdinalIgnoreCase)
+                    ? Settings.PscpRootHomePrefix
+                    : Settings.PscpHomePrefix;
                 PscpBrowserPanel panel = new PscpBrowserPanel(
                     session, new PscpOptions { PscpLocation = Settings.PscpExe, PscpHomePrefix = homePrefix });
                 ApplyDockRestrictions(panel);
                 ApplyIconForWindow(panel, session);
                 panel.Show(MainForm.DockPanel, session.LastDockstate);
-
                 ReportStatus($"Opened session: {session.SessionId} [SCP]");
-            }
-            else
-            {
-                Log.Warn("Could not open null session");
             }
         }
 

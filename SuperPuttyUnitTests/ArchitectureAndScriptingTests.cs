@@ -49,5 +49,24 @@ namespace SuperPuttyUnitTests
             Assert.True(thread.IsBackground);
             Assert.AreEqual("SPSL script execution", thread.Name);
         }
+
+        [TestCase("http://example.com/script.spsl", false)]
+        [TestCase("https://example.com/script.spsl", true)]
+        [TestCase("file:///C:/script.spsl", false)]
+        [TestCase("https://user:password@example.com/script.spsl", false)]
+        public void RemoteSpslOnlyAcceptsHttps(string location, bool expected)
+        {
+            Uri uri;
+            Assert.AreEqual(expected, RemoteSpslLoader.TryGetSecureUri(location, out uri));
+        }
+
+        [TestCase("http://api.github.com/releases/latest", false)]
+        [TestCase("https://api.github.com/releases/latest", true)]
+        [TestCase("https://user:password@api.github.com/releases/latest", false)]
+        public void UpdateRequestsOnlyAcceptCredentialFreeHttps(string location, bool expected)
+        {
+            Uri uri;
+            Assert.AreEqual(expected, UpdateRequestClient.TryGetSecureUri(location, out uri));
+        }
     }
 }
