@@ -2,7 +2,7 @@
 param(
     [string] $Configuration = 'Release',
     [string] $Platform = 'x64',
-    [string] $ExpectedVersion = '1.6.1.0'
+    [string] $ExpectedVersion = '1.7.0.0'
 )
 
 $ErrorActionPreference = 'Stop'

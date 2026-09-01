@@ -70,9 +70,19 @@ The successful build produces:
 - `SuperPuttyUnitTests\bin\x64\Release\SuperPuttyUnitTests.exe`
 - `SuperPuttyInstaller\bin\x64\Release\SuperPuttySetup.msi`
 
-The WiX 6 MSI preserves the 1.6.1 product version, original upgrade code, license UI, shortcuts, themes, and post-install launch option. It is an x64 package that installs under the native 64-bit Program Files directory, and its ICE validation completes without warnings.
+The WiX 6 MSI uses product version 1.7.0 while preserving the original upgrade code, license UI, shortcuts, themes, and post-install launch option. It is an x64 package that installs under the native 64-bit Program Files directory, and its ICE validation completes without warnings.
 
 The complete Release build currently succeeds with zero warnings and zero errors.
+
+## Version 1.7.0 changes
+
+- Credentials are redacted from logs, and PSCP/VNC plaintext password arguments require an explicit compatibility setting.
+- FreeRDP certificate bypass is now an explicit per-session option; certificate validation is the default.
+- Remote SPSL and session collections require credential-free HTTPS and enforce download, timeout, redirect, recursion, and circular-reference safeguards.
+- Session-collection expansion, transfer cancellation, window tracking, and RDP argument construction were corrected.
+- The update checker now validates HTTPS responses, bounds downloads, disposes network resources deterministically, and marshals results safely to the UI thread.
+- Obsolete patch files, the SSH.NET prototype and dependency tree, and other unreachable legacy components were removed.
+- The executable version is `1.7.0.0`; the MSI uses the Windows Installer-compatible product version `1.7.0`.
 
 ## Version 1.6.1 changes
 

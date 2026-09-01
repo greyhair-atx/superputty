@@ -22,7 +22,7 @@ tasks.
 
 ## System requirements
 
-The `master` branch and `sp-1.6.1` release produce **64-bit Windows builds
+The `master` branch and `sp-1.7.0` release produce **64-bit Windows builds
 only**. The application, test harness, and MSI installer all target x64; x86
 and AnyCPU configurations are not supported.
 
@@ -36,13 +36,13 @@ be installed on 32-bit Windows.
 Community release artifacts use an explicit `x64` suffix. The current release
 contains:
 
-- `SuperPutty-1.6.1-win-x64.msi` — 64-bit Windows installer
+- `SuperPutty-1.7.0-win-x64.msi` — 64-bit Windows installer
 
 ## Automated tests
 
 `SuperPuttyUnitTests` is an SDK-style .NET Framework 4.8 project using NUnit 3,
 the NUnit 3 adapter, and Microsoft.NET.Test.Sdk. The current release validation
-executes 31 isolated tests and excludes tests that require a configured SCP
+executes 55 isolated tests and excludes tests that require a configured SCP
 environment.
 
 CI also verifies the x64 PE header, product version, runtime DLL set, WiX MSI

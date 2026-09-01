@@ -15,7 +15,7 @@ trigger:
     include:
     - master
     - integration
-    - sp-1.6.1
+    - sp-1.7.0
 
 pool:
   vmImage: 'windows-latest'
@@ -150,7 +150,7 @@ steps:
   inputs:
     targetType: 'filePath'
     filePath: '$(Build.SourcesDirectory)\build\Verify-ReleaseArtifacts.ps1'
-    arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform) -ExpectedVersion 1.6.1.0'
+    arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform) -ExpectedVersion 1.7.0.0'
     pwsh: true
 
 - task: PowerShell@2
@@ -174,4 +174,4 @@ steps:
   inputs:
     targetPath: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x64\$(buildConfiguration)\SuperPuttySetup.msi'
     artifactType: 'pipeline'
-    artifactName: 'SuperPutty-1.6.1-win-x64'
+    artifactName: 'SuperPutty-1.7.0-win-x64'

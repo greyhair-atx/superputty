@@ -1,3 +1,13 @@
+1.7.0
+ - Hardened PuTTY, PSCP, VNC, and command-line argument handling so credentials are redacted from logs and plaintext password arguments remain an explicit compatibility choice.
+ - Added an explicit per-session FreeRDP certificate-ignore option. Certificate validation remains enabled unless the option is selected.
+ - Secured remote SPSL and session-collection loading with credential-free HTTPS URLs, bounded downloads, timeouts, redirect rejection, recursion limits, and circular-reference detection. Insecure HTTP remote content is no longer accepted.
+ - Fixed relative and placeholder session-collection expansion, including independent resolution of nested SPSL and collection paths.
+ - Reworked file-transfer cancellation and window-tracker state handling to remove Thread.Abort, avoid UI freezes, and prevent cancellation races.
+ - Corrected RDP host and username quoting, external-client null handling, and file-transfer grid boundary handling.
+ - Hardened update retrieval and UI dispatch with HTTPS validation, bounded JSON responses, deterministic resource disposal, and form-lifecycle checks.
+ - Removed the obsolete Patches directory, SSH.NET prototype and dependencies, legacy SCP UI, debug viewer, global-hotkey implementation, and other unused code.
+
 1.6.1
  - RDP ActiveX sessions now update the remote desktop resolution when their tab is resized, while retaining smart sizing as a compatibility fallback.
  - Added selectable official-upstream and community-fork update channels, including support for prefixed community release tags such as sp-1.6.1.
