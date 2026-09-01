@@ -72,7 +72,7 @@ namespace SuperPutty
                     if ((int)protoEntry.Value == (int)Session.Proto)
                         comboBoxProto.SelectedItem = (string)protoEntry.Key;
                 }
-                if (Session.Proto == ConnectionProtocol.SSHNet)
+                if (Session.Proto == ConnectionProtocol.SSH2 || Session.Proto == ConnectionProtocol.SSHNet)
                     comboBoxProto.SelectedItem = "SSH";
 
                 comboBoxPuttyProfile.DropDownStyle = ComboBoxStyle.DropDownList;

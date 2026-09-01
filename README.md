@@ -42,7 +42,7 @@ contains:
 
 `SuperPuttyUnitTests` is an SDK-style .NET Framework 4.8 project using NUnit 3,
 the NUnit 3 adapter, and Microsoft.NET.Test.Sdk. The current release validation
-executes 55 isolated tests and excludes tests that require a configured SCP
+executes 56 isolated tests and excludes tests that require a configured SCP
 environment.
 
 CI also verifies the x64 PE header, product version, runtime DLL set, WiX MSI

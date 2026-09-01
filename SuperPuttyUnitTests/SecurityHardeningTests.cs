@@ -109,12 +109,13 @@ namespace SuperPuttyUnitTests
             }
         }
 
-        [Test]
-        public void LegacySshNetSessionsUseTheSupportedSshProtocol()
+        [TestCase(ConnectionProtocol.SSH2)]
+        [TestCase(ConnectionProtocol.SSHNet)]
+        public void LegacySshSessionsUseTheSupportedSshProtocol(ConnectionProtocol protocol)
         {
             SessionData session = new SessionData
             {
-                Proto = ConnectionProtocol.SSHNet,
+                Proto = protocol,
                 Host = "ssh.example.com",
                 Port = 22
             };

@@ -1181,7 +1181,8 @@ namespace SuperPutty
                 this.tbComboProtocol.Items.Clear();
                 foreach (ConnectionProtocol protocol in Enum.GetValues(typeof(ConnectionProtocol)))
                 {
-                    this.tbComboProtocol.Items.Add(protocol.ToString());
+                    if (protocol != ConnectionProtocol.SSH2 && protocol != ConnectionProtocol.SSHNet)
+                        this.tbComboProtocol.Items.Add(protocol.ToString());
                 }
                 this.tbComboProtocol.Items.Add("SCP");
                 this.tbComboProtocol.SelectedItem = ConnectionProtocol.SSH.ToString();

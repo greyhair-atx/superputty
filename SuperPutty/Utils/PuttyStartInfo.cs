@@ -97,7 +97,7 @@ namespace SuperPutty.Utils
             if (!String.IsNullOrEmpty(session.Password) && includePassword && !SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
                 Log.Warn("SuperPuTTY is set to NOT allow the use of the -pw <password> argument, this can be overriden in Tools -> Options -> GUI");
 
-            string protocol = session.Proto == ConnectionProtocol.SSHNet
+            string protocol = session.Proto == ConnectionProtocol.SSH2 || session.Proto == ConnectionProtocol.SSHNet
                 ? "ssh"
                 : session.Proto.ToString().ToLower();
             string args = "-" + protocol + " ";

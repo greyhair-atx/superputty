@@ -6,6 +6,7 @@
  - Reworked file-transfer cancellation and window-tracker state handling to remove Thread.Abort, avoid UI freezes, and prevent cancellation races.
  - Corrected RDP host and username quoting, external-client null handling, and file-transfer grid boundary handling.
  - Hardened update retrieval and UI dispatch with HTTPS validation, bounded JSON responses, deterministic resource disposal, and form-lifecycle checks.
+ - Removed the obsolete SSH2 and SSHNet connection choices; legacy saved sessions and ssh2:// addresses continue to use standard SSH.
  - Removed the obsolete Patches directory, SSH.NET prototype and dependencies, legacy SCP UI, debug viewer, global-hotkey implementation, and other unused code.
 
 1.6.1
