@@ -108,6 +108,7 @@ namespace SuperPutty
             // setup connection bar
             this.tbTxtBoxPassword.TextBox.PasswordChar = '*';
             this.RefreshConnectionToolbarData();
+            this.tbComboProtocol.SelectedIndexChanged += this.tbComboProtocol_SelectedIndexChanged;
 
             // version in status bar
             this.toolStripStatusLabelVersion.Text = SuperPuTTY.Version;
@@ -1128,7 +1129,7 @@ namespace SuperPutty
         #region Toolbar
 
 
-        private string oldHostName;
+        private string suggestedLocalSessionName;
 
         private void tbBtnConnect_Click(object sender, EventArgs e)
         {
@@ -1146,32 +1147,171 @@ namespace SuperPutty
 
         void TryConnectFromToolbar()
         {
-            String host = this.tbTxtBoxHost.Text;
             String protoString = (string)this.tbComboProtocol.SelectedItem;
-
-            if (!String.IsNullOrEmpty(host))
+            if (String.IsNullOrEmpty(protoString))
             {
-                bool isScp = "SCP" == protoString;
-                bool isVnc = "VNC" == protoString;
-                HostConnectionString connStr = new HostConnectionString(host, isVnc);
-                ConnectionProtocol proto = isScp
-                    ? ConnectionProtocol.SSH
-                    : connStr.Protocol.GetValueOrDefault((ConnectionProtocol)Enum.Parse(typeof(ConnectionProtocol), protoString));
-                SessionData session = new SessionData
-                {
-                    Host = connStr.Host,
-                    SessionName = connStr.Host,
-                    SessionId = SuperPuTTY.MakeUniqueSessionId(SessionData.CombineSessionIds("ConnectBar", connStr.Host)),
-                    Proto = proto,
-                    Port = connStr.Port.GetValueOrDefault(dlgEditSession.GetDefaultPort(proto)),
-                    Username = this.tbTxtBoxLogin.Text,
-                    Password = this.tbTxtBoxPassword.Text,
-                    PuttySession = (string)this.tbComboSession.SelectedItem
-                };
-                SuperPuTTY.OpenSession(new SessionDataStartInfo { Session = session, UseScp = isScp });
-                oldHostName = this.tbTxtBoxHost.Text;
-                RefreshConnectionToolbarData();
+                return;
             }
+
+            bool isScp = "SCP" == protoString;
+            ConnectionProtocol selectedProtocol = isScp
+                ? ConnectionProtocol.SSH
+                : (ConnectionProtocol)Enum.Parse(typeof(ConnectionProtocol), protoString);
+            bool isLocalConsole = ConsoleApplicationPanel.Supports(selectedProtocol);
+            String hostOrName = this.tbTxtBoxHost.Text == null ? "" : this.tbTxtBoxHost.Text.Trim();
+
+            if (isLocalConsole && String.IsNullOrEmpty(hostOrName))
+            {
+                this.SuggestLocalSessionName(true);
+                hostOrName = this.tbTxtBoxHost.Text.Trim();
+            }
+
+            if (!String.IsNullOrEmpty(hostOrName))
+            {
+                SessionData session;
+                if (isLocalConsole)
+                {
+                    session = CreateLocalToolbarSession(selectedProtocol, hostOrName);
+                }
+                else
+                {
+                    bool isVnc = "VNC" == protoString;
+                    HostConnectionString connStr = new HostConnectionString(hostOrName, isVnc);
+                    ConnectionProtocol protocol = isScp
+                        ? ConnectionProtocol.SSH
+                        : connStr.Protocol.GetValueOrDefault(selectedProtocol);
+                    session = new SessionData
+                    {
+                        Host = connStr.Host,
+                        SessionName = connStr.Host,
+                        SessionId = SuperPuTTY.MakeUniqueSessionId(SessionData.CombineSessionIds("ConnectBar", connStr.Host)),
+                        Proto = protocol,
+                        Port = connStr.Port.GetValueOrDefault(dlgEditSession.GetDefaultPort(protocol)),
+                        Username = this.tbTxtBoxLogin.Text,
+                        Password = this.tbTxtBoxPassword.Text,
+                        PuttySession = (string)this.tbComboSession.SelectedItem
+                    };
+                }
+
+                SuperPuTTY.OpenSession(new SessionDataStartInfo { Session = session, UseScp = isScp });
+                RefreshConnectionToolbarData();
+
+                if (isLocalConsole)
+                {
+                    this.SuggestLocalSessionName(true);
+                }
+            }
+        }
+
+        private void tbComboProtocol_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            ConnectionProtocol protocol;
+            if (this.TryGetSelectedToolbarProtocol(out protocol) && ConsoleApplicationPanel.Supports(protocol))
+            {
+                this.toolStripLabel2.Text = "Name";
+                this.SuggestLocalSessionName(false);
+            }
+            else
+            {
+                this.toolStripLabel2.Text = "Host";
+                if (!String.IsNullOrEmpty(this.suggestedLocalSessionName) &&
+                    String.Equals(this.tbTxtBoxHost.Text, this.suggestedLocalSessionName, StringComparison.Ordinal))
+                {
+                    this.tbTxtBoxHost.Clear();
+                }
+                this.suggestedLocalSessionName = null;
+            }
+        }
+
+        private bool TryGetSelectedToolbarProtocol(out ConnectionProtocol protocol)
+        {
+            string selected = this.tbComboProtocol.SelectedItem as string;
+            return Enum.TryParse(selected, out protocol);
+        }
+
+        private void SuggestLocalSessionName(bool force)
+        {
+            ConnectionProtocol protocol;
+            if (!this.TryGetSelectedToolbarProtocol(out protocol) || !ConsoleApplicationPanel.Supports(protocol))
+            {
+                return;
+            }
+
+            if (!force &&
+                !String.IsNullOrWhiteSpace(this.tbTxtBoxHost.Text) &&
+                !String.Equals(this.tbTxtBoxHost.Text, this.suggestedLocalSessionName, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            IEnumerable<string> savedNames = SuperPuTTY.GetAllSessions()
+                .Select(session => session.SessionName);
+            IEnumerable<string> openNames = this.DockPanel.DocumentsToArray()
+                .OfType<ctlPuttyPanel>()
+                .Select(panel => panel.Session.SessionName);
+            this.suggestedLocalSessionName = GetNextLocalToolbarName(
+                protocol,
+                savedNames.Concat(openNames));
+            this.tbTxtBoxHost.Text = this.suggestedLocalSessionName;
+            this.tbTxtBoxHost.SelectAll();
+        }
+
+        internal static string GetNextLocalToolbarName(
+            ConnectionProtocol protocol,
+            IEnumerable<string> existingNames)
+        {
+            string prefix;
+            switch (protocol)
+            {
+                case ConnectionProtocol.WINCMD:
+                    prefix = "cmd";
+                    break;
+                case ConnectionProtocol.PS:
+                    prefix = "ps";
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException("protocol", protocol, "A local console protocol is required.");
+            }
+
+            HashSet<string> usedNames = new HashSet<string>(
+                (existingNames ?? Enumerable.Empty<string>()).Where(name => !String.IsNullOrWhiteSpace(name)),
+                StringComparer.OrdinalIgnoreCase);
+            for (int number = 1; number < Int32.MaxValue; number++)
+            {
+                string candidate = prefix + "-" + number;
+                if (!usedNames.Contains(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            throw new InvalidOperationException("Unable to allocate a local console name.");
+        }
+
+        internal static SessionData CreateLocalToolbarSession(
+            ConnectionProtocol protocol,
+            string sessionName)
+        {
+            if (!ConsoleApplicationPanel.Supports(protocol))
+            {
+                throw new ArgumentOutOfRangeException("protocol", protocol, "A local console protocol is required.");
+            }
+
+            string name = sessionName == null ? "" : sessionName.Trim();
+            if (name.Length == 0)
+            {
+                throw new ArgumentException("A console name is required.", "sessionName");
+            }
+
+            return new SessionData
+            {
+                Host = "",
+                SessionName = name,
+                SessionId = SuperPuTTY.MakeUniqueSessionId(
+                    SessionData.CombineSessionIds("ConnectBar", name)),
+                Proto = protocol,
+                Port = 0
+            };
         }
 
         void RefreshConnectionToolbarData()

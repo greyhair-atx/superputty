@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 using SuperPutty;
 using SuperPutty.Data;
@@ -56,6 +57,53 @@ namespace SuperPuttyUnitTests
             StringAssert.Contains(clientName, startInfo.Args.ToLowerInvariant());
             StringAssert.Contains(clientArguments.ToLowerInvariant(), startInfo.Args.ToLowerInvariant());
             Assert.True(System.IO.Directory.Exists(startInfo.WorkingDir));
+        }
+
+        [TestCase(ConnectionProtocol.WINCMD, "cmd-1")]
+        [TestCase(ConnectionProtocol.PS, "ps-1")]
+        public void LocalToolbarStartsWithEditableNumberedName(
+            ConnectionProtocol protocol,
+            string expected)
+        {
+            Assert.AreEqual(expected, frmSuperPutty.GetNextLocalToolbarName(protocol, new string[0]));
+        }
+
+        [TestCase(ConnectionProtocol.WINCMD, "cmd-3")]
+        [TestCase(ConnectionProtocol.PS, "ps-3")]
+        public void LocalToolbarUsesFirstAvailableNumberIgnoringCase(
+            ConnectionProtocol protocol,
+            string expected)
+        {
+            string prefix = expected.Substring(0, expected.LastIndexOf('-'));
+            List<string> names = new List<string>
+            {
+                prefix + "-1",
+                prefix.ToUpperInvariant() + "-2",
+                "unrelated"
+            };
+
+            Assert.AreEqual(expected, frmSuperPutty.GetNextLocalToolbarName(protocol, names));
+        }
+
+        [Test]
+        public void LocalToolbarRejectsNetworkProtocols()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                frmSuperPutty.GetNextLocalToolbarName(ConnectionProtocol.SSH, new string[0]));
+        }
+
+        [TestCase(ConnectionProtocol.WINCMD, "custom-cmd")]
+        [TestCase(ConnectionProtocol.PS, "custom-ps")]
+        public void LocalToolbarUsesEditableNameWithoutNetworkHost(
+            ConnectionProtocol protocol,
+            string name)
+        {
+            SessionData session = frmSuperPutty.CreateLocalToolbarSession(protocol, "  " + name + "  ");
+
+            Assert.AreEqual(name, session.SessionName);
+            Assert.AreEqual(String.Empty, session.Host);
+            Assert.AreEqual(protocol, session.Proto);
+            Assert.AreEqual(0, session.Port);
         }
     }
 }
