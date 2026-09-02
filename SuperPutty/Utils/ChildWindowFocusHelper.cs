@@ -25,7 +25,7 @@ namespace SuperPutty.Utils
                 ctlPuttyPanel pp = doc as ctlPuttyPanel;
                 if (pp != null)
                 {
-                    this.childWindows.Add(pp.AppPanel.AppWindowHandle, pp);
+                    this.TrackPanel(pp);
                 }
             }
             this.MainForm.DockPanel.ContentAdded += DockPanel_ContentAdded;
@@ -37,7 +37,7 @@ namespace SuperPutty.Utils
             ctlPuttyPanel pp = e.Content as ctlPuttyPanel;
             if (pp != null)
             {
-                this.childWindows.Add(pp.AppPanel.AppWindowHandle, pp);
+                this.TrackPanel(pp);
             }
         }
 
@@ -46,7 +46,7 @@ namespace SuperPutty.Utils
             ctlPuttyPanel pp = e.Content as ctlPuttyPanel;
             if (pp != null)
             {
-                this.childWindows.Remove(pp.AppPanel.AppWindowHandle);
+                this.UntrackPanel(pp);
             }
         }
 
@@ -166,7 +166,55 @@ namespace SuperPutty.Utils
 
         bool ContainsChild(IntPtr childHandle)
         {
-            return this.childWindows.ContainsKey(childHandle);
+            if (childHandle == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            if (this.childWindows.ContainsKey(childHandle))
+            {
+                return true;
+            }
+
+            // Console windows are captured asynchronously, after ContentAdded.
+            // Resolve their current handles lazily rather than indexing IntPtr.Zero.
+            foreach (IDockContent doc in this.MainForm.DockPanel.Contents)
+            {
+                ctlPuttyPanel panel = doc as ctlPuttyPanel;
+                if (panel != null && panel.AppPanel.AppWindowHandle == childHandle)
+                {
+                    this.TrackPanel(panel);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void TrackPanel(ctlPuttyPanel panel)
+        {
+            IntPtr handle = panel.AppPanel.AppWindowHandle;
+            if (handle != IntPtr.Zero)
+            {
+                this.childWindows[handle] = panel;
+            }
+        }
+
+        private void UntrackPanel(ctlPuttyPanel panel)
+        {
+            List<IntPtr> handles = new List<IntPtr>();
+            foreach (KeyValuePair<IntPtr, ctlPuttyPanel> pair in this.childWindows)
+            {
+                if (Object.ReferenceEquals(pair.Value, panel))
+                {
+                    handles.Add(pair.Key);
+                }
+            }
+
+            foreach (IntPtr handle in handles)
+            {
+                this.childWindows.Remove(handle);
+            }
         }
 
         /// <summary>

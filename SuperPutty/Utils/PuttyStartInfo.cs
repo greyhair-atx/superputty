@@ -28,12 +28,24 @@ namespace SuperPutty.Utils
                     return TryParseEnvVars(SuperPuTTY.Settings.RDPExe);
 
                 case ConnectionProtocol.WINCMD:
-                    return Environment.ExpandEnvironmentVariables("%systemroot%\\system32\\cmd.exe");
                 case ConnectionProtocol.PS:
-                    return Environment.ExpandEnvironmentVariables("%systemroot%\\system32\\windowspowershell\\v1.0\\powershell.exe");
+                    return Environment.ExpandEnvironmentVariables("%systemroot%\\system32\\conhost.exe");
 
                 default:
                     return TryParseEnvVars(SuperPuTTY.Settings.PuttyExe);
+            }
+        }
+
+        internal static string GetConsoleClientExecutable(ConnectionProtocol protocol)
+        {
+            switch (protocol)
+            {
+                case ConnectionProtocol.WINCMD:
+                    return Environment.ExpandEnvironmentVariables("%systemroot%\\system32\\cmd.exe");
+                case ConnectionProtocol.PS:
+                    return Environment.ExpandEnvironmentVariables("%systemroot%\\system32\\windowspowershell\\v1.0\\powershell.exe");
+                default:
+                    return null;
             }
         }
 

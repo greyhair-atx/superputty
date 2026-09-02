@@ -40,9 +40,9 @@ namespace SuperPutty.Utils
         public WCMDStartInfo(SessionData session)
         {
             this.session = session;
-            this.Args = "";
-
-            this.StartingDir = "%userprofile%";
+            this.Args = CommandLineOptions.QuoteArgument(
+                PuttyStartInfo.GetConsoleClientExecutable(ConnectionProtocol.WINCMD)) + " /d /q";
+            this.StartingDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         }
 
         public string Args { get; set; }

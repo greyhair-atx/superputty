@@ -40,9 +40,9 @@ namespace SuperPutty.Utils
         public PSStartInfo(SessionData session)
         {
             this.session = session;
-            this.Args = "";
-
-            this.StartingDir = "%userprofile%";
+            this.Args = CommandLineOptions.QuoteArgument(
+                PuttyStartInfo.GetConsoleClientExecutable(ConnectionProtocol.PS)) + " -NoLogo";
+            this.StartingDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         }
 
         public string Args { get; set; }

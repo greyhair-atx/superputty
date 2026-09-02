@@ -119,7 +119,9 @@ namespace SuperPutty
                 {
                     this.m_puttyStartInfo = new PuttyStartInfo(this.Session);
                 }
-                this.AppPanel = new ApplicationPanel(this.Session.Proto);
+                this.AppPanel = ConsoleApplicationPanel.Supports(this.Session.Proto)
+                    ? new ConsoleApplicationPanel(this.Session.Proto)
+                    : new ApplicationPanel(this.Session.Proto);
             }
 
             this.SuspendLayout();
@@ -143,8 +145,9 @@ namespace SuperPutty
 
         void AdjustMenu()
         {
-            // for mintty, disable the putty menu items
-            if (this.Session.Proto == ConnectionProtocol.Mintty)
+            // These sessions are not controlled by PuTTY's WM_SYSCOMMAND menu commands.
+            if (this.Session.Proto == ConnectionProtocol.Mintty ||
+                ConsoleApplicationPanel.Supports(this.Session.Proto))
             {
                 this.toolStripPuttySep1.Visible = false;
                 this.eventLogToolStripMenuItem.Visible = false;
