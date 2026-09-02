@@ -7,6 +7,10 @@
  - Corrected RDP host and username quoting, external-client null handling, and file-transfer grid boundary handling.
  - Hardened update retrieval and UI dispatch with HTTPS validation, bounded JSON responses, deterministic resource disposal, and form-lifecycle checks.
  - Removed the obsolete SSH2 and SSHNet connection choices; legacy saved sessions and ssh2:// addresses continue to use standard SSH.
+ - Restored embedded Win CMD and Windows PowerShell tabs through a dedicated ConsoleApplicationPanel that isolates console discovery, window styling, focus, resizing, and shutdown from PuTTY, VNC, FreeRDP, and MSTSC hosting.
+ - Added real-window integration coverage for Win CMD and PowerShell console capture and verified that test sessions leave no shell processes behind.
+ - Changed the quick-connect Host field to an editable Name field for local consoles, with automatic cmd-1, cmd-2, ps-1, and ps-2 style suggestions that do not require a network host.
+ - Updated the About dialog to credit community updates by C. Thornton and link to https://github.com/greyhair-atx/superputty.
  - Removed the obsolete Patches directory, SSH.NET prototype and dependencies, legacy SCP UI, debug viewer, global-hotkey implementation, and other unused code.
 
 1.6.1

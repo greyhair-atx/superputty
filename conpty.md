@@ -1,5 +1,16 @@
 # ConPTY terminal panel implementation plan
 
+> **Status (September 2026): deferred alternative, not the current implementation.**
+> To avoid adding xterm.js/WebView2 or another renderer, Win CMD and Windows
+> PowerShell were restored with an isolated classic-console window host instead.
+> `ConsoleApplicationPanel` owns console-only launch, `ConsoleWindowClass`
+> discovery, process-tree validation, HWND styling/parenting, focus, resizing,
+> and shutdown. PuTTY, VNC, FreeRDP, and external MSTSC remain on the unchanged
+> `ApplicationPanel` path. The quick-connect toolbar supplies editable numbered
+> local names, and `build\Test-ConsoleApplicationPanel.ps1` exercises real CMD
+> and PowerShell capture. The guardrails below apply only if ConPTY work is
+> resumed in the future.
+
 ## Purpose
 
 Implement reliable embedded `WinCMD` and Windows PowerShell tabs without discovering, reparenting, resizing, styling, focusing, or otherwise manipulating a `conhost.exe` top-level window.

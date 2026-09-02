@@ -17,8 +17,10 @@
 > not official upstream releases and are currently not digitally signed.
 
 SuperPuTTY is a Windows application for managing PuTTY SSH terminals. It also
-supports RDP sessions and provides a simple scripting language for common
-tasks.
+supports embedded Win CMD and Windows PowerShell consoles, RDP sessions, and a
+simple scripting language for common tasks. Local console windows use a
+dedicated host panel so their capture, focus, resizing, and shutdown behavior
+does not alter the PuTTY hosting path.
 
 ## System requirements
 
@@ -42,8 +44,13 @@ contains:
 
 `SuperPuttyUnitTests` is an SDK-style .NET Framework 4.8 project using NUnit 3,
 the NUnit 3 adapter, and Microsoft.NET.Test.Sdk. The current release validation
-executes 56 isolated tests and excludes tests that require a configured SCP
+executes 72 isolated tests and excludes tests that require a configured SCP
 environment.
+
+The Windows-only console integration test in
+`build\Test-ConsoleApplicationPanel.ps1` launches real Win CMD and PowerShell
+sessions, verifies that each console HWND is parented to its dedicated panel,
+and closes the test sessions cleanly.
 
 CI also verifies the x64 PE header, product version, runtime DLL set, WiX MSI
 architecture and payload, theme icons, title-bar shutdown with confirmation on
@@ -51,6 +58,7 @@ and off, and File > Exit. The verification entry points are:
 
 - `build\Verify-ReleaseArtifacts.ps1`
 - `build\Test-ApplicationShutdown.ps1`
+- `build\Test-ConsoleApplicationPanel.ps1`
 - `build\Verify-CodeSignatures.ps1` (signed builds only)
 
 The eight `NetworkTest` cases require a disposable SSH server and separately
@@ -85,6 +93,9 @@ The signing key remains managed by Azure and is never exported to the pipeline.
 - [Official documentation](https://github.com/jimradford/superputty/wiki/Documentation)
 - [Candidate fixes in this fork](https://github.com/greyhair-atx/superputty/branches)
 - [Unsigned test builds from this fork](https://github.com/greyhair-atx/superputty/releases)
+
+Community updates are maintained by C. Thornton at
+[greyhair-atx/superputty](https://github.com/greyhair-atx/superputty).
 
 Please use the upstream repository for official downloads, documentation, and
 general issue reporting. Fork-specific test builds are provided only to help
