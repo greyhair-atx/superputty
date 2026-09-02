@@ -11,6 +11,9 @@ namespace SuperPutty
 {
     partial class AboutBox1 : Form
     {
+        internal const string CommunityRepositoryUrl = "https://github.com/greyhair-atx/superputty";
+        internal const string UpdateAttribution = "Updates by C. Thornton at " + CommunityRepositoryUrl;
+
         public AboutBox1()
         {
             InitializeComponent();
@@ -19,7 +22,10 @@ namespace SuperPutty
             this.labelVersion.Text = String.Format("Version {0}", AssemblyVersion);
             this.labelCopyright.Text = AssemblyCopyright;
             this.linkLabelCompany.Text = AssemblyCompany;
-            this.linkLabelCompany2.Text = "https://github.com/jimradford/superputty";            
+            this.linkLabelCompany2.Text = UpdateAttribution;
+            int repositoryLinkStart = UpdateAttribution.IndexOf(CommunityRepositoryUrl, StringComparison.Ordinal);
+            this.linkLabelCompany2.LinkArea = new LinkArea(repositoryLinkStart, CommunityRepositoryUrl.Length);
+            this.linkLabelCompany2.Links[0].LinkData = CommunityRepositoryUrl;
 
             textBoxSupportText.AppendText("SuperPuTTY Version: " + SuperPuTTY.Version + System.Environment.NewLine);
             Assembly[] asms = AppDomain.CurrentDomain.GetAssemblies();
@@ -111,7 +117,8 @@ namespace SuperPutty
         private void linkLabelCompany2_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
         {
             LinkLabel link = (LinkLabel)sender;
-            Process.Start(link.Text);
+            string target = e.Link.LinkData as string;
+            Process.Start(String.IsNullOrEmpty(target) ? link.Text : target);
         }
     }
 }

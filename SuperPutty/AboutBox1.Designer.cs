@@ -103,6 +103,7 @@ namespace SuperPutty
             this.linkLabelCompany2.AutoSize = true;
             this.linkLabelCompany2.Location = new System.Drawing.Point(177, 102);
             this.linkLabelCompany2.Margin = new System.Windows.Forms.Padding(6, 0, 3, 0);
+            this.linkLabelCompany2.MaximumSize = new System.Drawing.Size(365, 0);
             this.linkLabelCompany2.Name = "linkLabelCompany2";
             this.linkLabelCompany2.Size = new System.Drawing.Size(99, 13);
             this.linkLabelCompany2.TabIndex = 27;
