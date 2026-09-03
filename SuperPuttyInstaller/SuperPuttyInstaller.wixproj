@@ -1,7 +1,13 @@
 <Project Sdk="WixToolset.Sdk/6.0.2">
 
   <PropertyGroup>
-    <OutputName>SuperPuttySetup</OutputName>
+    <InstallerScope Condition="'$(InstallerScope)' == ''">PerMachine</InstallerScope>
+    <InstallerProductVersion Condition="'$(InstallerProductVersion)' == ''">1.7.1</InstallerProductVersion>
+    <OutputName Condition="'$(InstallerScope)' == 'PerUser'">SuperPutty-$(InstallerProductVersion)-current-user-test-x64</OutputName>
+    <OutputName Condition="'$(InstallerScope)' == 'PerMachine'">SuperPutty-$(InstallerProductVersion)-all-users-test-x64</OutputName>
+    <DefineConstants>InstallerScope=$(InstallerScope);InstallerProductVersion=$(InstallerProductVersion);$(DefineConstants)</DefineConstants>
+    <IntermediateOutputPath>obj\$(Platform)\$(Configuration)\$(InstallerScope)\</IntermediateOutputPath>
+    <SuppressIces Condition="'$(InstallerScope)' == 'PerUser'">$(SuppressIces);ICE91</SuppressIces>
     <InstallerPlatform>x64</InstallerPlatform>
   </PropertyGroup>
 

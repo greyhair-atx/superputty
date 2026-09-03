@@ -2,14 +2,22 @@
 param(
     [string] $Configuration = 'Release',
     [string] $Platform = 'x64',
-    [string] $ExpectedVersion = '1.7.1.0'
+    [string] $ExpectedVersion = '1.7.1.0',
+    [ValidateSet('PerUser', 'PerMachine')]
+    [string] $InstallerScope = 'PerMachine',
+    [string] $MsiName
 )
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $appDirectory = Join-Path $repoRoot "bin\$Platform\$Configuration"
 $appPath = Join-Path $appDirectory 'SuperPutty.exe'
-$msiPath = Join-Path $repoRoot "SuperPuttyInstaller\bin\$Platform\$Configuration\SuperPuttySetup.msi"
+$installerVersion = $ExpectedVersion -replace '\.0$', ''
+if ([string]::IsNullOrWhiteSpace($MsiName)) {
+    $scopeName = if ($InstallerScope -eq 'PerUser') { 'current-user' } else { 'all-users' }
+    $MsiName = "SuperPutty-$installerVersion-$scopeName-test-x64.msi"
+}
+$msiPath = Join-Path $repoRoot "SuperPuttyInstaller\bin\$Platform\$Configuration\$MsiName"
 
 function Assert-Condition {
     param([bool] $Condition, [string] $Message)
@@ -82,21 +90,33 @@ $database = $installer.GetType().InvokeMember(
 $allUsers = Get-MsiRecord $database "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='ALLUSERS'"
 $installPerUser = Get-MsiRecord $database "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='MSIINSTALLPERUSER'"
 $productVersion = Get-MsiRecord $database "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='ProductVersion'"
-$defaultScope = Get-MsiRecord $database "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='WixAppFolder'"
+$applicationFolderParent = Get-MsiRecord $database "SELECT ``Directory_Parent`` FROM ``Directory`` WHERE ``Directory``='APPLICATIONFOLDER'"
+$userAppsFolderParent = Get-MsiRecord $database "SELECT ``Directory_Parent`` FROM ``Directory`` WHERE ``Directory``='UserAppsFolder'"
 $scopeDialog = Get-MsiRecord $database "SELECT ``Dialog`` FROM ``Dialog`` WHERE ``Dialog``='InstallScopeDlg'"
-$perUserFolder = Get-MsiRecord $database "SELECT ``Target`` FROM ``CustomAction`` WHERE ``Action``='WixSetDefaultPerUserFolder'"
-$perMachineFolder = Get-MsiRecord $database "SELECT ``Target`` FROM ``CustomAction`` WHERE ``Action``='SetX64PerMachineFolder'"
-$perMachineUiSequence = Get-MsiRecord $database "SELECT ``Action`` FROM ``InstallUISequence`` WHERE ``Action``='SetX64PerMachineFolder'"
-$perMachineExecuteSequence = Get-MsiRecord $database "SELECT ``Action`` FROM ``InstallExecuteSequence`` WHERE ``Action``='SetX64PerMachineFolder'"
-Assert-Condition ($allUsers -eq '2') 'The MSI is not authored as a dual-scope package.'
-Assert-Condition ($installPerUser -eq '1') 'The MSI does not default to a current-user installation.'
-Assert-Condition ($productVersion -eq ($ExpectedVersion -replace '\.0$', '')) "Unexpected MSI product version: $productVersion"
-Assert-Condition ($defaultScope -eq 'WixPerUserFolder') 'The installer UI does not default to current user.'
-Assert-Condition ($scopeDialog -eq 'InstallScopeDlg') 'The installer does not contain the install-scope selection dialog.'
-Assert-Condition ($perUserFolder -eq '[LocalAppDataFolder]Apps\[ApplicationFolderName]') 'Unexpected current-user installation folder.'
-Assert-Condition ($perMachineFolder -eq '[ProgramFiles6432Folder][ApplicationFolderName]') 'Unexpected all-users installation folder.'
-Assert-Condition ($perMachineUiSequence -eq 'SetX64PerMachineFolder') 'The all-users x64 path is not configured in the installer UI sequence.'
-Assert-Condition ($perMachineExecuteSequence -eq 'SetX64PerMachineFolder') 'The all-users x64 path is not configured in the installer execute sequence.'
+$installDirDialog = Get-MsiRecord $database "SELECT ``Dialog`` FROM ``Dialog`` WHERE ``Dialog``='InstallDirDlg'"
+$welcomeEulaDialog = Get-MsiRecord $database "SELECT ``Dialog`` FROM ``Dialog`` WHERE ``Dialog``='WelcomeEulaDlg'"
+$licenseDialog = if ($InstallerScope -eq 'PerUser') { 'WelcomeEulaDlg' } else { 'LicenseAgreementDlg' }
+$licenseText = Get-MsiRecord $database "SELECT ``Text`` FROM ``Control`` WHERE ``Dialog_``='$licenseDialog' AND ``Control``='LicenseText'"
+
+Assert-Condition ($productVersion -eq $installerVersion) "Unexpected MSI product version: $productVersion"
+Assert-Condition ([string]::IsNullOrEmpty($installPerUser)) 'The fixed-scope MSI unexpectedly contains MSIINSTALLPERUSER.'
+Assert-Condition ([string]::IsNullOrEmpty($scopeDialog)) 'The fixed-scope MSI unexpectedly contains an install-scope selection dialog.'
+Assert-Condition ($licenseText -like '*Permission is hereby granted*') 'The MSI license control does not contain readable MIT license text.'
+
+if ($InstallerScope -eq 'PerUser') {
+    Assert-Condition ([string]::IsNullOrEmpty($allUsers)) 'The current-user MSI unexpectedly sets ALLUSERS.'
+    Assert-Condition ($applicationFolderParent -eq 'UserAppsFolder') 'The current-user MSI does not install under the user Apps directory.'
+    Assert-Condition ($userAppsFolderParent -eq 'LocalAppDataFolder') 'The current-user MSI does not root its Apps directory in LocalAppData.'
+    Assert-Condition ([string]::IsNullOrEmpty($installDirDialog)) 'The current-user MSI unexpectedly allows a machine-wide install path.'
+    Assert-Condition ($welcomeEulaDialog -eq 'WelcomeEulaDlg') 'The current-user MSI is missing its installation UI.'
+}
+else {
+    Assert-Condition ($allUsers -eq '1') 'The all-users MSI is not authored as a per-machine package.'
+    Assert-Condition ($applicationFolderParent -eq 'ProgramFiles6432Folder') 'The all-users MSI does not target 64-bit Program Files.'
+    Assert-Condition ([string]::IsNullOrEmpty($userAppsFolderParent)) 'The all-users MSI unexpectedly contains the current-user Apps directory.'
+    Assert-Condition ($installDirDialog -eq 'InstallDirDlg') 'The all-users MSI is missing its installation-directory UI.'
+    Assert-Condition ([string]::IsNullOrEmpty($welcomeEulaDialog)) 'The all-users MSI unexpectedly contains the current-user UI.'
+}
 
 $validationRoot = Join-Path ([IO.Path]::GetTempPath()) ('SuperPutty-MsiValidation-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $validationRoot | Out-Null
@@ -107,8 +127,14 @@ try {
 
     $installedApp = Get-ChildItem -LiteralPath $validationRoot -Recurse -Filter 'SuperPutty.exe' -File | Select-Object -First 1
     Assert-Condition ($null -ne $installedApp) 'The MSI does not contain SuperPutty.exe.'
-    Assert-Condition ($installedApp.FullName -like '*\PFiles64\*') 'The MSI does not target 64-bit Program Files.'
     Assert-Condition ((Get-PeMachine $installedApp.FullName) -eq 0x8664) 'The MSI contains a non-x64 executable.'
+
+    if ($InstallerScope -eq 'PerUser') {
+        Assert-Condition ($installedApp.DirectoryName -like '*\Apps\SuperPuTTY') 'The current-user MSI payload is not under Apps\SuperPuTTY.'
+    }
+    else {
+        Assert-Condition ($installedApp.FullName -like '*\PFiles64\*') 'The all-users MSI payload does not target 64-bit Program Files.'
+    }
 
     $installedDirectory = $installedApp.DirectoryName
     $installedMissingDlls = @($requiredDlls | Where-Object { -not (Test-Path -LiteralPath (Join-Path $installedDirectory $_)) })
@@ -122,4 +148,4 @@ finally {
     }
 }
 
-Write-Host "Release verification passed: version=$ExpectedVersion platform=$Platform DLLs=$($requiredDlls.Count) themes=$themeCount MSI=$template scope=current-user-or-machine"
+Write-Host "Release verification passed: version=$ExpectedVersion platform=$Platform DLLs=$($requiredDlls.Count) themes=$themeCount MSI=$template scope=$InstallerScope file=$MsiName"

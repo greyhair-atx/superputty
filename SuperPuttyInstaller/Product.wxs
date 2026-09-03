@@ -1,39 +1,46 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<?if $(var.InstallerScope) = PerUser ?>
+  <?define PackageId=GreyhairATX.SuperPutty.CurrentUser ?>
+  <?define PackageScope=perUser ?>
+  <?define ApplicationShortcutsGuid=CE5F3040-4387-4C28-BFC6-8C719E64A10D ?>
+  <?define ThemeIconFilesGuid=FDD258D9-3491-4F9F-B881-BB7ACA915921 ?>
+  <?define ProductExeGuid=9540D008-B0DF-464D-9C29-36D91FBC664C ?>
+  <?define ProductExeConfigGuid=8D9E5688-B0AD-404F-9790-080C53309B3C ?>
+  <?define ProductLibLoggingGuid=A80C6002-05B0-491E-B943-0DF0818EAC56 ?>
+  <?define ProductLibUIGuid=3489526C-2F15-4D8E-B23F-2C1E29AB0744 ?>
+  <?define ProductLibUIThemeGuid=1E746857-0038-4A9D-9139-A10CEED812EB ?>
+  <?define ProductLibRdpActiveXInteropGuid=F0DA4F16-2991-422A-9772-998537097F96 ?>
+  <?define ProductLibRdpActiveXWindowsFormsInteropGuid=7B29B508-71A6-4B6A-9D5E-2FC2B25D9FFF ?>
+<?else?>
+  <?define PackageId=GreyhairATX.SuperPutty.AllUsers ?>
+  <?define PackageScope=perMachine ?>
+  <?define ApplicationShortcutsGuid=46262D1C-86F8-49A6-8A8B-7353B658FB13 ?>
+  <?define ThemeIconFilesGuid=BF087426-7B24-4FC7-8353-0DD1732D35A9 ?>
+  <?define ProductExeGuid=* ?>
+  <?define ProductExeConfigGuid=* ?>
+  <?define ProductLibLoggingGuid=* ?>
+  <?define ProductLibUIGuid=* ?>
+  <?define ProductLibUIThemeGuid=* ?>
+  <?define ProductLibRdpActiveXInteropGuid=* ?>
+  <?define ProductLibRdpActiveXWindowsFormsInteropGuid=* ?>
+<?endif?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
-  <Package Id="GreyhairATX.SuperPutty"
+  <Package Id="$(var.PackageId)"
            Name="SuperPuTTY"
            Language="1033"
-           Version="1.7.1"
+           Version="$(var.InstallerProductVersion)"
            Manufacturer="Chris Thornton"
            UpgradeCode="42567f59-2f27-4e5b-a900-9141dc2dd929"
            InstallerVersion="500"
-           Scope="perUserOrMachine">
+           Scope="$(var.PackageScope)">
 
     <Icon Id="ProductIcon" SourceFile="$(var.SuperPutty.ProjectDir)Apps-utilities-terminal.ico"/>
     <Property Id="ARPPRODUCTICON" Value="ProductIcon"/>
     <Property Id="ARPHELPLINK" Value="https://github.com/greyhair-atx/superputty/issues"/>
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/greyhair-atx/superputty"/>
     <Property Id="ARPNOREPAIR" Value="1"/>
-    <Property Id="ApplicationFolderName" Value="SuperPuTTY" />
-    <Property Id="WixAppFolder" Value="WixPerUserFolder" />
-
-    <CustomAction Id="SetX64PerMachineFolder"
-                  Property="WixPerMachineFolder"
-                  Value="[ProgramFiles6432Folder][ApplicationFolderName]"
-                  Execute="immediate" />
-
-    <InstallUISequence>
-      <Custom Action="SetX64PerMachineFolder"
-              After="WixSetDefaultPerMachineFolder"
-              Condition="NOT Installed" />
-    </InstallUISequence>
-    <InstallExecuteSequence>
-      <Custom Action="SetX64PerMachineFolder"
-              After="WixSetDefaultPerMachineFolder"
-              Condition="NOT Installed" />
-    </InstallExecuteSequence>
 
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
     <MediaTemplate EmbedCab="yes" />
@@ -42,12 +49,20 @@
       <ComponentGroupRef Id="ProductComponents" />
       <ComponentGroupRef Id="DefaultTheme" />
       <ComponentRef Id="ApplicationShortcuts" />
+<?if $(var.InstallerScope) = PerUser ?>
+      <ComponentRef Id="UserProfileFolderCleanup" />
+<?endif?>
     </Feature>
 
-    <ui:WixUI Id="WixUI_Advanced" />
+<?if $(var.InstallerScope) = PerUser ?>
+    <ui:WixUI Id="WixUI_Minimal" />
+<?else?>
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="APPLICATIONFOLDER" />
+<?endif?>
     <WixVariable Id="WixUIBannerBmp" Value="WixUIBannerBmp.bmp" />
     <WixVariable Id="WixUIDialogBmp" Value="WixUIDialogBmp.bmp" />
-    <WixVariable Id="WixUILicenseRtf" Value="..\License.rtf" />
+    <!-- Keep this RTF deliberately simple for Windows Installer's legacy rich-text control. -->
+    <WixVariable Id="WixUILicenseRtf" Value="InstallerLicense.rtf" />
 
     <UI>
       <Publish Dialog="ExitDialog"
@@ -65,6 +80,19 @@
   </Package>
 
   <Fragment>
+<?if $(var.InstallerScope) = PerUser ?>
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="UserAppsFolder" Name="Apps">
+        <Directory Id="APPLICATIONFOLDER" Name="SuperPuTTY">
+          <Directory Id="INSTALLTHEMEFOLDER" Name="themes">
+            <Directory Id="INSTALLDEFAULTTHEME" Name="default">
+              <Directory Id="INSTALLTHEMEICONSFOLDER" Name="icons" />
+            </Directory>
+          </Directory>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+<?else?>
     <StandardDirectory Id="ProgramFiles6432Folder">
       <Directory Id="APPLICATIONFOLDER" Name="SuperPuTTY">
         <Directory Id="INSTALLTHEMEFOLDER" Name="themes">
@@ -74,10 +102,11 @@
         </Directory>
       </Directory>
     </StandardDirectory>
+<?endif?>
 
     <StandardDirectory Id="ProgramMenuFolder">
       <Directory Id="ProgramMenuSubfolder" Name="SuperPuTTY">
-        <Component Id="ApplicationShortcuts" Guid="46262D1C-86F8-49A6-8A8B-7353B658FB13">
+        <Component Id="ApplicationShortcuts" Guid="$(var.ApplicationShortcutsGuid)">
 
             <Shortcut Id="ApplicationShortcut1"
                       Name="SuperPuTTY" 
@@ -106,34 +135,76 @@
         </Component>
       </Directory>
     </StandardDirectory>
+
+<?if $(var.InstallerScope) = PerUser ?>
+    <Component Id="UserProfileFolderCleanup"
+               Guid="6099A2AF-121F-470F-98DC-0C16A3ED0440"
+               Directory="APPLICATIONFOLDER">
+      <RemoveFolder Id="RemoveUserAppsFolder" Directory="UserAppsFolder" On="uninstall" />
+      <RemoveFolder Id="RemoveApplicationFolder" Directory="APPLICATIONFOLDER" On="uninstall" />
+      <RemoveFolder Id="RemoveThemeFolder" Directory="INSTALLTHEMEFOLDER" On="uninstall" />
+      <RemoveFolder Id="RemoveDefaultThemeFolder" Directory="INSTALLDEFAULTTHEME" On="uninstall" />
+      <RemoveFolder Id="RemoveThemeIconsFolder" Directory="INSTALLTHEMEICONSFOLDER" On="uninstall" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\Jim Radford\SuperPuTTY\InstallerComponents"
+                     Name="UserProfileFolders"
+                     Type="string"
+                     Value="[ProductVersion]"
+                     KeyPath="yes" />
+    </Component>
+<?endif?>
   </Fragment>
 
   <Fragment>
     <ComponentGroup Id="ProductComponents" Directory="APPLICATIONFOLDER">
-      <Component Id="ProductExe">
-        <File Id="ProductExe" Source="$(var.SuperPutty.TargetPath)" KeyPath="yes" />
+      <Component Id="ProductExe" Guid="$(var.ProductExeGuid)">
+        <File Id="ProductExe" Source="$(var.SuperPutty.TargetPath)" />
+<?if $(var.InstallerScope) = PerUser ?>
+        <RegistryValue Root="HKCU" Key="Software\Jim Radford\SuperPuTTY\InstallerComponents" Name="ProductExe" Type="string" Value="[ProductVersion]" KeyPath="yes" />
+<?endif?>
       </Component>
-      <Component Id="ProductExeConfig">
+      <Component Id="ProductExeConfig" Guid="$(var.ProductExeConfigGuid)">
         <File Source="$(var.SuperPutty.TargetPath).config" />
+<?if $(var.InstallerScope) = PerUser ?>
+        <RegistryValue Root="HKCU" Key="Software\Jim Radford\SuperPuTTY\InstallerComponents" Name="ProductExeConfig" Type="string" Value="[ProductVersion]" KeyPath="yes" />
+<?endif?>
       </Component>
-      <Component Id="ProductLibLogging">
+      <Component Id="ProductLibLogging" Guid="$(var.ProductLibLoggingGuid)">
         <File Source="$(var.SuperPutty.TargetDir)\log4net.dll" />
+<?if $(var.InstallerScope) = PerUser ?>
+        <RegistryValue Root="HKCU" Key="Software\Jim Radford\SuperPuTTY\InstallerComponents" Name="ProductLibLogging" Type="string" Value="[ProductVersion]" KeyPath="yes" />
+<?endif?>
       </Component>
-      <Component Id="ProductLibUI">
+      <Component Id="ProductLibUI" Guid="$(var.ProductLibUIGuid)">
         <File Source="$(var.SuperPutty.TargetDir)\WeifenLuo.WinFormsUI.Docking.dll" />
+<?if $(var.InstallerScope) = PerUser ?>
+        <RegistryValue Root="HKCU" Key="Software\Jim Radford\SuperPuTTY\InstallerComponents" Name="ProductLibUI" Type="string" Value="[ProductVersion]" KeyPath="yes" />
+<?endif?>
       </Component>
-      <Component Id="ProductLibUITheme">
+      <Component Id="ProductLibUITheme" Guid="$(var.ProductLibUIThemeGuid)">
         <File Source="$(var.SuperPutty.TargetDir)\WeifenLuo.WinFormsUI.Docking.ThemeVS2015.dll" />
+<?if $(var.InstallerScope) = PerUser ?>
+        <RegistryValue Root="HKCU" Key="Software\Jim Radford\SuperPuTTY\InstallerComponents" Name="ProductLibUITheme" Type="string" Value="[ProductVersion]" KeyPath="yes" />
+<?endif?>
       </Component>
-      <Component Id="ProductLibRdpActiveXInterop">
+      <Component Id="ProductLibRdpActiveXInterop" Guid="$(var.ProductLibRdpActiveXInteropGuid)">
         <File Source="$(var.SuperPutty.TargetDir)\Interop.MSTSCLib.dll" />
+<?if $(var.InstallerScope) = PerUser ?>
+        <RegistryValue Root="HKCU" Key="Software\Jim Radford\SuperPuTTY\InstallerComponents" Name="ProductLibRdpActiveXInterop" Type="string" Value="[ProductVersion]" KeyPath="yes" />
+<?endif?>
       </Component>
-      <Component Id="ProductLibRdpActiveXWindowsFormsInterop">
+      <Component Id="ProductLibRdpActiveXWindowsFormsInterop" Guid="$(var.ProductLibRdpActiveXWindowsFormsInteropGuid)">
         <File Source="$(var.SuperPutty.TargetDir)\AxInterop.MSTSCLib.dll" />
+<?if $(var.InstallerScope) = PerUser ?>
+        <RegistryValue Root="HKCU" Key="Software\Jim Radford\SuperPuTTY\InstallerComponents" Name="ProductLibRdpActiveXWindowsFormsInterop" Type="string" Value="[ProductVersion]" KeyPath="yes" />
+<?endif?>
       </Component>
     </ComponentGroup>    
     <ComponentGroup Id="DefaultTheme" Directory="INSTALLTHEMEICONSFOLDER">
-      <Component Id="ThemeIconFiles" Guid="BF087426-7B24-4FC7-8353-0DD1732D35A9">
+      <Component Id="ThemeIconFiles" Guid="$(var.ThemeIconFilesGuid)">
+<?if $(var.InstallerScope) = PerUser ?>
+        <RegistryValue Root="HKCU" Key="Software\Jim Radford\SuperPuTTY\InstallerComponents" Name="ThemeIconFiles" Type="string" Value="[ProductVersion]" KeyPath="yes" />
+<?endif?>
         <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\application_osx_terminal.png" />
         <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\application_xp_terminal.png" />
         <File Source="$(var.SuperPutty.TargetDir)themes\default\icons\book.png" />
