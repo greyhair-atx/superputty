@@ -25,7 +25,7 @@ does not alter the PuTTY hosting path.
 
 ## System requirements
 
-The `master` branch and `sp-1.7.1` release produce **64-bit Windows builds
+The `master` branch and `sp-1.7.2` release produce **64-bit Windows builds
 only**. The application, test harness, and MSI installer all target x64; x86
 and AnyCPU configurations are not supported.
 
@@ -33,14 +33,15 @@ and AnyCPU configurations are not supported.
 - .NET Framework 4.8
 - PuTTY and PSCP installed or supplied separately
 
-The x64 MSI defaults to a current-user installation under Local AppData without
-elevation. Its advanced options retain an all-users installation under the
-native 64-bit Program Files directory. It cannot be installed on 32-bit Windows.
+The current-user x64 MSI installs under Local AppData without elevation. A
+separate all-users x64 MSI installs under native 64-bit Program Files and asks
+Windows for elevation. Neither installer can be installed on 32-bit Windows.
 
 Community release artifacts use an explicit `x64` suffix. The current release
 contains:
 
-- `SuperPutty-1.7.1-win-x64-signed.msi` — signed 64-bit Windows installer
+- `SuperPutty-1.7.2-current-user-win-x64-signed.msi` — signed, non-elevated current-user installer
+- `SuperPutty-1.7.2-all-users-win-x64-signed.msi` — signed, elevated all-users installer
 
 ## Automated tests
 
@@ -83,8 +84,8 @@ To configure a signed build:
 4. Manually run the pipeline, enable **Sign release artifacts with Azure
    Artifact Signing**, and enter the service-connection name.
 
-The pipeline signs `SuperPutty.exe` before WiX embeds it, signs the completed
-MSI, and verifies that both signatures are publicly trusted, identify
+The pipeline signs `SuperPutty.exe` before WiX embeds it, signs both completed
+MSIs, and verifies that all three signatures are publicly trusted, identify
 `Christopher Thornton`, and contain timestamps before publishing the installer.
 The signing key remains managed by Azure and is never exported to the pipeline.
 

@@ -2,6 +2,8 @@
 param(
     [string]$Configuration = 'Release',
     [string]$Platform = 'x64',
+    [string]$InstallerVersion = '1.7.2',
+    [string]$InstallerArtifactSuffix = 'win-x64-signed',
     [string]$ExpectedSigner = 'Christopher Thornton'
 )
 
@@ -10,7 +12,8 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $artifacts = @(
     (Join-Path $repositoryRoot "bin\$Platform\$Configuration\SuperPutty.exe"),
-    (Join-Path $repositoryRoot "SuperPuttyInstaller\bin\$Platform\$Configuration\SuperPuttySetup.msi")
+    (Join-Path $repositoryRoot "SuperPuttyInstaller\bin\$Platform\$Configuration\SuperPutty-$InstallerVersion-current-user-$InstallerArtifactSuffix.msi"),
+    (Join-Path $repositoryRoot "SuperPuttyInstaller\bin\$Platform\$Configuration\SuperPutty-$InstallerVersion-all-users-$InstallerArtifactSuffix.msi")
 )
 
 foreach ($artifact in $artifacts) {

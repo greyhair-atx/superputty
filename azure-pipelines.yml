@@ -15,7 +15,9 @@ trigger:
     include:
     - master
     - integration
-    - sp-1.7.1
+  tags:
+    include:
+    - sp-1.7.2
 
 pool:
   vmImage: 'windows-latest'
@@ -25,6 +27,12 @@ variables:
   buildPlatform: 'x64'
   testPlatform: 'x64'
   buildConfiguration: 'Release'
+  releaseVersion: '1.7.2'
+  applicationVersion: '1.7.2.0'
+  ${{ if eq(parameters.enableCodeSigning, true) }}:
+    installerArtifactSuffix: 'win-x64-signed'
+  ${{ else }}:
+    installerArtifactSuffix: 'test-x64'
 
 steps:
 - task: NuGetToolInstaller@1
@@ -116,21 +124,29 @@ steps:
       ExcludeInteractiveBrowserCredential: true
 
 - task: VSBuild@1
-  displayName: 'Package x64 MSI'
+  displayName: 'Package current-user x64 MSI'
   inputs:
     solution: 'SuperPuttyInstaller\SuperPuttyInstaller.wixproj'
     platform: '$(buildPlatform)'
     configuration: '$(buildConfiguration)'
-    msbuildArgs: '/restore /p:BuildProjectReferences=false'
+    msbuildArgs: '/restore /p:BuildProjectReferences=false /p:InstallerScope=PerUser /p:InstallerProductVersion=$(releaseVersion) /p:InstallerArtifactSuffix=$(installerArtifactSuffix)'
+
+- task: VSBuild@1
+  displayName: 'Package all-users x64 MSI'
+  inputs:
+    solution: 'SuperPuttyInstaller\SuperPuttyInstaller.wixproj'
+    platform: '$(buildPlatform)'
+    configuration: '$(buildConfiguration)'
+    msbuildArgs: '/restore /p:BuildProjectReferences=false /p:InstallerScope=PerMachine /p:InstallerProductVersion=$(releaseVersion) /p:InstallerArtifactSuffix=$(installerArtifactSuffix)'
 
 - ${{ if eq(parameters.enableCodeSigning, true) }}:
   - task: ArtifactSigning@1
-    displayName: 'Sign SuperPuttySetup.msi'
+    displayName: 'Sign current-user and all-users MSIs'
     inputs:
       Endpoint: 'https://cus.codesigning.azure.net/'
       ArtifactSigningAccountName: 'greyhair-atx'
       CertificateProfileName: 'greyhair-atx-superputty'
-      Files: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x64\$(buildConfiguration)\SuperPuttySetup.msi'
+      Files: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x64\$(buildConfiguration)\SuperPutty-$(releaseVersion)-*-$(installerArtifactSuffix).msi'
       FileDigest: 'SHA256'
       TimestampRfc3161: 'http://timestamp.acs.microsoft.com'
       TimestampDigest: 'SHA256'
@@ -146,11 +162,19 @@ steps:
       ExcludeInteractiveBrowserCredential: true
 
 - task: PowerShell@2
-  displayName: 'Verify x64 application and MSI payload'
+  displayName: 'Verify current-user x64 application and MSI payload'
   inputs:
     targetType: 'filePath'
     filePath: '$(Build.SourcesDirectory)\build\Verify-ReleaseArtifacts.ps1'
-    arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform) -ExpectedVersion 1.7.1.0'
+    arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform) -ExpectedVersion $(applicationVersion) -InstallerScope PerUser -MsiName SuperPutty-$(releaseVersion)-current-user-$(installerArtifactSuffix).msi'
+    pwsh: true
+
+- task: PowerShell@2
+  displayName: 'Verify all-users x64 application and MSI payload'
+  inputs:
+    targetType: 'filePath'
+    filePath: '$(Build.SourcesDirectory)\build\Verify-ReleaseArtifacts.ps1'
+    arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform) -ExpectedVersion $(applicationVersion) -InstallerScope PerMachine -MsiName SuperPutty-$(releaseVersion)-all-users-$(installerArtifactSuffix).msi'
     pwsh: true
 
 - task: PowerShell@2
@@ -167,11 +191,17 @@ steps:
     inputs:
       targetType: 'filePath'
       filePath: '$(Build.SourcesDirectory)\build\Verify-CodeSignatures.ps1'
-      arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform) -ExpectedSigner "Christopher Thornton"'
+      arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform) -InstallerVersion $(releaseVersion) -InstallerArtifactSuffix $(installerArtifactSuffix) -ExpectedSigner "Christopher Thornton"'
       pwsh: true
 
 - task: PublishPipelineArtifact@1
   inputs:
-    targetPath: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x64\$(buildConfiguration)\SuperPuttySetup.msi'
+    targetPath: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x64\$(buildConfiguration)\SuperPutty-$(releaseVersion)-current-user-$(installerArtifactSuffix).msi'
     artifactType: 'pipeline'
-    artifactName: 'SuperPutty-1.7.1-win-x64'
+    artifactName: 'SuperPutty-$(releaseVersion)-current-user-$(installerArtifactSuffix)'
+
+- task: PublishPipelineArtifact@1
+  inputs:
+    targetPath: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x64\$(buildConfiguration)\SuperPutty-$(releaseVersion)-all-users-$(installerArtifactSuffix).msi'
+    artifactType: 'pipeline'
+    artifactName: 'SuperPutty-$(releaseVersion)-all-users-$(installerArtifactSuffix)'

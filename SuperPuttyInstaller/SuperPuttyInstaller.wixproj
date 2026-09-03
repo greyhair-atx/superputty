@@ -2,9 +2,10 @@
 
   <PropertyGroup>
     <InstallerScope Condition="'$(InstallerScope)' == ''">PerMachine</InstallerScope>
-    <InstallerProductVersion Condition="'$(InstallerProductVersion)' == ''">1.7.1</InstallerProductVersion>
-    <OutputName Condition="'$(InstallerScope)' == 'PerUser'">SuperPutty-$(InstallerProductVersion)-current-user-test-x64</OutputName>
-    <OutputName Condition="'$(InstallerScope)' == 'PerMachine'">SuperPutty-$(InstallerProductVersion)-all-users-test-x64</OutputName>
+    <InstallerProductVersion Condition="'$(InstallerProductVersion)' == ''">1.7.2</InstallerProductVersion>
+    <InstallerArtifactSuffix Condition="'$(InstallerArtifactSuffix)' == ''">test-x64</InstallerArtifactSuffix>
+    <OutputName Condition="'$(InstallerScope)' == 'PerUser'">SuperPutty-$(InstallerProductVersion)-current-user-$(InstallerArtifactSuffix)</OutputName>
+    <OutputName Condition="'$(InstallerScope)' == 'PerMachine'">SuperPutty-$(InstallerProductVersion)-all-users-$(InstallerArtifactSuffix)</OutputName>
     <DefineConstants>InstallerScope=$(InstallerScope);InstallerProductVersion=$(InstallerProductVersion);$(DefineConstants)</DefineConstants>
     <IntermediateOutputPath>obj\$(Platform)\$(Configuration)\$(InstallerScope)\</IntermediateOutputPath>
     <SuppressIces Condition="'$(InstallerScope)' == 'PerUser'">$(SuppressIces);ICE91</SuppressIces>

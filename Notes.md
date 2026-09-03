@@ -64,15 +64,24 @@ From PowerShell, restore and build the complete Release solution with:
     /nologo
 ```
 
-The successful build produces:
+The successful release build produces:
 
 - `bin\x64\Release\SuperPutty.exe`
 - `SuperPuttyUnitTests\bin\x64\Release\SuperPuttyUnitTests.exe`
-- `SuperPuttyInstaller\bin\x64\Release\SuperPuttySetup.msi`
+- `SuperPuttyInstaller\bin\x64\Release\SuperPutty-1.7.2-current-user-win-x64-signed.msi`
+- `SuperPuttyInstaller\bin\x64\Release\SuperPutty-1.7.2-all-users-win-x64-signed.msi`
 
-The WiX 6 MSI uses product version 1.7.1 while preserving the original upgrade code, license UI, shortcuts, themes, and post-install launch option. It is an x64 dual-scope package: the default current-user option installs under Local AppData without elevation, while the all-users option installs under native 64-bit Program Files. ICE validation completes without warnings.
+The WiX 6 installers use product version 1.7.2 while preserving the original upgrade code, license UI, shortcuts, themes, and post-install launch option. The fixed-scope current-user package installs under Local AppData without elevation. The fixed-scope all-users package installs under native 64-bit Program Files and requests elevation. ICE validation completes without warnings.
 
 The complete Release build currently succeeds with zero warnings and zero errors.
+
+## Version 1.7.2 changes
+
+- Replaced the unreliable 1.7.1 dual-scope installer with separate fixed-scope current-user and all-users MSIs.
+- The current-user MSI installs under `%LocalAppData%\Apps\SuperPuTTY` without elevation; the all-users MSI installs under native x64 Program Files and requests elevation.
+- Replaced the Word-generated installer RTF with a compact Windows Installer-compatible license document and added a compiled-MSI license-content check.
+- Retracted the defective 1.7.1 binary release while retaining its tag and warning page for traceability.
+- The executable version is `1.7.2.0`; both MSIs use product version `1.7.2`.
 
 ## Version 1.7.1 changes
 

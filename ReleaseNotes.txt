@@ -1,3 +1,9 @@
+1.7.2
+ - Replaced the unreliable dual-scope MSI with two fixed-scope installers: a non-elevated current-user package under Local AppData and an elevated all-users package under native x64 Program Files.
+ - Replaced the Word-generated installer license document with a compact Windows Installer-compatible RTF so the MIT license text is visible before acceptance.
+ - Retracted the defective 1.7.1 installer while retaining its source tag and release notice for traceability.
+ - Release executable and both installers are Authenticode signed by Christopher Thornton and timestamped.
+
 1.7.1
  - New profiles reuse an existing writable Documents\SuperPuTTY folder; otherwise, sessions and layouts default to Local AppData so OneDrive redirection and Windows protected-folder policies do not prevent SuperPuTTY from closing cleanly.
  - Existing profiles automatically fall back to Local AppData when their configured settings folder is not writable, copying readable session and layout files without overwriting files already present at the fallback location.
