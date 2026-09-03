@@ -18,6 +18,34 @@ namespace SuperPutty.Utils
             }
         }
 
+        internal static string LegacyDocumentsSettingsFolder
+        {
+            get
+            {
+                string documentsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                return String.IsNullOrWhiteSpace(documentsFolder)
+                    ? null
+                    : Path.Combine(documentsFolder, ApplicationFolderName);
+            }
+        }
+
+        internal static string GetConfiguredOrLegacyFolder(string configuredFolder)
+        {
+            return GetConfiguredOrLegacyFolder(configuredFolder, LegacyDocumentsSettingsFolder);
+        }
+
+        internal static string GetConfiguredOrLegacyFolder(string configuredFolder, string legacyFolder)
+        {
+            if (!String.IsNullOrWhiteSpace(configuredFolder))
+            {
+                return configuredFolder;
+            }
+
+            return !String.IsNullOrWhiteSpace(legacyFolder) && Directory.Exists(legacyFolder)
+                ? legacyFolder
+                : null;
+        }
+
         internal static string ResolveWritableFolder(
             string configuredFolder,
             out bool usedFallback,

@@ -39,6 +39,37 @@ namespace SuperPuttyUnitTests
         }
 
         [Test]
+        public void ExistingLegacyDocumentsFolderIsPreferredForAnUnconfiguredProfile()
+        {
+            string legacy = Path.Combine(testRoot, "Documents", "SuperPuTTY");
+            Directory.CreateDirectory(legacy);
+
+            Assert.AreEqual(
+                legacy,
+                SettingsFolderResolver.GetConfiguredOrLegacyFolder(String.Empty, legacy));
+        }
+
+        [Test]
+        public void ExplicitConfigurationTakesPriorityOverLegacyDocumentsFolder()
+        {
+            string configured = Path.Combine(testRoot, "configured");
+            string legacy = Path.Combine(testRoot, "Documents", "SuperPuTTY");
+            Directory.CreateDirectory(legacy);
+
+            Assert.AreEqual(
+                configured,
+                SettingsFolderResolver.GetConfiguredOrLegacyFolder(configured, legacy));
+        }
+
+        [Test]
+        public void MissingLegacyDocumentsFolderLeavesProfileUnconfigured()
+        {
+            string legacy = Path.Combine(testRoot, "missing", "SuperPuTTY");
+
+            Assert.Null(SettingsFolderResolver.GetConfiguredOrLegacyFolder(String.Empty, legacy));
+        }
+
+        [Test]
         public void EmptyConfigurationUsesWritableFallback()
         {
             string fallback = Path.Combine(testRoot, "local-app-data");

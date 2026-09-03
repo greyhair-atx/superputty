@@ -106,7 +106,7 @@ namespace SuperPutty
 
         private static void EnsureWritableSettingsFolder()
         {
-            string configuredFolder = Settings.SettingsFolder;
+            string configuredFolder = SettingsFolderResolver.GetConfiguredOrLegacyFolder(Settings.SettingsFolder);
             bool usedFallback;
             Exception configuredFolderError;
             string writableFolder = SettingsFolderResolver.ResolveWritableFolder(
@@ -131,7 +131,7 @@ namespace SuperPutty
                 }
             }
 
-            if (!String.Equals(configuredFolder, writableFolder, StringComparison.OrdinalIgnoreCase))
+            if (!String.Equals(Settings.SettingsFolder, writableFolder, StringComparison.OrdinalIgnoreCase))
             {
                 Settings.SettingsFolder = writableFolder;
                 Settings.Save();

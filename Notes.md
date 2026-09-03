@@ -76,7 +76,7 @@ The complete Release build currently succeeds with zero warnings and zero errors
 
 ## Version 1.7.1 changes
 
-- New profiles store sessions and layouts under `%LocalAppData%\SuperPuTTY` instead of Documents, avoiding OneDrive redirection and protected-folder write failures.
+- Profiles without an explicit settings path reuse an existing writable `Documents\SuperPuTTY` folder. When no legacy folder exists, sessions and layouts default to `%LocalAppData%\SuperPuTTY`, avoiding new dependencies on OneDrive redirection and protected-folder access.
 - If an existing configured settings folder is not writable, startup selects the Local AppData fallback and copies any readable sessions, auto-restore layout, and named layouts without overwriting existing fallback files.
 - The options dialog verifies that a selected settings directory is writable, and a late auto-restore write failure is logged without surfacing an exception while the application is closing.
 - The installer supports current-user and all-users scopes. Current user is the default and installs below `%LocalAppData%\Apps`; all users retains the native x64 Program Files location.

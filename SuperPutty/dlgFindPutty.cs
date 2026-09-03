@@ -121,7 +121,8 @@ namespace SuperPutty
             if (String.IsNullOrEmpty(SuperPuTTY.Settings.SettingsFolder))
             {
                 // Set a default
-                string dir = SettingsFolderResolver.DefaultSettingsFolder;
+                string dir = SettingsFolderResolver.GetConfiguredOrLegacyFolder(null) ??
+                    SettingsFolderResolver.DefaultSettingsFolder;
                 if (!Directory.Exists(dir))
                 {
                     Log.InfoFormat("Creating default settings dir: {0}", dir);

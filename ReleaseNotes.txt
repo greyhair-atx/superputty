@@ -1,5 +1,5 @@
 1.7.1
- - Changed the default sessions and layouts folder from Documents to Local AppData so OneDrive redirection and Windows protected-folder policies do not prevent SuperPuTTY from closing cleanly.
+ - New profiles reuse an existing writable Documents\SuperPuTTY folder; otherwise, sessions and layouts default to Local AppData so OneDrive redirection and Windows protected-folder policies do not prevent SuperPuTTY from closing cleanly.
  - Existing profiles automatically fall back to Local AppData when their configured settings folder is not writable, copying readable session and layout files without overwriting files already present at the fallback location.
  - Settings-folder selection now verifies write access before accepting a directory, and auto-restore layout failures are logged rather than surfaced as shutdown errors.
  - Added a dual-scope installer that defaults to a current-user installation under Local AppData and retains an all-users Program Files option.
