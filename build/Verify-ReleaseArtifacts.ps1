@@ -2,7 +2,7 @@
 param(
     [string] $Configuration = 'Release',
     [string] $Platform = 'x64',
-    [string] $ExpectedVersion = '1.7.0.0'
+    [string] $ExpectedVersion = '1.7.1.0'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -42,6 +42,16 @@ function Get-MsiSummaryProperty {
         'Property', 'GetProperty', $null, $summary, $Property)
 }
 
+function Get-MsiRecord {
+    param($Database, [string] $Query)
+    $view = $Database.GetType().InvokeMember(
+        'OpenView', 'InvokeMethod', $null, $Database, @($Query))
+    $null = $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
+    $record = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
+    if ($null -eq $record) { return $null }
+    return $record.GetType().InvokeMember('StringData', 'GetProperty', $null, $record, 1)
+}
+
 Assert-Condition (Test-Path -LiteralPath $appPath -PathType Leaf) "Missing application: $appPath"
 Assert-Condition (Test-Path -LiteralPath $msiPath -PathType Leaf) "Missing installer: $msiPath"
 Assert-Condition ((Get-PeMachine $appPath) -eq 0x8664) 'SuperPutty.exe is not an x64 PE image.'
@@ -64,8 +74,29 @@ $themeCount = @(Get-ChildItem -LiteralPath $themePath -Filter '*.png' -File).Cou
 Assert-Condition ($themeCount -eq 47) "Expected 47 theme icons, found $themeCount."
 
 $installer = New-Object -ComObject WindowsInstaller.Installer
+$msiPath = (Resolve-Path -LiteralPath $msiPath).Path
 $template = Get-MsiSummaryProperty $installer $msiPath 7
 Assert-Condition ($template -eq 'x64;1033') "Unexpected MSI template: $template"
+$database = $installer.GetType().InvokeMember(
+    'OpenDatabase', 'InvokeMethod', $null, $installer, @($msiPath, [int] 0))
+$allUsers = Get-MsiRecord $database "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='ALLUSERS'"
+$installPerUser = Get-MsiRecord $database "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='MSIINSTALLPERUSER'"
+$productVersion = Get-MsiRecord $database "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='ProductVersion'"
+$defaultScope = Get-MsiRecord $database "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='WixAppFolder'"
+$scopeDialog = Get-MsiRecord $database "SELECT ``Dialog`` FROM ``Dialog`` WHERE ``Dialog``='InstallScopeDlg'"
+$perUserFolder = Get-MsiRecord $database "SELECT ``Target`` FROM ``CustomAction`` WHERE ``Action``='WixSetDefaultPerUserFolder'"
+$perMachineFolder = Get-MsiRecord $database "SELECT ``Target`` FROM ``CustomAction`` WHERE ``Action``='SetX64PerMachineFolder'"
+$perMachineUiSequence = Get-MsiRecord $database "SELECT ``Action`` FROM ``InstallUISequence`` WHERE ``Action``='SetX64PerMachineFolder'"
+$perMachineExecuteSequence = Get-MsiRecord $database "SELECT ``Action`` FROM ``InstallExecuteSequence`` WHERE ``Action``='SetX64PerMachineFolder'"
+Assert-Condition ($allUsers -eq '2') 'The MSI is not authored as a dual-scope package.'
+Assert-Condition ($installPerUser -eq '1') 'The MSI does not default to a current-user installation.'
+Assert-Condition ($productVersion -eq ($ExpectedVersion -replace '\.0$', '')) "Unexpected MSI product version: $productVersion"
+Assert-Condition ($defaultScope -eq 'WixPerUserFolder') 'The installer UI does not default to current user.'
+Assert-Condition ($scopeDialog -eq 'InstallScopeDlg') 'The installer does not contain the install-scope selection dialog.'
+Assert-Condition ($perUserFolder -eq '[LocalAppDataFolder]Apps\[ApplicationFolderName]') 'Unexpected current-user installation folder.'
+Assert-Condition ($perMachineFolder -eq '[ProgramFiles6432Folder][ApplicationFolderName]') 'Unexpected all-users installation folder.'
+Assert-Condition ($perMachineUiSequence -eq 'SetX64PerMachineFolder') 'The all-users x64 path is not configured in the installer UI sequence.'
+Assert-Condition ($perMachineExecuteSequence -eq 'SetX64PerMachineFolder') 'The all-users x64 path is not configured in the installer execute sequence.'
 
 $validationRoot = Join-Path ([IO.Path]::GetTempPath()) ('SuperPutty-MsiValidation-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $validationRoot | Out-Null
@@ -91,4 +122,4 @@ finally {
     }
 }
 
-Write-Host "Release verification passed: version=$ExpectedVersion platform=$Platform DLLs=$($requiredDlls.Count) themes=$themeCount MSI=$template"
+Write-Host "Release verification passed: version=$ExpectedVersion platform=$Platform DLLs=$($requiredDlls.Count) themes=$themeCount MSI=$template scope=current-user-or-machine"

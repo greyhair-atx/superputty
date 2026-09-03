@@ -38,6 +38,7 @@ namespace SuperPutty
 
         public static void Initialize(string[] args)
         {
+            EnsureWritableSettingsFolder();
             Log.InfoFormat($"Initializing.  Version={Version}, UserSettings={Settings.SettingsFilePath}, SettingsFolder={Settings.SettingsFolder}");
 
             Images = LoadImageList("default", false);
@@ -101,6 +102,40 @@ namespace SuperPutty
             WindowEvents = new GlobalWindowEvents();
 
             Log.Info("Initialized");
+        }
+
+        private static void EnsureWritableSettingsFolder()
+        {
+            string configuredFolder = Settings.SettingsFolder;
+            bool usedFallback;
+            Exception configuredFolderError;
+            string writableFolder = SettingsFolderResolver.ResolveWritableFolder(
+                configuredFolder,
+                out usedFallback,
+                out configuredFolderError);
+
+            if (usedFallback)
+            {
+                Log.WarnFormat(
+                    "Configured settings folder is not writable; using Local AppData instead. folder={0}, fallback={1}, error={2}",
+                    configuredFolder,
+                    writableFolder,
+                    configuredFolderError == null ? "unknown" : configuredFolderError.Message);
+                try
+                {
+                    SettingsFolderResolver.CopyExistingSettings(configuredFolder, writableFolder);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn("Could not copy existing session and layout files to the Local AppData fallback", ex);
+                }
+            }
+
+            if (!String.Equals(configuredFolder, writableFolder, StringComparison.OrdinalIgnoreCase))
+            {
+                Settings.SettingsFolder = writableFolder;
+                Settings.Save();
+            }
         }
 
         /// <summary>Called when application is shutting down, sends message to log.</summary>

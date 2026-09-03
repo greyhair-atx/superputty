@@ -764,7 +764,7 @@ dotnet test SuperPuttyUnitTests\SuperPuttyUnitTests.csproj `
 .\build\Verify-ReleaseArtifacts.ps1 `
   -Configuration Release `
   -Platform x64 `
-  -ExpectedVersion 1.7.0.0
+  -ExpectedVersion 1.7.1.0
 
 .\build\Test-ApplicationShutdown.ps1 `
   -Configuration Release `

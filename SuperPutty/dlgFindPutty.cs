@@ -121,7 +121,7 @@ namespace SuperPutty
             if (String.IsNullOrEmpty(SuperPuTTY.Settings.SettingsFolder))
             {
                 // Set a default
-                string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SuperPuTTY");
+                string dir = SettingsFolderResolver.DefaultSettingsFolder;
                 if (!Directory.Exists(dir))
                 {
                     Log.InfoFormat("Creating default settings dir: {0}", dir);
@@ -331,9 +331,11 @@ namespace SuperPutty
             }
 
             string settingsDir = textBoxSettingsFolder.Text;
-            if (String.IsNullOrEmpty(settingsDir) || !Directory.Exists(settingsDir))
+            Exception settingsFolderError;
+            if (!SettingsFolderResolver.TryEnsureWritable(settingsDir, out settingsFolderError))
             {
-                errors.Add("Settings Folder must be set to valid directory");
+                errors.Add("Settings Folder must be a writable directory" +
+                    (settingsFolderError == null ? String.Empty : ": " + settingsFolderError.Message));
             }
             else
             {

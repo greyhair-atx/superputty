@@ -70,9 +70,17 @@ The successful build produces:
 - `SuperPuttyUnitTests\bin\x64\Release\SuperPuttyUnitTests.exe`
 - `SuperPuttyInstaller\bin\x64\Release\SuperPuttySetup.msi`
 
-The WiX 6 MSI uses product version 1.7.0 while preserving the original upgrade code, license UI, shortcuts, themes, and post-install launch option. It is an x64 package that installs under the native 64-bit Program Files directory, and its ICE validation completes without warnings.
+The WiX 6 MSI uses product version 1.7.1 while preserving the original upgrade code, license UI, shortcuts, themes, and post-install launch option. It is an x64 dual-scope package: the default current-user option installs under Local AppData without elevation, while the all-users option installs under native 64-bit Program Files. ICE validation completes without warnings.
 
 The complete Release build currently succeeds with zero warnings and zero errors.
+
+## Version 1.7.1 changes
+
+- New profiles store sessions and layouts under `%LocalAppData%\SuperPuTTY` instead of Documents, avoiding OneDrive redirection and protected-folder write failures.
+- If an existing configured settings folder is not writable, startup selects the Local AppData fallback and copies any readable sessions, auto-restore layout, and named layouts without overwriting existing fallback files.
+- The options dialog verifies that a selected settings directory is writable, and a late auto-restore write failure is logged without surfacing an exception while the application is closing.
+- The installer supports current-user and all-users scopes. Current user is the default and installs below `%LocalAppData%\Apps`; all users retains the native x64 Program Files location.
+- The executable version is `1.7.1.0`; the MSI uses product version `1.7.1`.
 
 ## Version 1.7.0 changes
 
