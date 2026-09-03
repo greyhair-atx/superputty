@@ -7,14 +7,15 @@
 [![.NET Framework 4.8](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](https://dotnet.microsoft.com/en-us/download/dotnet-framework/net48)
 [![Windows x64](https://img.shields.io/badge/Windows-x64-0078D4)](https://github.com/greyhair-atx/superputty/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/greyhair-atx/superputty)](License.txt)
-[![Unsigned builds](https://img.shields.io/badge/builds-unsigned-orange)](https://github.com/greyhair-atx/superputty/releases/latest)
+[![Signed builds](https://img.shields.io/badge/builds-Authenticode%20signed-brightgreen)](https://github.com/greyhair-atx/superputty/releases/latest)
 
 > **Community fork:** This is an active, unofficial fork of
 > [jimradford/superputty](https://github.com/jimradford/superputty). It carries
 > community-maintained fixes and publishes its own versioned x64 releases on
 > [GitHub](https://github.com/greyhair-atx/superputty/releases) and
 > [Gitea](https://gitea.uberx.org/vscode/superputty/releases). These builds are
-> not official upstream releases and are currently not digitally signed.
+> not official upstream releases. Starting with 1.7.1, release builds are
+> Authenticode signed by Christopher Thornton and timestamped.
 
 SuperPuTTY is a Windows application for managing PuTTY SSH terminals. It also
 supports embedded Win CMD and Windows PowerShell consoles, RDP sessions, and a
@@ -24,7 +25,7 @@ does not alter the PuTTY hosting path.
 
 ## System requirements
 
-The `master` branch and `sp-1.7.0` release produce **64-bit Windows builds
+The `master` branch and `sp-1.7.1` release produce **64-bit Windows builds
 only**. The application, test harness, and MSI installer all target x64; x86
 and AnyCPU configurations are not supported.
 
@@ -32,19 +33,20 @@ and AnyCPU configurations are not supported.
 - .NET Framework 4.8
 - PuTTY and PSCP installed or supplied separately
 
-The x64 MSI installs under the native 64-bit Program Files directory. It cannot
-be installed on 32-bit Windows.
+The x64 MSI defaults to a current-user installation under Local AppData without
+elevation. Its advanced options retain an all-users installation under the
+native 64-bit Program Files directory. It cannot be installed on 32-bit Windows.
 
 Community release artifacts use an explicit `x64` suffix. The current release
 contains:
 
-- `SuperPutty-1.7.0-win-x64.msi` — 64-bit Windows installer
+- `SuperPutty-1.7.1-win-x64-signed.msi` — signed 64-bit Windows installer
 
 ## Automated tests
 
 `SuperPuttyUnitTests` is an SDK-style .NET Framework 4.8 project using NUnit 3,
 the NUnit 3 adapter, and Microsoft.NET.Test.Sdk. The current release validation
-executes 72 isolated tests and excludes tests that require a configured SCP
+executes 80 isolated tests and excludes tests that require a configured SCP
 environment.
 
 The Windows-only console integration test in
@@ -92,7 +94,7 @@ The signing key remains managed by Azure and is never exported to the pipeline.
 - [Official releases](https://github.com/jimradford/superputty/releases)
 - [Official documentation](https://github.com/jimradford/superputty/wiki/Documentation)
 - [Candidate fixes in this fork](https://github.com/greyhair-atx/superputty/branches)
-- [Unsigned test builds from this fork](https://github.com/greyhair-atx/superputty/releases)
+- [Community releases from this fork](https://github.com/greyhair-atx/superputty/releases)
 
 Community updates are maintained by C. Thornton at
 [greyhair-atx/superputty](https://github.com/greyhair-atx/superputty).
