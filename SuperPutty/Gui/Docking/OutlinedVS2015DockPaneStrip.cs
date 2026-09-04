@@ -17,6 +17,8 @@ namespace SuperPutty.Gui.Docking
     [ToolboxItem(false)]
     internal class OutlinedVS2015DockPaneStrip : DockPaneStripBase
     {
+        internal const int DocumentTabCornerRadius = 7;
+
         private class TabVS2013 : Tab
         {
             public TabVS2013(IDockContent content)
@@ -1043,8 +1045,57 @@ namespace SuperPutty.Gui.Docking
             if (toScreen)
                 rect = RectangleToScreen(rect);
 
-            GraphicsPath.AddRectangle(rect);
+            using (GraphicsPath path = CreateDocumentTabPath(rect,
+                DockPane.DockPanel.DocumentTabStripLocation == DocumentTabStripLocation.Bottom))
+            {
+                GraphicsPath.AddPath(path, false);
+            }
             return GraphicsPath;
+        }
+
+        internal static GraphicsPath CreateDocumentTabPath(Rectangle rect, bool bottomTabs)
+        {
+            GraphicsPath path = new GraphicsPath();
+            if (rect.Width <= 0 || rect.Height <= 0)
+                return path;
+
+            int left = rect.Left;
+            int top = rect.Top;
+            int right = Math.Max(left, rect.Right - 1);
+            int bottom = Math.Max(top, rect.Bottom - 1);
+            int radius = Math.Min(DocumentTabCornerRadius,
+                Math.Min((right - left) / 2, bottom - top));
+
+            if (radius <= 0)
+            {
+                path.AddRectangle(Rectangle.FromLTRB(left, top, right + 1, bottom + 1));
+                return path;
+            }
+
+            int diameter = radius * 2;
+            path.StartFigure();
+            if (bottomTabs)
+            {
+                // The straight top edge joins a bottom tab to its document frame.
+                path.AddLine(left, top, right, top);
+                path.AddLine(right, top, right, bottom - radius);
+                path.AddArc(right - diameter, bottom - diameter, diameter, diameter, 0, 90);
+                path.AddLine(right - radius, bottom, left + radius, bottom);
+                path.AddArc(left, bottom - diameter, diameter, diameter, 90, 90);
+                path.AddLine(left, bottom - radius, left, top);
+            }
+            else
+            {
+                path.AddLine(left, bottom, left, top + radius);
+                path.AddArc(left, top, diameter, diameter, 180, 90);
+                path.AddLine(left + radius, top, right - radius, top);
+                path.AddArc(right - diameter, top, diameter, diameter, 270, 90);
+                path.AddLine(right, top + radius, right, bottom);
+                // The bottom edge is later painted with the tab/frame fill color.
+                path.AddLine(right, bottom, left, bottom);
+            }
+            path.CloseFigure();
+            return path;
         }
 
         private void DrawTab_ToolWindow(Graphics g, TabVS2013 tab)
@@ -1210,18 +1261,30 @@ namespace SuperPutty.Gui.Docking
                 }
             }
 
-            g.FillRectangle(DockPane.DockPanel.Theme.PaintingService.GetBrush(paint), rect);
-
             Color outline = DockPane.ActiveContent == tab.Content
                 ? OutlinedVS2015LightTheme.ActiveTabOutline
                 : tab.Content == DockPane.MouseOverTab
                     ? OutlinedVS2015LightTheme.HoveredTabOutline
                     : OutlinedVS2015LightTheme.InactiveTabOutline;
-            Rectangle outlineRectangle = rect;
-            outlineRectangle.Width -= 1;
-            outlineRectangle.Height -= 1;
-            if (outlineRectangle.Width > 0 && outlineRectangle.Height > 0)
-                g.DrawRectangle(DockPane.DockPanel.Theme.PaintingService.GetPen(outline), outlineRectangle);
+
+            bool bottomTabs = DockPane.DockPanel.DocumentTabStripLocation == DocumentTabStripLocation.Bottom;
+            SmoothingMode previousSmoothingMode = g.SmoothingMode;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (GraphicsPath tabPath = CreateDocumentTabPath(rectTab, bottomTabs))
+            {
+                if (tabPath.PointCount > 0)
+                {
+                    g.FillPath(DockPane.DockPanel.Theme.PaintingService.GetBrush(paint), tabPath);
+                    g.DrawPath(DockPane.DockPanel.Theme.PaintingService.GetPen(outline), tabPath);
+
+                    // Erase the outline along the edge that joins the document frame.
+                    // Using the fill color makes the selected tab and frame one surface.
+                    int joinY = bottomTabs ? rectTab.Top : rectTab.Bottom - 1;
+                    g.DrawLine(DockPane.DockPanel.Theme.PaintingService.GetPen(paint, 2),
+                        rectTab.Left + 1, joinY, rectTab.Right - 2, joinY);
+                }
+            }
+            g.SmoothingMode = previousSmoothingMode;
 
             TextRenderer.DrawText(g, tab.Content.DockHandler.TabText, TextFont, rectText, text, DocumentTextFormat);
             if (image != null)

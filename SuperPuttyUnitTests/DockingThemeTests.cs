@@ -32,5 +32,22 @@ namespace SuperPuttyUnitTests
                     Is.TypeOf<OutlinedVS2015DockPaneStripFactory>());
             }
         }
+
+        [Test]
+        public void DocumentTabsHaveSevenPixelRoundedTopCornersAndOpenFrameEdge()
+        {
+            Assert.That(OutlinedVS2015DockPaneStrip.DocumentTabCornerRadius, Is.EqualTo(7));
+
+            using (var path = OutlinedVS2015DockPaneStrip.CreateDocumentTabPath(
+                new Rectangle(0, 0, 100, 24), false))
+            {
+                Assert.That(path.IsVisible(1, 1), Is.False,
+                    "The square top-left corner should be outside the rounded tab.");
+                Assert.That(path.IsVisible(7, 1), Is.True,
+                    "The tab should begin filling immediately after the seven-pixel corner.");
+                Assert.That(path.IsVisible(50, 22), Is.True,
+                    "The lower edge must remain square so it can join the document frame.");
+            }
+        }
     }
 }
