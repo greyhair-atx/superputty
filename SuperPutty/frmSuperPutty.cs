@@ -36,6 +36,7 @@ using SuperPuTTY.Scripting;
 using System.Configuration;
 using System.Linq;
 using SuperPutty.Gui;
+using SuperPutty.Gui.Docking;
 using log4net.Core;
 using System.Text.RegularExpressions;
 using System.Runtime.Serialization.Json;
@@ -94,7 +95,7 @@ namespace SuperPutty
 
             // Modern DockPanelSuite themes render a close button on each
             // document tab instead of a single button at the strip's far edge.
-            var theme = new VS2015LightTheme();
+            var theme = new OutlinedVS2015LightTheme();
             this.DockPanel.Theme = theme;
 
             FixDpiScalingIssues();
