@@ -105,6 +105,8 @@
     <Compile Include="Gui\BaseViewModel.cs" />
     <Compile Include="Gui\DataGridViewProgressColumn.cs" />
     <Compile Include="Gui\DpiUtils.cs" />
+    <Compile Include="Gui\Docking\OutlinedVS2015DockPaneStrip.cs" />
+    <Compile Include="Gui\Docking\OutlinedVS2015LightTheme.cs" />
     <Compile Include="Gui\ImageListPopup.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -438,6 +440,7 @@
     <None Include="Gui\QuickSelectorData.xss">
       <DependentUpon>QuickSelectorData.xsd</DependentUpon>
     </None>
+    <None Include="Gui\Docking\DockPanelSuite.LICENSE.txt" />
     <None Include="Properties\DataSources\SuperPutty.Data.KeyboardShortcut.datasource" />
     <None Include="Properties\DataSources\SuperPutty.Scp.FileTransferViewItem.datasource" />
     <None Include="Properties\DataSources\SuperPutty.Scp.IBrowserModel.datasource" />
