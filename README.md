@@ -25,7 +25,7 @@ does not alter the PuTTY hosting path.
 
 ## System requirements
 
-The `master` branch and `sp-1.7.2` release produce **64-bit Windows builds
+The `master` branch and `sp-1.7.3` release produce **64-bit Windows builds
 only**. The application, test harness, and MSI installer all target x64; x86
 and AnyCPU configurations are not supported.
 
@@ -40,14 +40,14 @@ Windows for elevation. Neither installer can be installed on 32-bit Windows.
 Community release artifacts use an explicit `x64` suffix. The current release
 contains:
 
-- `SuperPutty-1.7.2-current-user-win-x64-signed.msi` — signed, non-elevated current-user installer
-- `SuperPutty-1.7.2-all-users-win-x64-signed.msi` — signed, elevated all-users installer
+- `SuperPutty-1.7.3-current-user-win-x64-signed.msi` — signed, non-elevated current-user installer
+- `SuperPutty-1.7.3-all-users-win-x64-signed.msi` — signed, elevated all-users installer
 
 ## Automated tests
 
 `SuperPuttyUnitTests` is an SDK-style .NET Framework 4.8 project using NUnit 3,
 the NUnit 3 adapter, and Microsoft.NET.Test.Sdk. The current release validation
-executes 80 isolated tests and excludes tests that require a configured SCP
+executes 81 isolated tests and excludes tests that require a configured SCP
 environment.
 
 The Windows-only console integration test in

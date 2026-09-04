@@ -1,3 +1,9 @@
+1.7.3
+ - Added a custom VS2015 document-tab renderer with distinct outlined states: dark active tabs, light inactive tabs, and middle-gray hover tabs.
+ - Active tabs use white text and a white outline; inactive tabs use black text and a middle-gray outline; hovered tabs use black text and a white outline.
+ - Preserved per-tab close buttons, docking behavior, and the light workspace background.
+ - Release executable and both installers are Authenticode signed by Christopher Thornton and timestamped.
+
 1.7.2
  - Replaced the unreliable dual-scope MSI with two fixed-scope installers: a non-elevated current-user package under Local AppData and an elevated all-users package under native x64 Program Files.
  - Replaced the Word-generated installer license document with a compact Windows Installer-compatible RTF so the MIT license text is visible before acceptance.

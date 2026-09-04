@@ -68,12 +68,19 @@ The successful release build produces:
 
 - `bin\x64\Release\SuperPutty.exe`
 - `SuperPuttyUnitTests\bin\x64\Release\SuperPuttyUnitTests.exe`
-- `SuperPuttyInstaller\bin\x64\Release\SuperPutty-1.7.2-current-user-win-x64-signed.msi`
-- `SuperPuttyInstaller\bin\x64\Release\SuperPutty-1.7.2-all-users-win-x64-signed.msi`
+- `SuperPuttyInstaller\bin\x64\Release\SuperPutty-1.7.3-current-user-win-x64-signed.msi`
+- `SuperPuttyInstaller\bin\x64\Release\SuperPutty-1.7.3-all-users-win-x64-signed.msi`
 
-The WiX 6 installers use product version 1.7.2 while preserving the original upgrade code, license UI, shortcuts, themes, and post-install launch option. The fixed-scope current-user package installs under Local AppData without elevation. The fixed-scope all-users package installs under native 64-bit Program Files and requests elevation. ICE validation completes without warnings.
+The WiX 6 installers use product version 1.7.3 while preserving the original upgrade code, license UI, shortcuts, themes, and post-install launch option. The fixed-scope current-user package installs under Local AppData without elevation. The fixed-scope all-users package installs under native 64-bit Program Files and requests elevation. ICE validation completes without warnings.
 
 The complete Release build currently succeeds with zero warnings and zero errors.
+
+## Version 1.7.3 changes
+
+- Added a custom DockPanelSuite VS2015 document-tab renderer while retaining the packaged docking library and existing docking behavior.
+- Active tabs have a dark-gray background with white text and outline; inactive tabs have a light-gray background with black text and a middle-gray outline; hovered tabs have a middle-gray background with black text and a white outline.
+- Added a focused theme test and retained the upstream DockPanelSuite MIT license with the derived renderer source.
+- The executable version is `1.7.3.0`; both MSIs use product version `1.7.3`.
 
 ## Version 1.7.2 changes
 
