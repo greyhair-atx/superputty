@@ -1213,10 +1213,10 @@ namespace SuperPutty.Gui.Docking
             g.FillRectangle(DockPane.DockPanel.Theme.PaintingService.GetBrush(paint), rect);
 
             Color outline = DockPane.ActiveContent == tab.Content
-                ? Color.FromArgb(96, 96, 96)
+                ? OutlinedVS2015LightTheme.ActiveTabOutline
                 : tab.Content == DockPane.MouseOverTab
-                    ? Color.FromArgb(64, 64, 64)
-                    : Color.FromArgb(48, 48, 48);
+                    ? OutlinedVS2015LightTheme.HoveredTabOutline
+                    : OutlinedVS2015LightTheme.InactiveTabOutline;
             Rectangle outlineRectangle = rect;
             outlineRectangle.Width -= 1;
             outlineRectangle.Height -= 1;
