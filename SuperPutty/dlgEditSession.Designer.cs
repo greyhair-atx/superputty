@@ -64,6 +64,10 @@ namespace SuperPutty
             this.textBoxLocalPathSesion = new System.Windows.Forms.TextBox();
             this.lbLocalPath = new System.Windows.Forms.Label();
             this.folderBrowserDialog1 = new System.Windows.Forms.FolderBrowserDialog();
+            this.labelPrivateKeyFile = new System.Windows.Forms.Label();
+            this.textBoxPrivateKeyFile = new System.Windows.Forms.TextBox();
+            this.buttonBrowsePrivateKey = new System.Windows.Forms.Button();
+            this.openFileDialogPrivateKey = new System.Windows.Forms.OpenFileDialog();
             this.groupBox1.SuspendLayout();
             this.groupBox2.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.errorProvider)).BeginInit();
@@ -181,7 +185,7 @@ namespace SuperPutty
             // buttonSave
             // 
             this.buttonSave.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
-            this.buttonSave.Location = new System.Drawing.Point(318, 496);
+            this.buttonSave.Location = new System.Drawing.Point(318, 528);
             this.buttonSave.Name = "buttonSave";
             this.buttonSave.Size = new System.Drawing.Size(75, 23);
             this.buttonSave.TabIndex = 8;
@@ -194,7 +198,7 @@ namespace SuperPutty
             this.buttonCancel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
             this.buttonCancel.CausesValidation = false;
             this.buttonCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel;
-            this.buttonCancel.Location = new System.Drawing.Point(399, 496);
+            this.buttonCancel.Location = new System.Drawing.Point(399, 528);
             this.buttonCancel.Name = "buttonCancel";
             this.buttonCancel.Size = new System.Drawing.Size(75, 23);
             this.buttonCancel.TabIndex = 9;
@@ -352,6 +356,9 @@ namespace SuperPutty
             this.groupBoxFileTransferOptions.Controls.Add(this.buttonBrowseLocalPath);
             this.groupBoxFileTransferOptions.Controls.Add(this.textBoxLocalPathSesion);
             this.groupBoxFileTransferOptions.Controls.Add(this.lbLocalPath);
+            this.groupBoxFileTransferOptions.Controls.Add(this.labelPrivateKeyFile);
+            this.groupBoxFileTransferOptions.Controls.Add(this.textBoxPrivateKeyFile);
+            this.groupBoxFileTransferOptions.Controls.Add(this.buttonBrowsePrivateKey);
             this.groupBoxFileTransferOptions.Font = new System.Drawing.Font("Segoe UI", 9F);
             // checkBoxIgnoreRdpCertificateErrors
             //
@@ -368,7 +375,7 @@ namespace SuperPutty
             //
             this.groupBoxFileTransferOptions.Location = new System.Drawing.Point(14, 377);
             this.groupBoxFileTransferOptions.Name = "groupBoxFileTransferOptions";
-            this.groupBoxFileTransferOptions.Size = new System.Drawing.Size(460, 100);
+            this.groupBoxFileTransferOptions.Size = new System.Drawing.Size(460, 132);
             this.groupBoxFileTransferOptions.TabIndex = 19;
             this.groupBoxFileTransferOptions.TabStop = false;
             this.groupBoxFileTransferOptions.Text = "File Transfer Options";
@@ -419,6 +426,42 @@ namespace SuperPutty
             this.lbLocalPath.Size = new System.Drawing.Size(62, 15);
             this.lbLocalPath.TabIndex = 0;
             this.lbLocalPath.Text = "Local Path";
+            //
+            // labelPrivateKeyFile
+            //
+            this.labelPrivateKeyFile.AutoSize = true;
+            this.labelPrivateKeyFile.Location = new System.Drawing.Point(6, 96);
+            this.labelPrivateKeyFile.Name = "labelPrivateKeyFile";
+            this.labelPrivateKeyFile.Size = new System.Drawing.Size(68, 15);
+            this.labelPrivateKeyFile.TabIndex = 19;
+            this.labelPrivateKeyFile.Text = "Private Key";
+            this.toolTip.SetToolTip(this.labelPrivateKeyFile, "PuTTY private key (.ppk) used for SCP authentication");
+            //
+            // textBoxPrivateKeyFile
+            //
+            this.textBoxPrivateKeyFile.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left)
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.textBoxPrivateKeyFile.Location = new System.Drawing.Point(90, 93);
+            this.textBoxPrivateKeyFile.Name = "textBoxPrivateKeyFile";
+            this.textBoxPrivateKeyFile.Size = new System.Drawing.Size(250, 23);
+            this.textBoxPrivateKeyFile.TabIndex = 20;
+            //
+            // buttonBrowsePrivateKey
+            //
+            this.buttonBrowsePrivateKey.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.buttonBrowsePrivateKey.Location = new System.Drawing.Point(351, 92);
+            this.buttonBrowsePrivateKey.Name = "buttonBrowsePrivateKey";
+            this.buttonBrowsePrivateKey.Size = new System.Drawing.Size(75, 23);
+            this.buttonBrowsePrivateKey.TabIndex = 21;
+            this.buttonBrowsePrivateKey.Text = "Browse";
+            this.buttonBrowsePrivateKey.UseVisualStyleBackColor = true;
+            this.buttonBrowsePrivateKey.Click += new System.EventHandler(this.buttonBrowsePrivateKey_Click);
+            //
+            // openFileDialogPrivateKey
+            //
+            this.openFileDialogPrivateKey.DefaultExt = "ppk";
+            this.openFileDialogPrivateKey.Filter = "PuTTY private keys (*.ppk)|*.ppk|All files (*.*)|*.*";
+            this.openFileDialogPrivateKey.Title = "Select PuTTY Private Key";
             // 
             // dlgEditSession
             // 
@@ -426,7 +469,7 @@ namespace SuperPutty
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.CancelButton = this.buttonCancel;
-            this.ClientSize = new System.Drawing.Size(490, 526);
+            this.ClientSize = new System.Drawing.Size(490, 558);
             this.Controls.Add(this.groupBoxFileTransferOptions);
             this.Controls.Add(this.checkBoxIgnoreRdpCertificateErrors);
             this.Controls.Add(this.groupBox2);
@@ -499,6 +542,10 @@ namespace SuperPutty
         private System.Windows.Forms.TextBox textBoxLocalPathSesion;
         private System.Windows.Forms.Label lbLocalPath;
         private System.Windows.Forms.FolderBrowserDialog folderBrowserDialog1;
+        private System.Windows.Forms.Label labelPrivateKeyFile;
+        private System.Windows.Forms.TextBox textBoxPrivateKeyFile;
+        private System.Windows.Forms.Button buttonBrowsePrivateKey;
+        private System.Windows.Forms.OpenFileDialog openFileDialogPrivateKey;
         private System.Windows.Forms.Label label8;
         private System.Windows.Forms.TextBox textBoxNote;
     }

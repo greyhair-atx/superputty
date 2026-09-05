@@ -1,3 +1,12 @@
+Unreleased
+ - Added SCP as a first-class saved-session protocol with saved local and remote paths.
+ - Added post-connection PSCP password prompting and one-use, user-restricted named-pipe delivery through -pwfile so passwords are not written to temporary files.
+ - Added an explicit PuTTY private-key (.ppk) field for SCP directory listings and file transfers.
+ - Added File > Save Current Session for saving quick connections and changes to the active session.
+ - Added Tools > Open Log File Location and optional verbose PSCP diagnostic logging through -v.
+ - Changed <Auto Restore> to restore docking geometry without reopening the previous active sessions; manually saved layouts retain their existing behavior.
+ - Added a version-controlled community user manual based on the original wiki, with explicit credit to Jim Radford and upstream contributors.
+
 1.7.3
  - Added a custom VS2015 document-tab renderer with distinct outlined states: dark active tabs, light inactive tabs, and middle-gray hover tabs.
  - Active tabs use white text and a white outline; inactive tabs use black text and a middle-gray outline; hovered tabs use black text and a white outline.

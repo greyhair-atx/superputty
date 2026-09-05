@@ -159,9 +159,9 @@ namespace SuperPuttyUnitTests
         public void LoadParsesProtocolAliasesUtf8AndOptionalProperties()
         {
             string csv =
-                "SessionName,Host,Protocol,Username,ExtraArgs,Note,ImageKey,SPSLFileName,RemotePath,LocalPath\r\n" +
-                "PowerShell Local,localhost,PowerShell,user,-NoLogo,Grüße,windows,test.spsl,/remote,C:\\local\r\n" +
-                "Command Local,localhost,Win Command Prompt,,,,,,,\r\n";
+                "SessionName,Host,Protocol,Username,ExtraArgs,Note,ImageKey,SPSLFileName,RemotePath,LocalPath,PrivateKeyFile\r\n" +
+                "PowerShell Local,localhost,PowerShell,user,-NoLogo,Grüße,windows,test.spsl,/remote,C:\\local,C:\\Keys\\gitea.ppk\r\n" +
+                "Command Local,localhost,Win Command Prompt,,,,,,,,\r\n";
 
             WithCsvFile(csv, delegate(string fileName)
             {
@@ -176,6 +176,7 @@ namespace SuperPuttyUnitTests
                 Assert.AreEqual("test.spsl", result.Sessions[0].SPSLFileName);
                 Assert.AreEqual("/remote", result.Sessions[0].RemotePath);
                 Assert.AreEqual("C:\\local", result.Sessions[0].LocalPath);
+                Assert.AreEqual("C:\\Keys\\gitea.ppk", result.Sessions[0].PrivateKeyFile);
                 Assert.AreEqual(ConnectionProtocol.WINCMD, result.Sessions[1].Proto);
             });
         }

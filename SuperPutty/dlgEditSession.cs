@@ -65,6 +65,7 @@ namespace SuperPutty
                 this.checkBoxIgnoreRdpCertificateErrors.Checked = Session.IgnoreRdpCertificateErrors;
                 this.textBoxRemotePathSesion.Text = Session.RemotePath;
                 this.textBoxLocalPathSesion.Text = Session.LocalPath;
+                this.textBoxPrivateKeyFile.Text = Session.PrivateKeyFile;
                 this.textBoxNote.Text = Session.Note;
 
                 foreach (System.Collections.DictionaryEntry protoEntry in this.protoTypesMap)
@@ -102,7 +103,7 @@ namespace SuperPutty
             this.toolTip.SetToolTip(this.buttonImageSelect, buttonImageSelect.ImageKey);
 
             this.isInitialized = true;
-            UpdateRdpCertificateOptionVisibility();
+            UpdateProtocolSpecificOptionVisibility();
         }
 
         protected override void OnLoad(EventArgs e)
@@ -128,6 +129,7 @@ namespace SuperPutty
             this.protoTypesMap["Telnet"] = ConnectionProtocol.Telnet;  
             this.protoTypesMap["Rlogin"] = ConnectionProtocol.Rlogin;
             this.protoTypesMap["SSH"] = ConnectionProtocol.SSH;
+            this.protoTypesMap["SCP"] = ConnectionProtocol.SCP;
             this.protoTypesMap["Serial"] = ConnectionProtocol.Serial;
             this.protoTypesMap["CygTerm"] = ConnectionProtocol.Cygterm;
             this.protoTypesMap["MinTTY"] = ConnectionProtocol.Mintty;
@@ -174,6 +176,7 @@ namespace SuperPutty
             Session.IgnoreRdpCertificateErrors = checkBoxIgnoreRdpCertificateErrors.Checked;
             Session.RemotePath = textBoxRemotePathSesion.Text.Trim();
             Session.LocalPath = textBoxLocalPathSesion.Text.Trim();
+            Session.PrivateKeyFile = textBoxPrivateKeyFile.Text.Trim();
             Session.Note = textBoxNote.Text.Trim();
 
             if (this.protoTypesMap.ContainsKey(comboBoxProto.SelectedItem))
@@ -194,7 +197,7 @@ namespace SuperPutty
                 return;
 
             ConnectionProtocol proto = this.protoTypesMap.ContainsKey(comboBoxProto.SelectedItem) ? (ConnectionProtocol)this.protoTypesMap[comboBoxProto.SelectedItem] : ConnectionProtocol.SSH;
-            UpdateRdpCertificateOptionVisibility();
+            UpdateProtocolSpecificOptionVisibility();
             if (proto == ConnectionProtocol.Cygterm || proto == ConnectionProtocol.Mintty || proto == ConnectionProtocol.WINCMD || proto == ConnectionProtocol.PS)
             {
                 this.textBoxPort.Enabled = false;
@@ -219,12 +222,19 @@ namespace SuperPutty
             }
         }
 
-        private void UpdateRdpCertificateOptionVisibility()
+        private void UpdateProtocolSpecificOptionVisibility()
         {
             ConnectionProtocol proto = this.protoTypesMap != null && this.protoTypesMap.ContainsKey(comboBoxProto.SelectedItem)
                 ? (ConnectionProtocol)this.protoTypesMap[comboBoxProto.SelectedItem]
                 : ConnectionProtocol.SSH;
             this.checkBoxIgnoreRdpCertificateErrors.Visible = proto == ConnectionProtocol.RDP;
+            bool supportsScp = proto == ConnectionProtocol.SCP ||
+                proto == ConnectionProtocol.SSH ||
+                proto == ConnectionProtocol.SSH2 ||
+                proto == ConnectionProtocol.SSHNet;
+            this.labelPrivateKeyFile.Visible = supportsScp;
+            this.textBoxPrivateKeyFile.Visible = supportsScp;
+            this.buttonBrowsePrivateKey.Visible = supportsScp;
         }
 
         public static int GetDefaultPort(ConnectionProtocol protocol)
@@ -241,6 +251,9 @@ namespace SuperPutty
                     break;
                 case ConnectionProtocol.Telnet:
                     port = 23;
+                    break;
+                case ConnectionProtocol.SCP:
+                    port = 22;
                     break;
                 case ConnectionProtocol.VNC:
                     port = 5900;
@@ -411,6 +424,19 @@ namespace SuperPutty
             }
 
 
+        }
+
+        private void buttonBrowsePrivateKey_Click(object sender, EventArgs e)
+        {
+            if (File.Exists(textBoxPrivateKeyFile.Text))
+            {
+                openFileDialogPrivateKey.FileName = textBoxPrivateKeyFile.Text;
+            }
+
+            if (openFileDialogPrivateKey.ShowDialog(this) == DialogResult.OK)
+            {
+                textBoxPrivateKeyFile.Text = openFileDialogPrivateKey.FileName;
+            }
         }
 
 

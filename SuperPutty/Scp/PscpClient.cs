@@ -3,10 +3,13 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.IO.Pipes;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using log4net;
 using log4net.Core;
 using SuperPutty.Data;
@@ -49,6 +52,9 @@ namespace SuperPutty.Scp
         private const string PUTTY_ARGUMENTS_HELP_HEADER = "PuTTY Secure Copy client";
 
         private const string PUTTY_HOST_DOES_NOT_EXIST = "ssh_init: Host does not exist";
+        private const string PUTTY_BATCH_INTERACTIVE = "Cannot answer interactive prompts in batch mode";
+        private const string PUTTY_ACCESS_DENIED = "Access denied";
+        private const string PUTTY_AUTHENTICATION_FAILED = "Authentication failed";
         /// <summary>
         /// Returned when a bad arg is sent
         /// </summary>
@@ -56,6 +62,13 @@ namespace SuperPutty.Scp
 
         /// <summary>Start of the message indicating we have never connected to this host before</summary>
         private const string PUTTY_NO_KEY = "The server's host key is not cached in the registry";
+
+        internal enum AuthenticationPromptAction
+        {
+            None,
+            PasswordSubmitted,
+            RetryAuthentication
+        }
         /* Network 
          * 10.1 ‘The server's host key is not cached in the registry’ 
          * 10.2 ‘WARNING - POTENTIAL SECURITY BREACH!’ 
@@ -93,31 +106,40 @@ namespace SuperPutty.Scp
             {
                 //return this.DoListDirectory(path);
                 ListDirectoryResult result = new ListDirectoryResult(path);
-                String ArgsPscp = ToArgs(this.Session, this.Session.Password, path.Path);
-                RunPscp(
-                    result,
-                    ArgsPscp,
-                    CommandLineOptions.replacePassword(ArgsPscp,"XXXXX"), 
-                    null, 
-                    null,
-                    (lines) =>
-                    {
-                        // successful list
-                        ScpLineParser parser = new ScpLineParser();
-                        foreach (string rawLine in lines)
+                using (PscpPasswordPipe passwordPipe = PscpPasswordPipe.Create(
+                    this.Session.Password,
+                    SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg))
+                {
+                    String ArgsPscp = ToArgs(
+                        this.Session,
+                        this.Session.Password,
+                        path.Path,
+                        passwordPipe == null ? null : passwordPipe.PipePath);
+                    RunPscp(
+                        result,
+                        ArgsPscp,
+                        CommandLineOptions.replacePassword(ArgsPscp,"XXXXX"),
+                        null,
+                        null,
+                        (lines) =>
                         {
-                            string line = rawLine.TrimEnd();
-                            BrowserFileInfo fileInfo;
-                            if (parser.TryParseFileLine(line, out fileInfo))
+                            // successful list
+                            ScpLineParser parser = new ScpLineParser();
+                            foreach (string rawLine in lines)
                             {
-                                if (fileInfo.Name != ".")
+                                string line = rawLine.TrimEnd();
+                                BrowserFileInfo fileInfo;
+                                if (parser.TryParseFileLine(line, out fileInfo))
                                 {
-                                    fileInfo.Path = MakePath(path.Path, fileInfo.Name);
-                                    result.Add(fileInfo);
+                                    if (fileInfo.Name != ".")
+                                    {
+                                        fileInfo.Path = MakePath(path.Path, fileInfo.Name);
+                                        result.Add(fileInfo);
+                                    }
                                 }
                             }
-                        }
-                    });
+                        });
+                }
 
                 return result;
             }
@@ -154,23 +176,36 @@ namespace SuperPutty.Scp
             return path;
         }
 
-        public static string ToArgs(SessionData session, string password, string path)
+        public static string ToArgs(
+            SessionData session,
+            string password,
+            string path,
+            string passwordFile = null)
         {
             StringBuilder sb = new StringBuilder();
-            sb.Append("-ls ");
+            // PSCP runs without an interactive console. Batch mode lets key/Pageant and
+            // supplied-password authentication proceed but prevents hidden prompts.
+            sb.Append("-ls -batch ");
 
             if (!String.IsNullOrEmpty(session.PuttySession))
             {
                 sb.AppendFormat("-load {0} ", CommandLineOptions.QuoteArgument(session.PuttySession));
             }
 
-            //only send the password if AllowPlainTextPuttyPasswordArg is checked
-            if (!String.IsNullOrEmpty(password) && !SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
-                Log.Warn("SuperPuTTY is set to NOT allow the use of the -pw <password> argument, this can be overriden in Tools -> Options -> GUI");
-            //fix: use the parameter "password"
+            if (!String.IsNullOrWhiteSpace(session.PrivateKeyFile))
+            {
+                sb.AppendFormat("-i {0} ", CommandLineOptions.QuoteArgument(session.PrivateKeyFile));
+            }
+
+            // Only place the password itself on the command line when explicitly enabled.
+            // Otherwise PSCP reads it from a locked-down, one-use named pipe.
             if (!string.IsNullOrEmpty(password) && SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
             {
                 sb.AppendFormat("-pw {0} ", CommandLineOptions.QuoteArgument(password));
+            }
+            else if (!String.IsNullOrEmpty(passwordFile))
+            {
+                sb.AppendFormat("-pwfile {0} ", CommandLineOptions.QuoteArgument(passwordFile));
             }
 
             if (!String.IsNullOrEmpty(session.ExtraArgs))
@@ -218,39 +253,54 @@ namespace SuperPutty.Scp
                 
                 FileTransferResult result = new FileTransferResult();
 
-                string args = ToArgs(this.Session, this.Session.Password, sourceFiles, target);
-                string argsToLog = ToArgs(this.Session, "XXXXX", sourceFiles, target);
-                ScpLineParser parser = new ScpLineParser();
-                RunPscp(
-                    result, args, argsToLog, 
-                    (line) => 
-                    {
-                        bool completed = false;
-                        if (callback != null)
+                using (PscpPasswordPipe passwordPipe = PscpPasswordPipe.Create(
+                    this.Session.Password,
+                    SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg))
+                {
+                    string passwordPipePath = passwordPipe == null ? null : passwordPipe.PipePath;
+                    string args = ToArgs(this.Session, this.Session.Password, sourceFiles, target, passwordPipePath);
+                    string argsToLog = ToArgs(this.Session, "XXXXX", sourceFiles, target, passwordPipePath);
+                    ScpLineParser parser = new ScpLineParser();
+                    RunPscp(
+                        result, args, argsToLog,
+                        (line) =>
                         {
-                            FileTransferStatus status;
-                            if (parser.TryParseTransferStatus(line, out status))
+                            bool completed = false;
+                            if (callback != null)
                             {
-                                completed = status.PercentComplete == 100;
-                                callback(completed, false, status);
+                                FileTransferStatus status;
+                                if (parser.TryParseTransferStatus(line, out status))
+                                {
+                                    completed = status.PercentComplete == 100;
+                                    callback(completed, false, status);
+                                }
                             }
-                        }
-                        return completed;
-                    }, 
-                    null, null, cancellationToken);
+                            return completed;
+                        },
+                        null, null, cancellationToken);
+                }
 
                 return result;
             }
         }
 
-        internal static string ToArgs(SessionData session, string password, List<BrowserFileInfo> source, BrowserFileInfo target)
+        internal static string ToArgs(
+            SessionData session,
+            string password,
+            List<BrowserFileInfo> source,
+            BrowserFileInfo target,
+            string passwordFile = null)
         {
             StringBuilder sb = new StringBuilder();
 
-            sb.Append("-r -agent ");  // default arguments
+            sb.Append("-r -agent -batch ");  // default arguments
             if (!String.IsNullOrEmpty(session.PuttySession))
             {
                 sb.Append("-load ").Append(CommandLineOptions.QuoteArgument(session.PuttySession)).Append(" ");
+            }
+            if (!String.IsNullOrWhiteSpace(session.PrivateKeyFile))
+            {
+                sb.Append("-i ").Append(CommandLineOptions.QuoteArgument(session.PrivateKeyFile)).Append(" ");
             }
             if (!String.IsNullOrEmpty(password) && SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
             {
@@ -259,6 +309,10 @@ namespace SuperPutty.Scp
             else if (!String.IsNullOrEmpty(password))
             {
                 Log.Warn("PSCP password was not placed on the command line because plaintext password arguments are disabled");
+            }
+            if (!SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg && !String.IsNullOrEmpty(passwordFile))
+            {
+                sb.Append("-pwfile ").Append(CommandLineOptions.QuoteArgument(passwordFile)).Append(" ");
             }
             if (!String.IsNullOrEmpty(session.ExtraArgs))
             {
@@ -338,6 +392,9 @@ namespace SuperPutty.Scp
                 AsyncStreamReader errReader = null;
                 CancellationTokenRegistration cancellationRegistration = default(CancellationTokenRegistration);
                 int terminalState = 0;
+                bool passwordSubmitted = !String.IsNullOrEmpty(this.Session.Password);
+                object authenticationSync = new object();
+                bool verboseLogging = HasVerboseArgument(args);
                 try
                 {
                     // Start pscp
@@ -360,6 +417,51 @@ namespace SuperPutty.Scp
                     // Async read output/err.  Inline actions to quick kill the process when pscp prompts user.
                     // NOTE: Using BeginReadOutput/ErrorReadLine doesn't work here.  Calls to read an empty stream
                     //       will block (e.g. "user's password:" prompt will block on reading err stream).  
+                    Func<string, bool?> handleAuthentication = message =>
+                    {
+                        lock (authenticationSync)
+                        {
+                            AuthenticationPromptAction action;
+                            try
+                            {
+                                action = HandleAuthenticationPrompt(
+                                    message,
+                                    this.Session.Password,
+                                    SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg,
+                                    passwordSubmitted,
+                                    proc.StandardInput);
+                            }
+                            catch (IOException ex)
+                            {
+                                Log.Warn("Could not send the PSCP password through standard input", ex);
+                                action = AuthenticationPromptAction.RetryAuthentication;
+                            }
+                            catch (InvalidOperationException ex)
+                            {
+                                Log.Warn("PSCP standard input was not available for password authentication", ex);
+                                action = AuthenticationPromptAction.RetryAuthentication;
+                            }
+
+                            if (action == AuthenticationPromptAction.None)
+                                return null;
+
+                            if (action == AuthenticationPromptAction.PasswordSubmitted)
+                            {
+                                passwordSubmitted = true;
+                                SafeChangeTimer(timeoutTimer, this.Options.TimeoutMs);
+                                return true;
+                            }
+
+                            if (Interlocked.CompareExchange(ref terminalState, 1, 0) == 0)
+                            {
+                                result.StatusCode = ResultStatusCode.RetryAuthentication;
+                                Log.Debug("Username/password required or rejected");
+                                SafeKill(proc);
+                            }
+                            return false;
+                        }
+                    };
+
                     outReader = new AsyncStreamReader(
                         "OUT",
                         proc.StandardOutput,
@@ -367,15 +469,10 @@ namespace SuperPutty.Scp
                         {
                             bool keepReading = true;
                             bool completed = false;
-                            if (strOut == PUTTY_INTERACTIVE_AUTH || strOut.Contains("assword:"))
+                            bool? authenticationResult = handleAuthentication(strOut);
+                            if (authenticationResult.HasValue)
                             {
-                                if (Interlocked.CompareExchange(ref terminalState, 1, 0) == 0)
-                                {
-                                    result.StatusCode = ResultStatusCode.RetryAuthentication;
-                                    Log.Debug("Username/Password invalid or not sent");
-                                    SafeKill(proc);
-                                }
-                                keepReading = false;
+                                keepReading = authenticationResult.Value;
                             }
                             else if (inlineOutHandler != null)
                             {
@@ -383,7 +480,8 @@ namespace SuperPutty.Scp
                             }
                             SafeChangeTimer(timeoutTimer, completed ? Timeout.Infinite : this.Options.TimeoutMs);
                             return keepReading;
-                        });
+                        },
+                        verboseLogging);
                     errReader = new AsyncStreamReader(
                         "ERR",
                         proc.StandardError,
@@ -400,13 +498,22 @@ namespace SuperPutty.Scp
                                 }
                                 keepReading = false;
                             }
-                            else if (inlineErrHandler != null)
+                            else
                             {
-                                completed = inlineErrHandler(strErr);
+                                bool? authenticationResult = handleAuthentication(strErr);
+                                if (authenticationResult.HasValue)
+                                {
+                                    keepReading = authenticationResult.Value;
+                                }
+                                else if (inlineErrHandler != null)
+                                {
+                                    completed = inlineErrHandler(strErr);
+                                }
                             }
                             SafeChangeTimer(timeoutTimer, completed ? Timeout.Infinite : this.Options.TimeoutMs);
                             return keepReading;
-                        });
+                        },
+                        verboseLogging);
 
                     // start process and wait for results
                     Log.DebugFormat("WaitingForExit");
@@ -436,6 +543,7 @@ namespace SuperPutty.Scp
                         return;
 
                     string outputStr = String.Join("\r\n", output);
+                    string errorStr = String.Join("\r\n", err);
                     if (proc.ExitCode == 0 && outputStr.Contains(PUTTY_UNABLE_TO_OPEN))
                     {
                         // bad path
@@ -453,7 +561,21 @@ namespace SuperPutty.Scp
                     else
                     {
                         // some kind of error
-                        if (result.StatusCode != ResultStatusCode.Success)
+                        if (outputStr.Contains(PUTTY_BATCH_INTERACTIVE) ||
+                            errorStr.Contains(PUTTY_BATCH_INTERACTIVE))
+                        {
+                            result.StatusCode = ResultStatusCode.RetryAuthentication;
+                            Log.Debug("PSCP requires interactive authentication");
+                        }
+                        else if (outputStr.IndexOf(PUTTY_ACCESS_DENIED, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            errorStr.IndexOf(PUTTY_ACCESS_DENIED, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            outputStr.IndexOf(PUTTY_AUTHENTICATION_FAILED, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            errorStr.IndexOf(PUTTY_AUTHENTICATION_FAILED, StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            result.StatusCode = ResultStatusCode.RetryAuthentication;
+                            Log.Debug("PSCP rejected the supplied credentials");
+                        }
+                        else if (result.StatusCode != ResultStatusCode.Success)
                         {
                             Log.Debug("Skipping output check since proactively killed process.");
                         }
@@ -500,6 +622,7 @@ namespace SuperPutty.Scp
                 Arguments = args,
                 CreateNoWindow = true,
                 RedirectStandardError = true,
+                RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 UseShellExecute = false
             };
@@ -510,6 +633,55 @@ namespace SuperPutty.Scp
                 EnableRaisingEvents = true
             };
             return proc;
+        }
+
+        internal static bool IsPasswordPrompt(string message)
+        {
+            return !String.IsNullOrEmpty(message) &&
+                message.TrimEnd().EndsWith("password:", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool HasVerboseArgument(string arguments)
+        {
+            return Regex.IsMatch(
+                arguments ?? String.Empty,
+                @"(?:^|\s)-v(?:\s|$)",
+                RegexOptions.IgnoreCase);
+        }
+
+        internal static AuthenticationPromptAction HandleAuthenticationPrompt(
+            string message,
+            string password,
+            bool allowPlainTextPasswordArgument,
+            bool passwordSubmitted,
+            TextWriter standardInput)
+        {
+            bool isPasswordPrompt = IsPasswordPrompt(message);
+            bool isInteractiveAuthentication = String.Equals(
+                message,
+                PUTTY_INTERACTIVE_AUTH,
+                StringComparison.OrdinalIgnoreCase);
+
+            if (!isPasswordPrompt && !isInteractiveAuthentication)
+                return AuthenticationPromptAction.None;
+
+            // The informational keyboard-interactive line normally precedes the actual
+            // password prompt. If a password is available, wait for that prompt before writing.
+            if (isInteractiveAuthentication && !String.IsNullOrEmpty(password))
+                return AuthenticationPromptAction.None;
+
+            if (isPasswordPrompt &&
+                !allowPlainTextPasswordArgument &&
+                !String.IsNullOrEmpty(password) &&
+                !passwordSubmitted &&
+                standardInput != null)
+            {
+                standardInput.WriteLine(password);
+                standardInput.Flush();
+                return AuthenticationPromptAction.PasswordSubmitted;
+            }
+
+            return AuthenticationPromptAction.RetryAuthentication;
         }
 
         private static void SafeKill(Process proc)
@@ -559,6 +731,95 @@ namespace SuperPutty.Scp
 
         #endregion
 
+        internal sealed class PscpPasswordPipe : IDisposable
+        {
+            private readonly NamedPipeServerStream pipe;
+            private readonly Thread writerThread;
+            private byte[] passwordBytes;
+
+            private PscpPasswordPipe(string password)
+            {
+                string pipeName = "SuperPuTTY-pscp-" + Guid.NewGuid().ToString("N");
+                SecurityIdentifier currentUser = WindowsIdentity.GetCurrent().User;
+                PipeSecurity security = new PipeSecurity();
+                security.SetAccessRuleProtection(true, false);
+                security.AddAccessRule(new PipeAccessRule(
+                    currentUser,
+                    PipeAccessRights.FullControl,
+                    AccessControlType.Allow));
+
+                this.pipe = new NamedPipeServerStream(
+                    pipeName,
+                    PipeDirection.Out,
+                    1,
+                    PipeTransmissionMode.Byte,
+                    PipeOptions.Asynchronous,
+                    0,
+                    4096,
+                    security,
+                    HandleInheritability.None);
+                this.PipePath = @"\\.\pipe\" + pipeName;
+                this.passwordBytes = new UTF8Encoding(false).GetBytes(password + Environment.NewLine);
+                this.writerThread = new Thread(this.ServePassword)
+                {
+                    IsBackground = true,
+                    Name = "SuperPuTTY PSCP password pipe"
+                };
+                this.writerThread.Start();
+            }
+
+            private void ServePassword()
+            {
+                try
+                {
+                    this.pipe.WaitForConnection();
+                    this.pipe.Write(this.passwordBytes, 0, this.passwordBytes.Length);
+                    this.pipe.Flush();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Disposing an unused credential pipe unblocks WaitForConnection.
+                }
+                catch (IOException ex)
+                {
+                    Log.Warn("Could not serve the PSCP password through the named pipe", ex);
+                }
+                catch (Exception ex)
+                {
+                    // Never allow a credential-delivery failure on this background thread
+                    // to terminate the application. PSCP will report the failed read.
+                    Log.Error("Unexpected PSCP password-pipe failure", ex);
+                }
+                finally
+                {
+                    if (this.passwordBytes != null)
+                    {
+                        Array.Clear(this.passwordBytes, 0, this.passwordBytes.Length);
+                        this.passwordBytes = null;
+                    }
+                    this.pipe.Dispose();
+                }
+            }
+
+            internal static PscpPasswordPipe Create(string password, bool allowPlainTextPasswordArgument)
+            {
+                return String.IsNullOrEmpty(password) || allowPlainTextPasswordArgument
+                    ? null
+                    : new PscpPasswordPipe(password);
+            }
+
+            public void Dispose()
+            {
+                this.pipe.Dispose();
+                if (this.writerThread.IsAlive)
+                    this.writerThread.Join(2000);
+                if (this.passwordBytes != null)
+                    Array.Clear(this.passwordBytes, 0, this.passwordBytes.Length);
+            }
+
+            internal string PipePath { get; private set; }
+        }
+
         public PscpOptions Options { get; private set; }
         public SessionData Session {get; private set; }
 
@@ -572,11 +833,16 @@ namespace SuperPutty.Scp
         {
             private static readonly ILog Log = LogManager.GetLogger(typeof(AsyncStreamReader));
 
-            public AsyncStreamReader(string name, StreamReader reader, Func<string, bool> dataUpdated)
+            public AsyncStreamReader(
+                string name,
+                StreamReader reader,
+                Func<string, bool> dataUpdated,
+                bool verboseLogging = false)
             {
                 this.Name = name;
                 this.Reader = reader;
                 this.DataUpdatedHandler = dataUpdated;
+                this.VerboseLogging = verboseLogging;
                 this.Lines = new List<string>();
 
                 this.Thread = new Thread(this.ReadAll) {IsBackground = true};
@@ -597,10 +863,11 @@ namespace SuperPutty.Scp
                         char c = (char)this.Reader.Read();
                         sb.Append(c);
 
-                        // add special case to fire readline if prompted with "user's password: "
+                        // Password prompts do not end in a newline. Notify the caller as soon
+                        // as the trailing colon arrives, on either stdout or stderr.
                         bool isPossibleHit =
                             (c == '\n') ||
-                            (c == ':' && sb.Length > 12 && sb.ToString().EndsWith("'s password:"));
+                            (c == ':' && IsPasswordPrompt(sb.ToString()));
 
                         //Log.InfoFormat("sb={0}, match={1}", sb, c == ':' && sb.Length > 12 && sb.ToString().EndsWith("'s password:"));
                         if (isPossibleHit)
@@ -641,7 +908,10 @@ namespace SuperPutty.Scp
                     string cleanLine = line.Trim('\r', '\n');
                     this.Lines.Add(cleanLine);
 
-                    if (Log.Logger.IsEnabledFor(Level.Trace)) { Log.DebugFormat("[{0}] - {1}", Name, cleanLine); }
+                    if (this.VerboseLogging || Log.Logger.IsEnabledFor(Level.Trace))
+                    {
+                        Log.DebugFormat("PSCP [{0}] - {1}", Name, cleanLine);
+                    }
 
                     if (this.DataUpdatedHandler != null)
                     {
@@ -672,6 +942,7 @@ namespace SuperPutty.Scp
             public string Name { get; set; }
             StreamReader Reader { get; set; }
             Func<string, bool> DataUpdatedHandler { get; set; }
+            bool VerboseLogging { get; set; }
             List<string> Lines { get; set; }
             Thread Thread { get; set; }
 

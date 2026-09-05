@@ -22,6 +22,7 @@ namespace SuperPutty.Scp
 
         public PscpBrowserPanel(SessionData session, PscpOptions options, string localStartingDir) : this()
         {
+            this.Session = session;
             this.Name = session.SessionName;
             this.TabText = session.SessionName;
 
@@ -52,5 +53,7 @@ namespace SuperPutty.Scp
             this.browserViewRemote.Initialize(this.remoteBrowserPresenter, RemoteBrowserModel.NewDirectory(remotePath));
             this.fileTransferView.Initialize(this.fileTransferPresenter);
         }
+
+        public SessionData Session { get; private set; }
     }
 }

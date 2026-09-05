@@ -60,6 +60,7 @@ namespace SuperPutty
             this.toolStripMenuItem7 = new System.Windows.Forms.ToolStripSeparator();
             this.openSessionToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.switchSessionToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.saveCurrentSessionToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripMenuItem10 = new System.Windows.Forms.ToolStripSeparator();
             this.editSessionsInNotepadToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.reloadSessionsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -84,6 +85,7 @@ namespace SuperPutty
             this.fullScreenToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.puTTYConfigurationToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.openLogFileLocationToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripMenuItem11 = new System.Windows.Forms.ToolStripSeparator();
             this.toggleCommandMaskToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripMenuItem4 = new System.Windows.Forms.ToolStripSeparator();
@@ -163,6 +165,7 @@ namespace SuperPutty
             this.toolStripMenuItem7,
             this.openSessionToolStripMenuItem,
             this.switchSessionToolStripMenuItem,
+            this.saveCurrentSessionToolStripMenuItem,
             this.toolStripMenuItem10,
             this.editSessionsInNotepadToolStripMenuItem,
             this.reloadSessionsToolStripMenuItem,
@@ -174,6 +177,7 @@ namespace SuperPutty
             this.fileToolStripMenuItem.Name = "fileToolStripMenuItem";
             this.fileToolStripMenuItem.Size = new System.Drawing.Size(37, 20);
             this.fileToolStripMenuItem.Text = "&File";
+            this.fileToolStripMenuItem.DropDownOpening += new System.EventHandler(this.fileToolStripMenuItem_DropDownOpening);
             // 
             // importSettingsToolStripMenuItem
             // 
@@ -255,7 +259,15 @@ namespace SuperPutty
             this.switchSessionToolStripMenuItem.Size = new System.Drawing.Size(203, 22);
             this.switchSessionToolStripMenuItem.Text = "S&witch Session";
             this.switchSessionToolStripMenuItem.Click += new System.EventHandler(this.switchSessionToolStripMenuItem_Click);
-            // 
+            //
+            // saveCurrentSessionToolStripMenuItem
+            //
+            this.saveCurrentSessionToolStripMenuItem.Enabled = false;
+            this.saveCurrentSessionToolStripMenuItem.Name = "saveCurrentSessionToolStripMenuItem";
+            this.saveCurrentSessionToolStripMenuItem.Size = new System.Drawing.Size(203, 22);
+            this.saveCurrentSessionToolStripMenuItem.Text = "Save &Current Session...";
+            this.saveCurrentSessionToolStripMenuItem.Click += new System.EventHandler(this.saveCurrentSessionToolStripMenuItem_Click);
+            //
             // toolStripMenuItem10
             // 
             this.toolStripMenuItem10.Name = "toolStripMenuItem10";
@@ -428,6 +440,7 @@ namespace SuperPutty
             // 
             this.toolsToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.puTTYConfigurationToolStripMenuItem,
+            this.openLogFileLocationToolStripMenuItem,
             this.toolStripMenuItem11,
             this.toggleCommandMaskToolStripMenuItem,
             this.toolStripMenuItem4,
@@ -442,7 +455,14 @@ namespace SuperPutty
             this.puTTYConfigurationToolStripMenuItem.Size = new System.Drawing.Size(269, 22);
             this.puTTYConfigurationToolStripMenuItem.Text = "&PuTTY Configuration";
             this.puTTYConfigurationToolStripMenuItem.Click += new System.EventHandler(this.puTTYConfigurationToolStripMenuItem_Click);
-            // 
+            //
+            // openLogFileLocationToolStripMenuItem
+            //
+            this.openLogFileLocationToolStripMenuItem.Name = "openLogFileLocationToolStripMenuItem";
+            this.openLogFileLocationToolStripMenuItem.Size = new System.Drawing.Size(269, 22);
+            this.openLogFileLocationToolStripMenuItem.Text = "Open &Log File Location";
+            this.openLogFileLocationToolStripMenuItem.Click += new System.EventHandler(this.openLogFileLocationToolStripMenuItem_Click);
+            //
             // toolStripMenuItem11
             // 
             this.toolStripMenuItem11.Name = "toolStripMenuItem11";
@@ -979,6 +999,7 @@ namespace SuperPutty
         private System.Windows.Forms.ToolStripMenuItem reloadSessionsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem fromFileToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem fromCsvFileToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem saveCurrentSessionToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem fromPuTTYSettingsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem fromPuTTYPortableSettingsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem fromPuTTYCMExportToolStripMenuItem;
@@ -1010,5 +1031,6 @@ namespace SuperPutty
         private System.Windows.Forms.ToolStripMenuItem checkForUpdatesToolStripMenuItem;
         private System.Windows.Forms.ToolStripButton toolStripButtonRunScript;
         private System.Windows.Forms.ToolStripMenuItem sessionDetailToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem openLogFileLocationToolStripMenuItem;
     }
 }

@@ -297,7 +297,7 @@ namespace SuperPutty
             if (IsSessionNode(node) && node == treeView1.SelectedNode)
             {
                 SessionData sessionData = (SessionData)node.Tag;
-                SuperPuTTY.OpenProtoSession(sessionData);
+                SuperPuTTY.OpenSession(new SessionDataStartInfo { Session = sessionData });
             }
         }
 
@@ -613,7 +613,7 @@ namespace SuperPutty
                 }
                 foreach (SessionData session in sessions)
                 {
-                    SuperPuTTY.OpenProtoSession(session);
+                    SuperPuTTY.OpenSession(new SessionDataStartInfo { Session = session });
                 }
             }
         }
@@ -628,6 +628,9 @@ namespace SuperPutty
 
         private void contextMenuStripAddTreeItem_Opening(object sender, CancelEventArgs e)
         {
+            SessionData selectedSession = this.SelectedSession;
+            bool isScpSession = selectedSession != null && selectedSession.Proto == ConnectionProtocol.SCP;
+
             // disable file transfers if pscp isn't configured.
             fileBrowserToolStripMenuItem.Enabled = SuperPuTTY.IsScpEnabled;
             this.fileZillaToolStripMenuItem.Enabled = SuperPuTTY.IsFilezillaEnabled;
@@ -635,6 +638,7 @@ namespace SuperPutty
             this.fileZillaToolStripMenuItem.Visible = SuperPuTTY.IsFilezillaEnabled;
             this.winSCPToolStripMenuItem.Visible = SuperPuTTY.IsWinSCPEnabled;
 
+            connectExternalToolStripMenuItem.Enabled = !isScpSession;
             connectInNewSuperPuTTYToolStripMenuItem.Enabled = !SuperPuTTY.Settings.SingleInstanceMode;
         }
 

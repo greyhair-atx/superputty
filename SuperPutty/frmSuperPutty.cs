@@ -37,6 +37,7 @@ using System.Configuration;
 using System.Linq;
 using SuperPutty.Gui;
 using SuperPutty.Gui.Docking;
+using SuperPutty.Scp;
 using log4net.Core;
 using System.Text.RegularExpressions;
 using System.Runtime.Serialization.Json;
@@ -296,16 +297,19 @@ namespace SuperPutty
                 SuperPuTTY.Settings.Save();
             }
 
-            // save layout for auto-restore
-            if (SuperPuTTY.Settings.DefaultLayoutName == LayoutData.AutoRestore && e.CloseReason != CloseReason.TaskManagerClosing && e.CloseReason != CloseReason.WindowsShutDown)
+            // Persist docking geometry for the next run. Session documents are
+            // deliberately ignored when this automatic layout is loaded.
+            if (SuperPuTTY.Settings.DefaultLayoutName == LayoutData.AutoRestore &&
+                e.CloseReason != CloseReason.TaskManagerClosing &&
+                e.CloseReason != CloseReason.WindowsShutDown)
             {
                 try
                 {
-                    SaveLayout(SuperPuTTY.AutoRestoreLayoutPath, "Saving auto-restore layout");
+                    SaveLayout(SuperPuTTY.AutoRestoreLayoutPath, "Saving automatic window layout");
                 }
                 catch (Exception ex)
                 {
-                    Log.Error("Could not save the auto-restore layout while closing", ex);
+                    Log.Error("Could not save the automatic window layout while closing", ex);
                 }
             }
 
@@ -404,6 +408,131 @@ namespace SuperPutty
         }
 
         #region File
+
+        private void fileToolStripMenuItem_DropDownOpening(object sender, EventArgs e)
+        {
+            this.saveCurrentSessionToolStripMenuItem.Enabled =
+                GetDocumentSession(this.DockPanel.ActiveDocument as ToolWindowDocument) != null;
+        }
+
+        private void saveCurrentSessionToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            ToolWindowDocument activeDocument = this.DockPanel.ActiveDocument as ToolWindowDocument;
+            SessionData activeSession = GetDocumentSession(activeDocument);
+            if (activeDocument == null || activeSession == null)
+                return;
+
+            bool isSavedSession = Object.ReferenceEquals(
+                SuperPuTTY.GetSessionById(activeSession.SessionId),
+                activeSession);
+            SessionData editedSession = (SessionData)activeSession.Clone();
+            if (activeDocument is PscpBrowserPanel)
+                editedSession.Proto = ConnectionProtocol.SCP;
+
+            // Quick-connect and command-line sessions use technical IDs such as
+            // ConnectBar/host. Save new entries at the root of the session tree.
+            if (!isSavedSession)
+                editedSession.SessionId = editedSession.SessionName;
+
+            using (dlgEditSession form = new dlgEditSession(editedSession, SuperPuTTY.Images))
+            {
+                form.Text = isSavedSession
+                    ? "Update Current Session"
+                    : "Save Current Session";
+                form.SessionNameValidator += delegate(string name, out string error)
+                {
+                    string candidateId;
+                    if (!TryBuildCurrentSessionId(editedSession.SessionId, name, out candidateId, out error))
+                        return false;
+
+                    SessionData conflict = SuperPuTTY.GetSessionById(candidateId);
+                    if (conflict != null && !Object.ReferenceEquals(conflict, activeSession))
+                    {
+                        error = "Session with same name exists";
+                        return false;
+                    }
+                    return true;
+                };
+
+                if (form.ShowDialog(this) != DialogResult.OK)
+                    return;
+            }
+
+            SessionData finalConflict = SuperPuTTY.GetSessionById(editedSession.SessionId);
+            if (finalConflict != null && !Object.ReferenceEquals(finalConflict, activeSession))
+            {
+                MessageBox.Show(
+                    this,
+                    "A session with that name already exists.",
+                    "Could Not Save Session",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            activeSession.CopyFrom(editedSession);
+            if (!isSavedSession && !SuperPuTTY.AddSession(activeSession))
+            {
+                MessageBox.Show(
+                    this,
+                    "A session with that name already exists.",
+                    "Could Not Save Session",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            // GetSessionById also rebuilds the index after an existing session is renamed.
+            SuperPuTTY.GetSessionById(activeSession.SessionId);
+            SuperPuTTY.SaveSessions();
+
+            activeDocument.Text = activeSession.SessionName;
+            activeDocument.TabText = activeSession.SessionName;
+            ctlPuttyPanel activeTerminal = activeDocument as ctlPuttyPanel;
+            if (activeTerminal != null)
+            {
+                activeTerminal.TextOverride = activeSession.SessionName;
+                if (activeTerminal.AppPanel != null)
+                    activeTerminal.AppPanel.Name = activeSession.SessionId;
+            }
+            SuperPuTTY.ReportStatus("Saved current session: {0}", activeSession.SessionId);
+        }
+
+        private static SessionData GetDocumentSession(ToolWindowDocument document)
+        {
+            ctlPuttyPanel terminal = document as ctlPuttyPanel;
+            if (terminal != null)
+                return terminal.Session;
+
+            PscpBrowserPanel fileBrowser = document as PscpBrowserPanel;
+            return fileBrowser == null ? null : fileBrowser.Session;
+        }
+
+        internal static bool TryBuildCurrentSessionId(
+            string currentSessionId,
+            string sessionName,
+            out string sessionId,
+            out string error)
+        {
+            sessionId = null;
+            error = String.Empty;
+            string trimmedName = sessionName == null ? String.Empty : sessionName.Trim();
+            if (trimmedName.Length == 0)
+            {
+                error = "Empty name";
+            }
+            else if (trimmedName.Contains(SessionTreeview.SessionIdDelim))
+            {
+                error = "Invalid character ( " + SessionTreeview.SessionIdDelim + " ) in name";
+            }
+            else
+            {
+                sessionId = SessionData.CombineSessionIds(
+                    SessionData.GetSessionParentId(currentSessionId),
+                    trimmedName);
+            }
+            return error.Length == 0;
+        }
 
         private void toolStripMenuItem1_Click(object sender, EventArgs e)
         {
@@ -986,7 +1115,10 @@ namespace SuperPutty
                 {
                     // load new one
                     Log.DebugFormat("Loading layout: {0}", eventArgs.New.FilePath);
-                    this.DockPanel.LoadFromXml(eventArgs.New.FilePath, RestoreLayoutFromPersistString);
+                    bool restoreSessionDocuments = ShouldRestoreSessionDocuments(eventArgs.New);
+                    this.DockPanel.LoadFromXml(
+                        eventArgs.New.FilePath,
+                        persistString => RestoreLayoutFromPersistString(persistString, restoreSessionDocuments));
                     toolStripStatusLabelLayout.Text = eventArgs.New.Name;
                     SuperPuTTY.ReportStatus("Loaded layout: {0}", eventArgs.New.FilePath);
                 }
@@ -1030,7 +1162,12 @@ namespace SuperPutty
             this.DockPanel.SaveAsXml(file);
         }
 
-        private IDockContent RestoreLayoutFromPersistString(String persistString)
+        internal static bool ShouldRestoreSessionDocuments(LayoutData layout)
+        {
+            return layout == null || layout.Name != LayoutData.AutoRestore;
+        }
+
+        private IDockContent RestoreLayoutFromPersistString(String persistString, bool restoreSessionDocuments)
         {
             if (typeof(SessionTreeview).FullName == persistString)
             {
@@ -1052,6 +1189,13 @@ namespace SuperPutty
             }
             else
             {
+                if (!restoreSessionDocuments &&
+                    persistString.StartsWith(typeof(ctlPuttyPanel).FullName, StringComparison.Ordinal))
+                {
+                    Log.InfoFormat("Skipping previous session document from automatic layout: {0}", persistString);
+                    return null;
+                }
+
                 // putty session
                 ctlPuttyPanel puttyPanel = ctlPuttyPanel.FromPersistString(persistString);
                 if (puttyPanel != null)
@@ -1073,6 +1217,36 @@ namespace SuperPutty
             p.Start();
 
             SuperPuTTY.ReportStatus("Lauched Putty Configuration");
+        }
+
+        internal static string GetLogFileDirectory()
+        {
+            return Path.GetTempPath();
+        }
+
+        private void openLogFileLocationToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            string logDirectory = GetLogFileDirectory();
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = CommandLineOptions.QuoteArgument(logDirectory),
+                    UseShellExecute = true
+                });
+                SuperPuTTY.ReportStatus("Opened log file location: {0}", logDirectory);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Could not open the log file location", ex);
+                MessageBox.Show(
+                    this,
+                    "Could not open the log file location:\n" + logDirectory,
+                    "Open Log File Location",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
         }
 
         private void optionsToolStripMenuItem_Click(object sender, EventArgs e)
@@ -1113,7 +1287,7 @@ namespace SuperPutty
 
         private void superPuttyWebsiteToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            Process.Start("https://github.com/jimradford/superputty/");
+            Process.Start("https://github.com/greyhair-atx/superputty/");
         }
 
         private void helpToolStripMenuItem1_Click(object sender, EventArgs e)
@@ -1127,7 +1301,7 @@ namespace SuperPutty
                 DialogResult result = MessageBox.Show("Local documentation could not be found. Would you like to view the documentation online instead?", "Documentation Not Found", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                 if (result == DialogResult.Yes)
                 {
-                    Process.Start("https://github.com/jimradford/superputty/wiki/Documentation");
+                    Process.Start("https://github.com/greyhair-atx/superputty/blob/master/docs/manual/README.md");
                 }
             }
         }
@@ -1163,7 +1337,7 @@ namespace SuperPutty
 
             bool isScp = "SCP" == protoString;
             ConnectionProtocol selectedProtocol = isScp
-                ? ConnectionProtocol.SSH
+                ? ConnectionProtocol.SCP
                 : (ConnectionProtocol)Enum.Parse(typeof(ConnectionProtocol), protoString);
             bool isLocalConsole = ConsoleApplicationPanel.Supports(selectedProtocol);
             String hostOrName = this.tbTxtBoxHost.Text == null ? "" : this.tbTxtBoxHost.Text.Trim();
@@ -1186,7 +1360,7 @@ namespace SuperPutty
                     bool isVnc = "VNC" == protoString;
                     HostConnectionString connStr = new HostConnectionString(hostOrName, isVnc);
                     ConnectionProtocol protocol = isScp
-                        ? ConnectionProtocol.SSH
+                        ? ConnectionProtocol.SCP
                         : connStr.Protocol.GetValueOrDefault(selectedProtocol);
                     session = new SessionData
                     {
@@ -1332,7 +1506,6 @@ namespace SuperPutty
                     if (protocol != ConnectionProtocol.SSH2 && protocol != ConnectionProtocol.SSHNet)
                         this.tbComboProtocol.Items.Add(protocol.ToString());
                 }
-                this.tbComboProtocol.Items.Add("SCP");
                 this.tbComboProtocol.SelectedItem = ConnectionProtocol.SSH.ToString();
             }
 
