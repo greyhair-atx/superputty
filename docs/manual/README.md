@@ -1,6 +1,6 @@
 # SuperPuTTY User Manual
 
-This manual applies to the 64-bit Windows community edition of SuperPuTTY 1.7.3 and later maintained at [greyhair-atx/superputty](https://github.com/greyhair-atx/superputty).
+This manual applies to the 64-bit Windows community edition of SuperPuTTY 1.7.4 and later maintained at [greyhair-atx/superputty](https://github.com/greyhair-atx/superputty).
 
 SuperPuTTY is a Windows workspace for organizing PuTTY terminals and related tools in tabs. PuTTY performs the SSH connection and terminal emulation; SuperPuTTY manages sessions, tabs, layouts, file transfers, and supporting tools.
 

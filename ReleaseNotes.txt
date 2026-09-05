@@ -1,4 +1,9 @@
-Unreleased
+1.7.4
+ - Added 7-pixel rounded top corners and tighter horizontal text padding to the custom outlined document tabs.
+ - Updated DockPanelSuite and DockPanelSuite.ThemeVS2015 to 3.1.1 and Apache log4net to 3.4.0.
+ - Updated Microsoft.NET.Test.Sdk and its Microsoft.CodeCoverage dependency to 18.9.0.
+ - Added THIRD-PARTY-NOTICES.txt to the source, application output, and both installers with current runtime, build, asset, and license information.
+ - Updated the About dialog to distinguish Jim Radford's original 1.5.0.0 authorship from community updates maintained by C. Thornton.
  - Added SCP as a first-class saved-session protocol with saved local and remote paths.
  - Added post-connection PSCP password prompting and one-use, user-restricted named-pipe delivery through -pwfile so passwords are not written to temporary files.
  - Added an explicit PuTTY private-key (.ppk) field for SCP directory listings and file transfers.

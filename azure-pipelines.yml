@@ -17,7 +17,7 @@ trigger:
     - integration
   tags:
     include:
-    - sp-1.7.3
+    - sp-1.7.4
 
 pool:
   vmImage: 'windows-latest'
@@ -27,8 +27,8 @@ variables:
   buildPlatform: 'x64'
   testPlatform: 'x64'
   buildConfiguration: 'Release'
-  releaseVersion: '1.7.3'
-  applicationVersion: '1.7.3.0'
+  releaseVersion: '1.7.4'
+  applicationVersion: '1.7.4.0'
   ${{ if eq(parameters.enableCodeSigning, true) }}:
     installerArtifactSuffix: 'win-x64-signed'
   ${{ else }}:
@@ -73,7 +73,7 @@ steps:
     platform: '$(testPlatform)'
     configuration: '$(buildConfiguration)'
     failOnMinTestsNotRun: true
-    minimumExpectedTests: '24'
+    minimumExpectedTests: '106'
 
 - ${{ if eq(parameters.enableCodeSigning, true) }}:
   - task: AzureCLI@2

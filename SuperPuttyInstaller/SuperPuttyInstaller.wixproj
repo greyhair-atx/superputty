@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <InstallerScope Condition="'$(InstallerScope)' == ''">PerMachine</InstallerScope>
-    <InstallerProductVersion Condition="'$(InstallerProductVersion)' == ''">1.7.3</InstallerProductVersion>
+    <InstallerProductVersion Condition="'$(InstallerProductVersion)' == ''">1.7.4</InstallerProductVersion>
     <InstallerArtifactSuffix Condition="'$(InstallerArtifactSuffix)' == ''">test-x64</InstallerArtifactSuffix>
     <OutputName Condition="'$(InstallerScope)' == 'PerUser'">SuperPutty-$(InstallerProductVersion)-current-user-$(InstallerArtifactSuffix)</OutputName>
     <OutputName Condition="'$(InstallerScope)' == 'PerMachine'">SuperPutty-$(InstallerProductVersion)-all-users-$(InstallerArtifactSuffix)</OutputName>

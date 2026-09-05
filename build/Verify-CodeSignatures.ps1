@@ -2,7 +2,7 @@
 param(
     [string]$Configuration = 'Release',
     [string]$Platform = 'x64',
-    [string]$InstallerVersion = '1.7.3',
+    [string]$InstallerVersion = '1.7.4',
     [string]$InstallerArtifactSuffix = 'win-x64-signed',
     [string]$ExpectedSigner = 'Christopher Thornton'
 )

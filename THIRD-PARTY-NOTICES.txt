@@ -2,14 +2,14 @@ SUPERPUTTY THIRD-PARTY NOTICES
 ==============================
 
 This document covers the software modules and third-party assets used by the
-SuperPuTTY 1.7.3 runtime. Build and test packages are listed separately because
+SuperPuTTY 1.7.4 runtime. Build and test packages are listed separately because
 they are not installed with SuperPuTTY.
 
 
 INSTALLED RUNTIME
 -----------------
 
-SuperPuTTY 1.7.3
+SuperPuTTY 1.7.4
   License: MIT
   Role: Main application.
   Copyright (c) 2009-2023 Jim Radford and contributors.

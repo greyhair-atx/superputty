@@ -31,7 +31,7 @@ and private vulnerability reporting guidance is in [SECURITY.md](SECURITY.md).
 
 ## System requirements
 
-The `master` branch and `sp-1.7.3` release produce **64-bit Windows builds
+The `master` branch and `sp-1.7.4` release produce **64-bit Windows builds
 only**. The application, test harness, and MSI installer all target x64; x86
 and AnyCPU configurations are not supported.
 
@@ -46,8 +46,8 @@ Windows for elevation. Neither installer can be installed on 32-bit Windows.
 Community release artifacts use an explicit `x64` suffix. The current release
 contains:
 
-- `SuperPutty-1.7.3-current-user-win-x64-signed.msi` — signed, non-elevated current-user installer
-- `SuperPutty-1.7.3-all-users-win-x64-signed.msi` — signed, elevated all-users installer
+- `SuperPutty-1.7.4-current-user-win-x64-signed.msi` — signed, non-elevated current-user installer
+- `SuperPutty-1.7.4-all-users-win-x64-signed.msi` — signed, elevated all-users installer
 
 ## Automated tests
 
