@@ -73,9 +73,15 @@ $requiredDlls = @(
     'WeifenLuo.WinFormsUI.Docking.dll',
     'WeifenLuo.WinFormsUI.Docking.ThemeVS2015.dll'
 )
+$thirdPartyNoticesName = 'THIRD-PARTY-NOTICES.txt'
+$thirdPartyNoticesPath = Join-Path $appDirectory $thirdPartyNoticesName
 
 $missingDlls = @($requiredDlls | Where-Object { -not (Test-Path -LiteralPath (Join-Path $appDirectory $_)) })
 Assert-Condition ($missingDlls.Count -eq 0) "Missing runtime DLLs: $($missingDlls -join ', ')"
+Assert-Condition (Test-Path -LiteralPath $thirdPartyNoticesPath -PathType Leaf) "Missing third-party notices: $thirdPartyNoticesPath"
+$thirdPartyNoticesText = Get-Content -LiteralPath $thirdPartyNoticesPath -Raw
+Assert-Condition ($thirdPartyNoticesText -like '*DockPanelSuite.ThemeVS2015*') 'The third-party notices are missing DockPanelSuite.ThemeVS2015.'
+Assert-Condition ($thirdPartyNoticesText -like '*Apache log4net*') 'The third-party notices are missing Apache log4net.'
 
 $themePath = Join-Path $appDirectory 'themes\default\icons'
 $themeCount = @(Get-ChildItem -LiteralPath $themePath -Filter '*.png' -File).Count
@@ -139,6 +145,7 @@ try {
     $installedDirectory = $installedApp.DirectoryName
     $installedMissingDlls = @($requiredDlls | Where-Object { -not (Test-Path -LiteralPath (Join-Path $installedDirectory $_)) })
     Assert-Condition ($installedMissingDlls.Count -eq 0) "MSI is missing runtime DLLs: $($installedMissingDlls -join ', ')"
+    Assert-Condition (Test-Path -LiteralPath (Join-Path $installedDirectory $thirdPartyNoticesName) -PathType Leaf) "MSI is missing $thirdPartyNoticesName."
     $installedThemeCount = @(Get-ChildItem -LiteralPath (Join-Path $installedDirectory 'themes\default\icons') -Filter '*.png' -File).Count
     Assert-Condition ($installedThemeCount -eq 47) "MSI contains $installedThemeCount theme icons instead of 47."
 }
