@@ -37,6 +37,7 @@ using System.Configuration;
 using System.Linq;
 using SuperPutty.Gui;
 using SuperPutty.Gui.Docking;
+using SuperPutty.Scp;
 using log4net.Core;
 using System.Text.RegularExpressions;
 using System.Runtime.Serialization.Json;
@@ -404,6 +405,129 @@ namespace SuperPutty
         }
 
         #region File
+
+        private void fileToolStripMenuItem_DropDownOpening(object sender, EventArgs e)
+        {
+            this.saveCurrentSessionToolStripMenuItem.Enabled =
+                GetDocumentSession(this.DockPanel.ActiveDocument as ToolWindowDocument) != null;
+        }
+
+        private void saveCurrentSessionToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            ToolWindowDocument activeDocument = this.DockPanel.ActiveDocument as ToolWindowDocument;
+            SessionData activeSession = GetDocumentSession(activeDocument);
+            if (activeDocument == null || activeSession == null)
+                return;
+
+            bool isSavedSession = Object.ReferenceEquals(
+                SuperPuTTY.GetSessionById(activeSession.SessionId),
+                activeSession);
+            SessionData editedSession = (SessionData)activeSession.Clone();
+
+            // Quick-connect and command-line sessions use technical IDs such as
+            // ConnectBar/host. Save new entries at the root of the session tree.
+            if (!isSavedSession)
+                editedSession.SessionId = editedSession.SessionName;
+
+            using (dlgEditSession form = new dlgEditSession(editedSession, SuperPuTTY.Images))
+            {
+                form.Text = isSavedSession
+                    ? "Update Current Session"
+                    : "Save Current Session";
+                form.SessionNameValidator += delegate(string name, out string error)
+                {
+                    string candidateId;
+                    if (!TryBuildCurrentSessionId(editedSession.SessionId, name, out candidateId, out error))
+                        return false;
+
+                    SessionData conflict = SuperPuTTY.GetSessionById(candidateId);
+                    if (conflict != null && !Object.ReferenceEquals(conflict, activeSession))
+                    {
+                        error = "Session with same name exists";
+                        return false;
+                    }
+                    return true;
+                };
+
+                if (form.ShowDialog(this) != DialogResult.OK)
+                    return;
+            }
+
+            SessionData finalConflict = SuperPuTTY.GetSessionById(editedSession.SessionId);
+            if (finalConflict != null && !Object.ReferenceEquals(finalConflict, activeSession))
+            {
+                MessageBox.Show(
+                    this,
+                    "A session with that name already exists.",
+                    "Could Not Save Session",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            activeSession.CopyFrom(editedSession);
+            if (!isSavedSession && !SuperPuTTY.AddSession(activeSession))
+            {
+                MessageBox.Show(
+                    this,
+                    "A session with that name already exists.",
+                    "Could Not Save Session",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            // GetSessionById also rebuilds the index after an existing session is renamed.
+            SuperPuTTY.GetSessionById(activeSession.SessionId);
+            SuperPuTTY.SaveSessions();
+
+            activeDocument.Text = activeSession.SessionName;
+            activeDocument.TabText = activeSession.SessionName;
+            ctlPuttyPanel activeTerminal = activeDocument as ctlPuttyPanel;
+            if (activeTerminal != null)
+            {
+                activeTerminal.TextOverride = activeSession.SessionName;
+                if (activeTerminal.AppPanel != null)
+                    activeTerminal.AppPanel.Name = activeSession.SessionId;
+            }
+            SuperPuTTY.ReportStatus("Saved current session: {0}", activeSession.SessionId);
+        }
+
+        private static SessionData GetDocumentSession(ToolWindowDocument document)
+        {
+            ctlPuttyPanel terminal = document as ctlPuttyPanel;
+            if (terminal != null)
+                return terminal.Session;
+
+            PscpBrowserPanel fileBrowser = document as PscpBrowserPanel;
+            return fileBrowser == null ? null : fileBrowser.Session;
+        }
+
+        internal static bool TryBuildCurrentSessionId(
+            string currentSessionId,
+            string sessionName,
+            out string sessionId,
+            out string error)
+        {
+            sessionId = null;
+            error = String.Empty;
+            string trimmedName = sessionName == null ? String.Empty : sessionName.Trim();
+            if (trimmedName.Length == 0)
+            {
+                error = "Empty name";
+            }
+            else if (trimmedName.Contains(SessionTreeview.SessionIdDelim))
+            {
+                error = "Invalid character ( " + SessionTreeview.SessionIdDelim + " ) in name";
+            }
+            else
+            {
+                sessionId = SessionData.CombineSessionIds(
+                    SessionData.GetSessionParentId(currentSessionId),
+                    trimmedName);
+            }
+            return error.Length == 0;
+        }
 
         private void toolStripMenuItem1_Click(object sender, EventArgs e)
         {

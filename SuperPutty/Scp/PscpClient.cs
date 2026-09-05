@@ -56,6 +56,13 @@ namespace SuperPutty.Scp
 
         /// <summary>Start of the message indicating we have never connected to this host before</summary>
         private const string PUTTY_NO_KEY = "The server's host key is not cached in the registry";
+
+        internal enum AuthenticationPromptAction
+        {
+            None,
+            PasswordSubmitted,
+            RetryAuthentication
+        }
         /* Network 
          * 10.1 ‘The server's host key is not cached in the registry’ 
          * 10.2 ‘WARNING - POTENTIAL SECURITY BREACH!’ 
@@ -164,10 +171,8 @@ namespace SuperPutty.Scp
                 sb.AppendFormat("-load {0} ", CommandLineOptions.QuoteArgument(session.PuttySession));
             }
 
-            //only send the password if AllowPlainTextPuttyPasswordArg is checked
-            if (!String.IsNullOrEmpty(password) && !SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
-                Log.Warn("SuperPuTTY is set to NOT allow the use of the -pw <password> argument, this can be overriden in Tools -> Options -> GUI");
-            //fix: use the parameter "password"
+            // Only place the password on the command line when explicitly enabled. Otherwise,
+            // RunPscp supplies it through redirected standard input when PSCP prompts for it.
             if (!string.IsNullOrEmpty(password) && SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
             {
                 sb.AppendFormat("-pw {0} ", CommandLineOptions.QuoteArgument(password));
@@ -338,6 +343,8 @@ namespace SuperPutty.Scp
                 AsyncStreamReader errReader = null;
                 CancellationTokenRegistration cancellationRegistration = default(CancellationTokenRegistration);
                 int terminalState = 0;
+                bool passwordSubmitted = false;
+                object authenticationSync = new object();
                 try
                 {
                     // Start pscp
@@ -360,6 +367,51 @@ namespace SuperPutty.Scp
                     // Async read output/err.  Inline actions to quick kill the process when pscp prompts user.
                     // NOTE: Using BeginReadOutput/ErrorReadLine doesn't work here.  Calls to read an empty stream
                     //       will block (e.g. "user's password:" prompt will block on reading err stream).  
+                    Func<string, bool?> handleAuthentication = message =>
+                    {
+                        lock (authenticationSync)
+                        {
+                            AuthenticationPromptAction action;
+                            try
+                            {
+                                action = HandleAuthenticationPrompt(
+                                    message,
+                                    this.Session.Password,
+                                    SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg,
+                                    passwordSubmitted,
+                                    proc.StandardInput);
+                            }
+                            catch (IOException ex)
+                            {
+                                Log.Warn("Could not send the PSCP password through standard input", ex);
+                                action = AuthenticationPromptAction.RetryAuthentication;
+                            }
+                            catch (InvalidOperationException ex)
+                            {
+                                Log.Warn("PSCP standard input was not available for password authentication", ex);
+                                action = AuthenticationPromptAction.RetryAuthentication;
+                            }
+
+                            if (action == AuthenticationPromptAction.None)
+                                return null;
+
+                            if (action == AuthenticationPromptAction.PasswordSubmitted)
+                            {
+                                passwordSubmitted = true;
+                                SafeChangeTimer(timeoutTimer, this.Options.TimeoutMs);
+                                return true;
+                            }
+
+                            if (Interlocked.CompareExchange(ref terminalState, 1, 0) == 0)
+                            {
+                                result.StatusCode = ResultStatusCode.RetryAuthentication;
+                                Log.Debug("Username/password required or rejected");
+                                SafeKill(proc);
+                            }
+                            return false;
+                        }
+                    };
+
                     outReader = new AsyncStreamReader(
                         "OUT",
                         proc.StandardOutput,
@@ -367,15 +419,10 @@ namespace SuperPutty.Scp
                         {
                             bool keepReading = true;
                             bool completed = false;
-                            if (strOut == PUTTY_INTERACTIVE_AUTH || strOut.Contains("assword:"))
+                            bool? authenticationResult = handleAuthentication(strOut);
+                            if (authenticationResult.HasValue)
                             {
-                                if (Interlocked.CompareExchange(ref terminalState, 1, 0) == 0)
-                                {
-                                    result.StatusCode = ResultStatusCode.RetryAuthentication;
-                                    Log.Debug("Username/Password invalid or not sent");
-                                    SafeKill(proc);
-                                }
-                                keepReading = false;
+                                keepReading = authenticationResult.Value;
                             }
                             else if (inlineOutHandler != null)
                             {
@@ -400,9 +447,17 @@ namespace SuperPutty.Scp
                                 }
                                 keepReading = false;
                             }
-                            else if (inlineErrHandler != null)
+                            else
                             {
-                                completed = inlineErrHandler(strErr);
+                                bool? authenticationResult = handleAuthentication(strErr);
+                                if (authenticationResult.HasValue)
+                                {
+                                    keepReading = authenticationResult.Value;
+                                }
+                                else if (inlineErrHandler != null)
+                                {
+                                    completed = inlineErrHandler(strErr);
+                                }
                             }
                             SafeChangeTimer(timeoutTimer, completed ? Timeout.Infinite : this.Options.TimeoutMs);
                             return keepReading;
@@ -500,6 +555,7 @@ namespace SuperPutty.Scp
                 Arguments = args,
                 CreateNoWindow = true,
                 RedirectStandardError = true,
+                RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 UseShellExecute = false
             };
@@ -510,6 +566,47 @@ namespace SuperPutty.Scp
                 EnableRaisingEvents = true
             };
             return proc;
+        }
+
+        internal static bool IsPasswordPrompt(string message)
+        {
+            return !String.IsNullOrEmpty(message) &&
+                message.TrimEnd().EndsWith("password:", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static AuthenticationPromptAction HandleAuthenticationPrompt(
+            string message,
+            string password,
+            bool allowPlainTextPasswordArgument,
+            bool passwordSubmitted,
+            TextWriter standardInput)
+        {
+            bool isPasswordPrompt = IsPasswordPrompt(message);
+            bool isInteractiveAuthentication = String.Equals(
+                message,
+                PUTTY_INTERACTIVE_AUTH,
+                StringComparison.OrdinalIgnoreCase);
+
+            if (!isPasswordPrompt && !isInteractiveAuthentication)
+                return AuthenticationPromptAction.None;
+
+            // The informational keyboard-interactive line normally precedes the actual
+            // password prompt. If a password is available, wait for that prompt before writing.
+            if (isInteractiveAuthentication && !String.IsNullOrEmpty(password))
+                return AuthenticationPromptAction.None;
+
+            if (isPasswordPrompt &&
+                !allowPlainTextPasswordArgument &&
+                !String.IsNullOrEmpty(password) &&
+                !passwordSubmitted &&
+                standardInput != null)
+            {
+                standardInput.WriteLine(password);
+                standardInput.Flush();
+                return AuthenticationPromptAction.PasswordSubmitted;
+            }
+
+            return AuthenticationPromptAction.RetryAuthentication;
         }
 
         private static void SafeKill(Process proc)
@@ -597,10 +694,11 @@ namespace SuperPutty.Scp
                         char c = (char)this.Reader.Read();
                         sb.Append(c);
 
-                        // add special case to fire readline if prompted with "user's password: "
+                        // Password prompts do not end in a newline. Notify the caller as soon
+                        // as the trailing colon arrives, on either stdout or stderr.
                         bool isPossibleHit =
                             (c == '\n') ||
-                            (c == ':' && sb.Length > 12 && sb.ToString().EndsWith("'s password:"));
+                            (c == ':' && IsPasswordPrompt(sb.ToString()));
 
                         //Log.InfoFormat("sb={0}, match={1}", sb, c == ':' && sb.Length > 12 && sb.ToString().EndsWith("'s password:"));
                         if (isPossibleHit)
