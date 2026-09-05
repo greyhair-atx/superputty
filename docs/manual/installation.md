@@ -20,7 +20,7 @@ Install the 64-bit PuTTY package from the [official PuTTY site](https://www.chia
 - `pscp.exe` location, if integrated file transfer is required
 - Settings folder
 
-Other executable locations are optional and are needed only for their associated protocols.
+Other executable locations are optional and are needed only for their associated protocols or shortcuts. These include MinTTY, a VNC viewer, FreeRDP or MSTSC, WinSCP, and FileZilla.
 
 ## First launch
 

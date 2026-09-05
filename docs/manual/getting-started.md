@@ -8,6 +8,8 @@ For a quick connection, choose a protocol on the connection toolbar, enter the h
 
 For connections used more than once, create a [saved session](sessions.md). Saved sessions provide consistent PuTTY profiles, ports, file-transfer paths, and private-key selection.
 
+See [Connection types](protocols.md) for the client required by each protocol and how its window is hosted.
+
 ## Main menus
 
 ### File
@@ -38,6 +40,14 @@ Use this menu to show the Sessions, Session Detail, Layouts, and Log Viewer pane
 - **Diagnostics** contains developer and cleanup commands.
 - **Check for Updates** checks the selected update channel.
 - **About SuperPuTTY** shows version and project credits.
+
+## Sessions and command toolbars
+
+The Sessions panel supports filtering, folders, drag-and-drop organization, and context-menu actions. Activate a selected session to open it; use the edit action when you want to change its saved definition without connecting.
+
+The command toolbar sends text to the active terminal or to the sessions selected in its target list. Press Enter to send the text with a trailing Enter key, or Shift+Enter to send the text without the trailing Enter. Command history can be retained for the configured number of days. Use **Toggle Command Mask** before typing sensitive interactive input, and avoid keeping secrets in command history.
+
+The Script Editor is intended for multi-line commands and [SPSL scripts](scripting.md).
 
 ## Tabs
 

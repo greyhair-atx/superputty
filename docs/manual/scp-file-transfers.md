@@ -17,6 +17,12 @@ SuperPuTTY uses PuTTY's `pscp.exe` for the integrated two-pane file browser. Sup
 
 SSH saved sessions can also carry these file-transfer options when SCP is opened for that session.
 
+## Optional WinSCP and FileZilla shortcuts
+
+Paths for WinSCP and FileZilla can be set under **Tools > Options > General**. When a configured executable is available, the saved session's context menu can launch that program with the session's host, port, username, and local or remote starting path.
+
+These are external SFTP clients and do not use SuperPuTTY's protected PSCP named-pipe password flow. With plain-text password arguments disabled, the client must obtain authentication itself. Do not enable command-line password forwarding merely to avoid the client's normal prompt.
+
 ## Authentication order
 
 PSCP can authenticate using a configured private key, Pageant, GSSAPI, or a password. SuperPuTTY first allows non-password authentication to succeed. If the server requires a password, SuperPuTTY asks for it after PSCP begins the connection and retries securely.

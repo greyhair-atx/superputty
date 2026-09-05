@@ -31,6 +31,8 @@ SENDLINE whoami
 
 Use the Script Editor from the command toolbar to create, load, save, and run scripts. A saved session can also reference an SPSL file to run when the session opens.
 
+A session may reference a local script path or an HTTPS URL. SuperPuTTY asks for confirmation before a remote script can type into a session. Remote scripts reject redirects and embedded URL credentials, time out after ten seconds, and are limited to 1 MiB. Plain HTTP remote scripts are blocked.
+
 ## Security
 
-Do not store passwords directly in scripts. Use `PWDPROMPT` when sensitive text must be collected at runtime, and protect scripts that contain other confidential commands or host information.
+Do not store passwords directly in scripts. Use `PWDPROMPT` when sensitive text must be collected at runtime, and protect scripts that contain other confidential commands or host information. Review the complete content and source of a remote script before approving it.

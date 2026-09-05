@@ -31,6 +31,8 @@ Runtime logs are written under `%TEMP%` by default. Choose **Tools > Open Log Fi
 
 Logs may contain hostnames, usernames, paths, and command output. Password-like command-line values are redacted, but logs should still be reviewed before sharing.
 
+See [Security and privacy](security.md) for credential, host-key, certificate, script, and log guidance.
+
 ## Updates
 
 The update channel can be selected under **Tools > Options**. Choose the community-fork channel for releases from `greyhair-atx/superputty`, or upstream when following Jim Radford's original project releases.

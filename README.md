@@ -26,6 +26,9 @@ does not alter the PuTTY hosting path.
 The current [SuperPuTTY User Manual](docs/manual/README.md) is maintained with
 the source so each release tag preserves its matching documentation.
 
+Current contributor verification steps are in [docs/testing.md](docs/testing.md),
+and private vulnerability reporting guidance is in [SECURITY.md](SECURITY.md).
+
 ## System requirements
 
 The `master` branch and `sp-1.7.3` release produce **64-bit Windows builds
@@ -97,6 +100,8 @@ The signing key remains managed by Azure and is never exported to the pipeline.
 - [Official SuperPuTTY repository](https://github.com/jimradford/superputty)
 - [Official releases](https://github.com/jimradford/superputty/releases)
 - [Community user manual](docs/manual/README.md)
+- [Build and test guide](docs/testing.md)
+- [Security policy](SECURITY.md)
 - [Original Jim Radford documentation](https://github.com/jimradford/superputty/wiki/Documentation)
 - [Candidate fixes in this fork](https://github.com/greyhair-atx/superputty/branches)
 - [Community releases from this fork](https://github.com/greyhair-atx/superputty/releases)

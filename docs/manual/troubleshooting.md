@@ -13,6 +13,8 @@ Choose **Tools > Open Log File Location** and open the newest SuperPuTTY log. Re
 - Check the log for process-start, window-discovery, or timeout messages.
 - Temporarily disable utilities that inject controls into application title bars.
 
+For Win CMD or PowerShell, confirm that the standard Windows `conhost.exe`, `cmd.exe`, or Windows PowerShell executable has not been replaced or blocked. These tabs host native console windows; they do not depend on ConPTY or WebView2.
+
 ## SCP asks for a password instead of using a key
 
 - Confirm the session's **Private Key** points to a readable `.ppk` file.

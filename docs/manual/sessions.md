@@ -14,7 +14,7 @@ Important session fields include:
 | --- | --- |
 | Session Name | Display name and session-tree name |
 | Host Name | Server name or IP address |
-| Protocol | SSH, SCP, Telnet, Rlogin, Raw, Serial, RDP, VNC, or a supported local console |
+| Protocol | SSH, SCP, Telnet, Rlogin, Raw, Serial, RDP, VNC, CygTerm, MinTTY, Win CMD, or PowerShell |
 | Port | Destination port; SSH and SCP normally use 22 |
 | PuTTY Profile | Saved PuTTY configuration loaded for the connection |
 | Login Username | Remote account name |
@@ -31,6 +31,8 @@ A PuTTY profile can contain terminal preferences, proxy settings, SSH algorithms
 
 For SCP, the explicit **Private Key** field is clearer when a single saved session must always use a specific key. See [SCP file transfers](scp-file-transfers.md).
 
+See [Connection types](protocols.md) for the client and hosting behavior used by each protocol.
+
 ## Importing CSV
 
 CSV input supports comments beginning with `#`, quoted values, folders, validation before import, and these columns:
@@ -44,3 +46,9 @@ SessionName,Host,Protocol,Port,Username,Folder,PuttySession,ExtraArgs,Note,Image
 ## Password storage
 
 The normal Password property is not serialized into `Sessions.XML`. Never put `-pw`, `/password`, or an embedded URI password in **Extra Arguments** or CSV files. Those values are plain text and may be visible to other processes or users.
+
+## Shared session collections
+
+Advanced users can place a collection placeholder in session XML with `CollectionLocation` pointing to another SuperPuTTY session XML file and an optional `CollectionID` folder prefix. Local collections may be nested. Remote collections must use HTTPS without embedded credentials; redirects are rejected, downloads are limited to 1 MiB, cycles are detected, and nesting is limited to 16 levels.
+
+Relative script and nested-collection paths in a remote collection are resolved against that collection's URL. Back up `Sessions.XML` before editing collection entries by hand, and load only collections controlled by a trusted administrator.
