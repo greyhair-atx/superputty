@@ -7,10 +7,16 @@ namespace SuperPuttyUnitTests
     public class AboutBoxTests
     {
         [Test]
-        public void AboutDialogCreditsCommunityUpdatesAndRepository()
+        public void AboutDialogSeparatesOriginalReleaseFromCurrentUpdates()
         {
             Assert.AreEqual(
-                "Updates by C. Thornton at https://github.com/greyhair-atx/superputty",
+                "Version 1.5.0.0 Copyright (c) 2009 - 2023 Jim Radford",
+                AboutBox1.OriginalReleaseAttribution);
+            Assert.AreEqual(
+                "https://www.jimradford.com",
+                AboutBox1.OriginalAuthorUrl);
+            Assert.AreEqual(
+                "Updates by C. Thornton",
                 AboutBox1.UpdateAttribution);
             Assert.AreEqual(
                 "https://github.com/greyhair-atx/superputty",

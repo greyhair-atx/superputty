@@ -11,8 +11,10 @@ namespace SuperPutty
 {
     partial class AboutBox1 : Form
     {
+        internal const string OriginalReleaseAttribution = "Version 1.5.0.0 Copyright (c) 2009 - 2023 Jim Radford";
+        internal const string OriginalAuthorUrl = "https://www.jimradford.com";
+        internal const string UpdateAttribution = "Updates by C. Thornton";
         internal const string CommunityRepositoryUrl = "https://github.com/greyhair-atx/superputty";
-        internal const string UpdateAttribution = "Updates by C. Thornton at " + CommunityRepositoryUrl;
 
         public AboutBox1()
         {
@@ -20,11 +22,13 @@ namespace SuperPutty
             this.Text = String.Format("About {0}", AssemblyTitle);
             this.labelProductName.Text = AssemblyProduct;
             this.labelVersion.Text = String.Format("Version {0}", AssemblyVersion);
-            this.labelCopyright.Text = AssemblyCopyright;
-            this.linkLabelCompany.Text = AssemblyCompany;
-            this.linkLabelCompany2.Text = UpdateAttribution;
-            int repositoryLinkStart = UpdateAttribution.IndexOf(CommunityRepositoryUrl, StringComparison.Ordinal);
-            this.linkLabelCompany2.LinkArea = new LinkArea(repositoryLinkStart, CommunityRepositoryUrl.Length);
+            this.labelCopyright.Text = OriginalReleaseAttribution;
+            this.linkLabelCompany.Text = OriginalAuthorUrl;
+            this.linkLabelCompany.LinkArea = new LinkArea(0, OriginalAuthorUrl.Length);
+            this.linkLabelCompany.Links[0].LinkData = OriginalAuthorUrl;
+            this.labelMaintainer.Text = UpdateAttribution;
+            this.linkLabelCompany2.Text = CommunityRepositoryUrl;
+            this.linkLabelCompany2.LinkArea = new LinkArea(0, CommunityRepositoryUrl.Length);
             this.linkLabelCompany2.Links[0].LinkData = CommunityRepositoryUrl;
 
             textBoxSupportText.AppendText("SuperPuTTY Version: " + SuperPuTTY.Version + System.Environment.NewLine);

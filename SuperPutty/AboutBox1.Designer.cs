@@ -57,6 +57,7 @@ namespace SuperPutty
             this.labelProductName = new System.Windows.Forms.Label();
             this.labelVersion = new System.Windows.Forms.Label();
             this.labelCopyright = new System.Windows.Forms.Label();
+            this.labelMaintainer = new System.Windows.Forms.Label();
             ((System.ComponentModel.ISupportInitialize)(this.logoPictureBox)).BeginInit();
             this.tabPage3.SuspendLayout();
             this.tabPage2.SuspendLayout();
@@ -88,7 +89,7 @@ namespace SuperPutty
             // linkLabelCompany
             // 
             this.linkLabelCompany.AutoSize = true;
-            this.linkLabelCompany.Location = new System.Drawing.Point(177, 81);
+            this.linkLabelCompany.Location = new System.Drawing.Point(177, 66);
             this.linkLabelCompany.Margin = new System.Windows.Forms.Padding(6, 0, 3, 0);
             this.linkLabelCompany.Name = "linkLabelCompany";
             this.linkLabelCompany.Size = new System.Drawing.Size(93, 13);
@@ -240,7 +241,7 @@ namespace SuperPutty
             // 
             this.labelVersion.AutoSize = true;
             this.labelVersion.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.labelVersion.Location = new System.Drawing.Point(177, 35);
+            this.labelVersion.Location = new System.Drawing.Point(177, 30);
             this.labelVersion.Name = "labelVersion";
             this.labelVersion.Size = new System.Drawing.Size(45, 15);
             this.labelVersion.TabIndex = 29;
@@ -250,18 +251,29 @@ namespace SuperPutty
             // 
             this.labelCopyright.AutoSize = true;
             this.labelCopyright.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.labelCopyright.Location = new System.Drawing.Point(177, 58);
+            this.labelCopyright.Location = new System.Drawing.Point(177, 48);
             this.labelCopyright.Name = "labelCopyright";
             this.labelCopyright.Size = new System.Drawing.Size(60, 15);
             this.labelCopyright.TabIndex = 30;
             this.labelCopyright.Text = "Copyright";
-            // 
+            //
+            // labelMaintainer
+            //
+            this.labelMaintainer.AutoSize = true;
+            this.labelMaintainer.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.labelMaintainer.Location = new System.Drawing.Point(177, 84);
+            this.labelMaintainer.Name = "labelMaintainer";
+            this.labelMaintainer.Size = new System.Drawing.Size(65, 15);
+            this.labelMaintainer.TabIndex = 31;
+            this.labelMaintainer.Text = "Maintainer";
+            //
             // AboutBox1
             // 
             this.AcceptButton = this.okButton;
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(559, 317);
+            this.Controls.Add(this.labelMaintainer);
             this.Controls.Add(this.labelCopyright);
             this.Controls.Add(this.labelVersion);
             this.Controls.Add(this.labelProductName);
@@ -309,6 +321,7 @@ namespace SuperPutty
         private System.Windows.Forms.Label labelProductName;
         private System.Windows.Forms.Label labelVersion;
         private System.Windows.Forms.Label labelCopyright;
+        private System.Windows.Forms.Label labelMaintainer;
         private System.Windows.Forms.TabPage tabPage4;
         private System.Windows.Forms.TextBox textBoxSupportText;
     }
