@@ -40,7 +40,7 @@
 
     <Icon Id="ProductIcon" SourceFile="$(var.SuperPutty.ProjectDir)Apps-utilities-terminal.ico"/>
     <Property Id="ARPPRODUCTICON" Value="ProductIcon"/>
-    <Property Id="ARPHELPLINK" Value="https://github.com/greyhair-atx/superputty/issues"/>
+    <Property Id="ARPHELPLINK" Value="https://github.com/greyhair-atx/superputty/blob/master/docs/manual/README.md"/>
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/greyhair-atx/superputty"/>
     <Property Id="ARPNOREPAIR" Value="1"/>
 

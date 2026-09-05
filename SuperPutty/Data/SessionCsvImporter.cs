@@ -64,7 +64,8 @@ namespace SuperPutty.Data
             "ImageKey",
             "SPSLFileName",
             "RemotePath",
-            "LocalPath"
+            "LocalPath",
+            "PrivateKeyFile"
         };
 
         /// <summary>
@@ -359,7 +360,8 @@ namespace SuperPutty.Data
                 ImageKey = GetValue(fields, columns, "ImageKey"),
                 SPSLFileName = GetValue(fields, columns, "SPSLFileName"),
                 RemotePath = GetValue(fields, columns, "RemotePath"),
-                LocalPath = GetValue(fields, columns, "LocalPath")
+                LocalPath = GetValue(fields, columns, "LocalPath"),
+                PrivateKeyFile = GetValue(fields, columns, "PrivateKeyFile")
             };
         }
 

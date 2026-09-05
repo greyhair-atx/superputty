@@ -23,6 +23,9 @@ simple scripting language for common tasks. Local console windows use a
 dedicated host panel so their capture, focus, resizing, and shutdown behavior
 does not alter the PuTTY hosting path.
 
+The current [SuperPuTTY User Manual](docs/manual/README.md) is maintained with
+the source so each release tag preserves its matching documentation.
+
 ## System requirements
 
 The `master` branch and `sp-1.7.3` release produce **64-bit Windows builds
@@ -46,8 +49,8 @@ contains:
 ## Automated tests
 
 `SuperPuttyUnitTests` is an SDK-style .NET Framework 4.8 project using NUnit 3,
-the NUnit 3 adapter, and Microsoft.NET.Test.Sdk. The current release validation
-executes 81 isolated tests and excludes tests that require a configured SCP
+the NUnit 3 adapter, and Microsoft.NET.Test.Sdk. Normal release validation runs
+the isolated test suite and excludes tests that require a configured SCP
 environment.
 
 The Windows-only console integration test in
@@ -93,16 +96,17 @@ The signing key remains managed by Azure and is never exported to the pipeline.
 
 - [Official SuperPuTTY repository](https://github.com/jimradford/superputty)
 - [Official releases](https://github.com/jimradford/superputty/releases)
-- [Official documentation](https://github.com/jimradford/superputty/wiki/Documentation)
+- [Community user manual](docs/manual/README.md)
+- [Original Jim Radford documentation](https://github.com/jimradford/superputty/wiki/Documentation)
 - [Candidate fixes in this fork](https://github.com/greyhair-atx/superputty/branches)
 - [Community releases from this fork](https://github.com/greyhair-atx/superputty/releases)
 
 Community updates are maintained by C. Thornton at
 [greyhair-atx/superputty](https://github.com/greyhair-atx/superputty).
 
-Please use the upstream repository for official downloads, documentation, and
-general issue reporting. Fork-specific test builds are provided only to help
-validate proposed fixes; review their release notes before installing them.
+Use the community issue tracker for behavior introduced by this fork. The
+upstream repository and original wiki remain the authoritative historical
+references for Jim Radford's SuperPuTTY through version 1.5.0.0.
 
 ## License
 

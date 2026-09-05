@@ -276,19 +276,22 @@ namespace SuperPutty
             if (SuperPuTTY.IsFirstRun)
             {
                 layouts.Add(String.Empty);
-                // HACK: first time so layouts directory not set yet so layouts don't exist...
-                //       preload <AutoRestore> so we can set it as default
+                // The automatic layout restores window placement but no longer
+                // reopens session documents from the previous run.
                 layouts.Add(LayoutData.AutoRestore);
-
                 defaultLayout = LayoutData.AutoRestore;
             }
             else
             {
                 layouts.Add(String.Empty);
-                // auto restore is in the layouts collection already
+                // Auto restore is already included in the layouts collection.
                 layouts.AddRange(SuperPuTTY.Layouts.Select(layout => layout.Name));
 
                 defaultLayout = SuperPuTTY.Settings.DefaultLayoutName;
+                if (!layouts.Contains(defaultLayout))
+                {
+                    defaultLayout = String.Empty;
+                }
             }
             this.comboBoxLayouts.DataSource = layouts;
             this.comboBoxLayouts.SelectedItem = defaultLayout;

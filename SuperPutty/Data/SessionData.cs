@@ -53,7 +53,9 @@ namespace SuperPutty.Data
         WINCMD,
         PS,
         // Retained for compatibility with saved prototype sessions; handled as ordinary SSH.
-        SSHNet
+        SSHNet,
+        // Persisted file-transfer session handled by PSCP rather than PuTTY.
+        SCP
     }
 
     /// <summary>The main class containing configuration settings for a session</summary>
@@ -346,6 +348,16 @@ namespace SuperPutty.Data
         [DisplayName("Local Path")]
         [Description("Local path used in file transfer")]
         public string LocalPath { get; set; }
+
+        private string _PrivateKeyFile;
+        [XmlAttribute]
+        [DisplayName("Private Key File")]
+        [Description("PuTTY private key (.ppk) used for SCP authentication.")]
+        public string PrivateKeyFile
+        {
+            get { return _PrivateKeyFile; }
+            set { UpdateField(ref _PrivateKeyFile, value, "PrivateKeyFile"); }
+        }
 
 
         /// <summary>Construct a new session data object</summary>

@@ -1,7 +1,10 @@
 using System.IO;
+using System.IO.Pipes;
+using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using NUnit.Framework;
+using SuperPutty.Data;
 using SuperPutty.Scp;
 
 namespace SuperPuttyUnitTests.Scp
@@ -65,6 +68,105 @@ namespace SuperPuttyUnitTests.Scp
                 Assert.IsTrue(signaled.Wait(1000), "Password prompt was not reported promptly.");
                 Assert.AreEqual("user@example.com's password:", received);
             }
+        }
+
+        [Test]
+        public void BlankPasswordUsesBatchModeForInitialAuthenticationAttempt()
+        {
+            SessionData session = new SessionData
+            {
+                Username = "sysadmin",
+                Host = "example.invalid",
+                Port = 22
+            };
+
+            string initialArgs = PscpClient.ToArgs(session, "", "/home/sysadmin");
+            string authenticatedArgs = PscpClient.ToArgs(session, "secret", "/home/sysadmin");
+
+            StringAssert.Contains("-batch", initialArgs);
+            StringAssert.Contains("-batch", authenticatedArgs);
+        }
+
+        [Test]
+        public void PrivateKeyFileIsQuotedForListingsAndTransfers()
+        {
+            SessionData session = new SessionData
+            {
+                Username = "sysadmin",
+                Host = "example.invalid",
+                Port = 22,
+                PrivateKeyFile = @"C:\Keys\Gitea Login.ppk"
+            };
+
+            string listingArgs = PscpClient.ToArgs(session, "", "/home/sysadmin");
+            string transferArgs = PscpClient.ToArgs(
+                session,
+                "",
+                new List<BrowserFileInfo> { new BrowserFileInfo { Path = @"C:\Temp\file.txt", Source = SourceType.Local } },
+                new BrowserFileInfo { Path = "/home/sysadmin/", Source = SourceType.Remote });
+
+            StringAssert.Contains("-i \"C:\\Keys\\Gitea Login.ppk\"", listingArgs);
+            StringAssert.Contains("-i \"C:\\Keys\\Gitea Login.ppk\"", transferArgs);
+        }
+
+        [TestCase("-v", true)]
+        [TestCase("-batch -v -P 22", true)]
+        [TestCase("-V", true)]
+        [TestCase("-verbose", false)]
+        [TestCase("-batch", false)]
+        public void DetectsOnlyPscpVerboseSwitch(string arguments, bool expected)
+        {
+            Assert.AreEqual(expected, PscpClient.HasVerboseArgument(arguments));
+        }
+
+        [Test]
+        public void PasswordPipeProvidesPasswordWithoutCreatingAFile()
+        {
+            string passwordPipePath;
+            using (PscpClient.PscpPasswordPipe passwordPipe =
+                PscpClient.PscpPasswordPipe.Create("secret value", false))
+            {
+                Assert.IsNotNull(passwordPipe);
+                passwordPipePath = passwordPipe.PipePath;
+                const string pipePrefix = @"\\.\pipe\";
+                StringAssert.StartsWith(pipePrefix + "SuperPuTTY-pscp-", passwordPipePath);
+                using (NamedPipeClientStream client = new NamedPipeClientStream(
+                    ".",
+                    passwordPipePath.Substring(pipePrefix.Length),
+                    PipeDirection.In))
+                {
+                    client.Connect(1000);
+                    using (StreamReader reader = new StreamReader(client))
+                    {
+                        Assert.AreEqual(
+                            "secret value" + System.Environment.NewLine,
+                            reader.ReadToEnd());
+                    }
+                }
+
+                SessionData session = new SessionData
+                {
+                    Username = "sysadmin",
+                    Host = "example.invalid",
+                    Port = 22
+                };
+                string arguments = PscpClient.ToArgs(
+                    session,
+                    "secret value",
+                    "/home/sysadmin",
+                    passwordPipePath);
+
+                StringAssert.Contains("-pwfile", arguments);
+                StringAssert.Contains(passwordPipePath, arguments);
+                StringAssert.DoesNotContain("secret value", arguments);
+            }
+        }
+
+        [Test]
+        public void PlainTextPasswordModeDoesNotCreatePasswordPipe()
+        {
+            Assert.IsNull(PscpClient.PscpPasswordPipe.Create("secret value", true));
+            Assert.IsNull(PscpClient.PscpPasswordPipe.Create("", false));
         }
     }
 }

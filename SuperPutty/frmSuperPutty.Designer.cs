@@ -85,6 +85,7 @@ namespace SuperPutty
             this.fullScreenToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.puTTYConfigurationToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.openLogFileLocationToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripMenuItem11 = new System.Windows.Forms.ToolStripSeparator();
             this.toggleCommandMaskToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripMenuItem4 = new System.Windows.Forms.ToolStripSeparator();
@@ -439,6 +440,7 @@ namespace SuperPutty
             // 
             this.toolsToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.puTTYConfigurationToolStripMenuItem,
+            this.openLogFileLocationToolStripMenuItem,
             this.toolStripMenuItem11,
             this.toggleCommandMaskToolStripMenuItem,
             this.toolStripMenuItem4,
@@ -453,7 +455,14 @@ namespace SuperPutty
             this.puTTYConfigurationToolStripMenuItem.Size = new System.Drawing.Size(269, 22);
             this.puTTYConfigurationToolStripMenuItem.Text = "&PuTTY Configuration";
             this.puTTYConfigurationToolStripMenuItem.Click += new System.EventHandler(this.puTTYConfigurationToolStripMenuItem_Click);
-            // 
+            //
+            // openLogFileLocationToolStripMenuItem
+            //
+            this.openLogFileLocationToolStripMenuItem.Name = "openLogFileLocationToolStripMenuItem";
+            this.openLogFileLocationToolStripMenuItem.Size = new System.Drawing.Size(269, 22);
+            this.openLogFileLocationToolStripMenuItem.Text = "Open &Log File Location";
+            this.openLogFileLocationToolStripMenuItem.Click += new System.EventHandler(this.openLogFileLocationToolStripMenuItem_Click);
+            //
             // toolStripMenuItem11
             // 
             this.toolStripMenuItem11.Name = "toolStripMenuItem11";
@@ -1022,5 +1031,6 @@ namespace SuperPutty
         private System.Windows.Forms.ToolStripMenuItem checkForUpdatesToolStripMenuItem;
         private System.Windows.Forms.ToolStripButton toolStripButtonRunScript;
         private System.Windows.Forms.ToolStripMenuItem sessionDetailToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem openLogFileLocationToolStripMenuItem;
     }
 }

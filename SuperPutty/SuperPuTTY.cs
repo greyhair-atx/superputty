@@ -222,13 +222,17 @@ namespace SuperPutty
         {
             if (!String.IsNullOrEmpty(Settings.SettingsFolder))
             {
-                LayoutData autoRestore = new LayoutData(AutoRestoreLayoutPath) { Name = LayoutData.AutoRestore, IsReadOnly = true };
+                layouts.Clear();
+                LayoutData autoRestore = new LayoutData(AutoRestoreLayoutPath)
+                {
+                    Name = LayoutData.AutoRestore,
+                    IsReadOnly = true
+                };
+                layouts.Add(autoRestore);
                 if (Directory.Exists(LayoutsDir))
                 {
                     List<LayoutData> newLayouts = Directory.GetFiles(LayoutsDir).Select(file => new LayoutData(file)).ToList();
 
-                    layouts.Clear();
-                    layouts.Add(autoRestore);
                     foreach (LayoutData layout in newLayouts)
                     {
                         layouts.Add(layout);
@@ -239,9 +243,8 @@ namespace SuperPutty
                 {
                     Log.InfoFormat($"Creating layouts directory: {LayoutsDir}");
                     Directory.CreateDirectory(LayoutsDir);
-                    layouts.Add(autoRestore);
                 }
-            }            
+            }
         }
 
         public static void LoadLayout(LayoutData layout)
@@ -444,6 +447,12 @@ namespace SuperPutty
         /// <param name="session">The <seealso cref="SessionData"/> object containing the settings</param>
         public static ctlPuttyPanel OpenProtoSession(SessionData session)
         {
+            if (IsScpSession(session))
+            {
+                OpenScpSession(session);
+                return null;
+            }
+
             Log.InfoFormat("Opening putty session, id={0}", session == null ? "" : session.SessionId);
             ctlPuttyPanel panel = null;
             if (session != null)
@@ -642,7 +651,7 @@ namespace SuperPutty
 
             if (ssi != null)
             {
-                if (ssi.UseScp)
+                if (ssi.UseScp || IsScpSession(ssi.Session))
                 {
                     OpenScpSession(ssi.Session);
                 }
@@ -758,6 +767,11 @@ namespace SuperPutty
                 }
                 throw;
             }
+        }
+
+        internal static bool IsScpSession(SessionData session)
+        {
+            return session != null && session.Proto == ConnectionProtocol.SCP;
         }
 
         /// <summary>Import sessions from older version of SuperPuTTY from the Windows Registry</summary>
@@ -952,7 +966,7 @@ namespace SuperPutty
             }
         }
 
-        /// <summary>The path to the default AutoRestore layout configuration</summary>
+        /// <summary>The path to the automatic window-layout configuration.</summary>
         public static string AutoRestoreLayoutPath { get { return Path.Combine(Settings.SettingsFolder, LayoutData.AutoRestoreLayoutFileName); } }
 
         #endregion

@@ -3,7 +3,7 @@
 # SessionName is required. Each row must also have either Host or PuttySession.
 # Protocol defaults to SSH. Port defaults according to Protocol (for example, SSH=22, Telnet=23, RDP=3389).
 # Imported sessions are placed below Imported; Folder can add one or more subfolders using / separators.
-# Supported optional columns: Host, Protocol, Port, Username, Folder, PuttySession, ExtraArgs, Note, ImageKey, SPSLFileName, RemotePath, LocalPath.
+# Supported optional columns: Host, Protocol, Port, Username, Folder, PuttySession, ExtraArgs, Note, ImageKey, SPSLFileName, RemotePath, LocalPath, PrivateKeyFile.
 # PuttySession defaults to "Default Settings" when Host is supplied. Do not place passwords in this file or in ExtraArgs.
 # Standard CSV quoting is supported; surround a value with double quotes when it contains a comma.
 SessionName,Host,Protocol,Port,Username,Folder,PuttySession,ExtraArgs,Note
