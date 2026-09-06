@@ -494,12 +494,12 @@ namespace SuperPutty
                         if (panel.InvokeRequired)
                         {
                             panel.BeginInvoke((MethodInvoker)delegate {
-                                panel.Close();
+                                panel.CloseWithoutConfirmation();
                             });
                         }
                         else
                         {
-                            panel.Close();
+                            panel.CloseWithoutConfirmation();
                         }
                     }
                 };
@@ -989,7 +989,8 @@ namespace SuperPutty
         /// <summary>Open Script Editor Window</summary>
         OpenScriptEditor,
         /// <summary>Rename active tab</summary>
-        RenameTab
+        RenameTab,
+        RestartSession
     } 
     #endregion
 

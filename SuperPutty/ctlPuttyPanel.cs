@@ -45,8 +45,9 @@ namespace SuperPutty
     {
         private static readonly ILog Log = LogManager.GetLogger(typeof(ctlPuttyPanel));
 
-        private static int RefocusAttempts = Convert.ToInt32(ConfigurationManager.AppSettings["SuperPuTTY.RefocusAttempts"] ?? "5");
-        private static int RefocusIntervalMs = Convert.ToInt32(ConfigurationManager.AppSettings["SuperPuTTY.RefocusIntervalMs"] ?? "80");
+        private static int RefocusAttempts = Convert.ToInt32(ConfigurationManager.AppSettings["SuperPuTTY.RefocusAttempts"] ?? "3");
+        private static int RefocusIntervalMs = Convert.ToInt32(ConfigurationManager.AppSettings["SuperPuTTY.RefocusIntervalMs"] ?? "40");
+        private bool closeWithoutConfirmation;
 
         private PuttyStartInfo m_puttyStartInfo;
         private PuttyClosedCallback m_ApplicationExit;
@@ -145,6 +146,7 @@ namespace SuperPutty
 
         void AdjustMenu()
         {
+            this.restartSessionToolStripMenuItem.Enabled = SupportsPuttyRestart(this.Session.Proto);
             // These sessions are not controlled by PuTTY's WM_SYSCOMMAND menu commands.
             if (this.Session.Proto == ConnectionProtocol.Mintty ||
                 ConsoleApplicationPanel.Supports(this.Session.Proto))
@@ -264,6 +266,46 @@ namespace SuperPutty
             this.Close();
         }
 
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            base.OnFormClosing(e);
+            if (!e.Cancel && !closeWithoutConfirmation && e.CloseReason == CloseReason.UserClosing &&
+                !(SuperPuTTY.MainForm != null && SuperPuTTY.MainForm.IsShuttingDown) &&
+                AppPanel != null && AppPanel.IsSessionActive)
+            {
+                e.Cancel = !ConfirmSessionClose();
+            }
+        }
+
+        protected virtual bool ConfirmSessionClose()
+        {
+            return MessageBox.Show(this, String.Format("Close active session '{0}'?", TextOverride ?? Text),
+                "Confirm Close Session", MessageBoxButtons.OKCancel, MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button2) == DialogResult.OK;
+        }
+
+        internal void CloseWithoutConfirmation()
+        {
+            closeWithoutConfirmation = true;
+            try { Close(); }
+            finally { closeWithoutConfirmation = false; }
+        }
+
+        internal bool RestartSession()
+        {
+            if (!SupportsPuttyRestart(Session.Proto) || !AppPanel.ExternalProcessCaptured)
+                return false;
+            puTTYMenuTSMI_Click(restartSessionToolStripMenuItem, EventArgs.Empty);
+            return true;
+        }
+
+        internal static bool SupportsPuttyRestart(ConnectionProtocol protocol)
+        {
+            return protocol != ConnectionProtocol.RDP && protocol != ConnectionProtocol.VNC &&
+                protocol != ConnectionProtocol.SCP &&
+                protocol != ConnectionProtocol.Mintty && !ConsoleApplicationPanel.Supports(protocol);
+        }
+
         private void closeOthersToolStripMenuItem_Click(object sender, EventArgs e)
         {
             var docs = from doc in this.DockPanel.DocumentsToArray()
@@ -327,7 +369,11 @@ namespace SuperPutty
             {
                 foreach (ToolWindowDocument doc in docsToClose)
                 {
-                    doc.Close();
+                    ctlPuttyPanel sessionPanel = doc as ctlPuttyPanel;
+                    if (sessionPanel != null && SuperPuTTY.Settings.MultipleTabCloseConfirmation && n > 1)
+                        sessionPanel.CloseWithoutConfirmation();
+                    else
+                        doc.Close();
                 }
             }
         }

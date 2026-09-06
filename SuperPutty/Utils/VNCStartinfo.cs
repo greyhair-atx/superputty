@@ -24,6 +24,7 @@ using log4net;
 using SuperPutty.Data;
 using System.Text.RegularExpressions;
 using System.IO;
+using System.Diagnostics;
 
 namespace SuperPutty.Utils
 {
@@ -35,15 +36,18 @@ namespace SuperPutty.Utils
     {
         private static readonly ILog Log = LogManager.GetLogger(typeof(VNCStartInfo));
 
-        private SessionData session;
-
         public VNCStartInfo(SessionData session)
+            : this(session, PuttyStartInfo.GetExecutable(session))
         {
-            this.session = session;
-            this.Args = "-scale=auto ";
-            this.ArgsForLog = "-scale=auto ";
+        }
 
-            if (session.Port != 0)
+        public VNCStartInfo(SessionData session, string executable)
+        {
+            bool tigerVnc = IsTigerVncExecutable(executable);
+            this.Args = tigerVnc ? "" : "-scale=auto ";
+            this.ArgsForLog = this.Args;
+
+            if (!tigerVnc && session.Port != 0)
             {
                 this.Args += "-port=" + session.Port.ToString() + " ";
                 this.ArgsForLog += "-port=" + session.Port.ToString() + " ";
@@ -51,7 +55,11 @@ namespace SuperPutty.Utils
 
             if (!String.IsNullOrEmpty(session.Password))
             {
-                if (SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
+                if (tigerVnc)
+                {
+                    Log.Info("TigerVNC will prompt for authentication; saved plaintext passwords are not passed to this viewer");
+                }
+                else if (SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
                 {
                     this.Args += "-password=" + CommandLineOptions.QuoteArgument(session.Password) + " ";
                     this.ArgsForLog += "-password=XXXXX ";
@@ -72,10 +80,35 @@ namespace SuperPutty.Utils
                 }
             }
 
-            this.Args += CommandLineOptions.QuoteArgument(session.Host);
-            this.ArgsForLog += CommandLineOptions.QuoteArgument(session.Host);
+            string endpoint = session.Host ?? String.Empty;
+            if (tigerVnc && session.Port != 0)
+            {
+                if (endpoint.Contains(":") && !endpoint.StartsWith("["))
+                    endpoint = "[" + endpoint + "]";
+                endpoint += "::" + session.Port;
+            }
+            this.Args += CommandLineOptions.QuoteArgument(endpoint);
+            this.ArgsForLog += CommandLineOptions.QuoteArgument(endpoint);
 
             this.StartingDir = "%userprofile%\\Desktop";
+        }
+
+        internal static bool IsTigerVncExecutable(string executable)
+        {
+            if (String.IsNullOrEmpty(executable))
+                return false;
+
+            if (executable.IndexOf("tigervnc", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+
+            // The Windows viewer is also distributed as vncviewer.exe.
+            if (File.Exists(executable))
+            {
+                FileVersionInfo version = FileVersionInfo.GetVersionInfo(executable);
+                return ((version.ProductName ?? "") + " " + (version.FileDescription ?? ""))
+                    .IndexOf("tigervnc", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+            return false;
         }
 
         public string Args { get; set; }

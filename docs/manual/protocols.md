@@ -23,6 +23,12 @@ The saved values `SSH2` and `SSHNet` may appear in older or experimental session
 
 SuperPuTTY discovers and embeds top-level windows created by PuTTY, FreeRDP, VNC, MinTTY, and similar programs. Client upgrades that change window titles or startup behavior can affect capture. When troubleshooting, first run the exact configured executable and arguments outside SuperPuTTY, then review the SuperPuTTY log.
 
+TigerVNC is recognized by its executable path or embedded product information, including when renamed to `vncviewer.exe`. SuperPuTTY passes an explicit port as `host::port` (for example, `192.168.5.240::5902`) and leaves authentication to the viewer's prompt. The VNC executable picker accepts versioned filenames. Other viewers retain the existing TightVNC-style arguments.
+
+For TigerVNC, SuperPuTTY continues watching the launched viewer after capturing the login dialog. When the remote desktop window appears, it replaces the login window in the tab. Tracking also handles a replacement desktop window after reconnecting; options and authentication dialogs do not replace an already captured desktop. Discovery is limited to the launched viewer process and recognizes TigerVNC's desktop window title.
+
+If a viewer exits during startup, SuperPuTTY stops trying to capture its window and logs the executable path and exit code. Check the viewer's arguments and connection settings. In particular, TigerVNC sessions should use `host::port`, without the TightVNC-only `-scale=auto` and `-port=` arguments.
+
 Win CMD and Windows PowerShell use the existing native Windows console host. The current implementation does not use ConPTY, WebView2, or a browser-based terminal renderer.
 
 ## Arguments and credentials

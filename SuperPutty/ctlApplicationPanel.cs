@@ -57,6 +57,7 @@ namespace SuperPutty
         private WindowActivator m_windowActivator = null;
         private SuperPutty.Data.ConnectionProtocol proto;
         private int suppressNextForegroundActivation;
+        private System.Windows.Forms.Timer vncWindowTracker;
 
         internal PuttyClosedCallback m_CloseCallback;
 
@@ -121,6 +122,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
         void ApplicationPanel_Disposed(object sender, EventArgs e)
         {
+            StopVncWindowTracker();
             this.Disposed -= new EventHandler(ApplicationPanel_Disposed);
             SuperPuTTY.LayoutChanged -= new EventHandler<Data.LayoutChangedEventArgs>(SuperPuTTY_LayoutChanged);
             SuperPuTTY.Settings.SettingsSaving -= Settings_SettingsSaving;
@@ -217,6 +219,31 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             return prc;
         }
 
+        internal static bool TryGetProcessWindow(Process process, out IntPtr window)
+        {
+            window = IntPtr.Zero;
+            try
+            {
+                process.Refresh();
+                if (process.HasExited)
+                    return false;
+                window = process.MainWindowHandle;
+                return true;
+            }
+            catch (InvalidOperationException) when (process.HasExited)
+            {
+                // The viewer can exit between HasExited and MainWindowHandle.
+                return false;
+            }
+        }
+
+        private void LogStartupExit()
+        {
+            m_AppWin = IntPtr.Zero;
+            Log.WarnFormat("{0} viewer '{1}' exited before window capture completed. Exit code: {2}. Check viewer command-line compatibility and connection settings.",
+                this.proto, ApplicationName, m_Process.ExitCode);
+        }
+
         private void AttachToWindow()
         {
             if (this.m_AppWin != IntPtr.Zero)
@@ -233,10 +260,14 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 if (this.proto == SuperPutty.Data.ConnectionProtocol.VNC)
                     lStyle |= NativeMethods.WS_HSCROLL | NativeMethods.WS_VSCROLL;
                 NativeMethods.SetWindowLong(m_AppWin, NativeMethods.GWL_STYLE, lStyle);
-                NativeMethods.WinEventDelegate lpfnWinEventProc = new NativeMethods.WinEventDelegate(WinEventProc);
-                this.lpfnWinEventProcs.Add(lpfnWinEventProc);
-                RegisterWinEventHook(NativeMethods.WinEvents.EVENT_OBJECT_NAMECHANGE, lpfnWinEventProc);
-                RegisterWinEventHook(NativeMethods.WinEvents.EVENT_SYSTEM_FOREGROUND, lpfnWinEventProc);
+                // Hooks are process-scoped and remain valid when VNC replaces its window.
+                if (this.lpfnWinEventProcs.Count == 0)
+                {
+                    NativeMethods.WinEventDelegate lpfnWinEventProc = new NativeMethods.WinEventDelegate(WinEventProc);
+                    this.lpfnWinEventProcs.Add(lpfnWinEventProc);
+                    RegisterWinEventHook(NativeMethods.WinEvents.EVENT_OBJECT_NAMECHANGE, lpfnWinEventProc);
+                    RegisterWinEventHook(NativeMethods.WinEvents.EVENT_SYSTEM_FOREGROUND, lpfnWinEventProc);
+                }
             }
             else
             {
@@ -255,6 +286,67 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         private int GetMaxWindowPoolingTime()
         {
             return this.proto == SuperPutty.Data.ConnectionProtocol.RDP ? 30 : 10;
+        }
+
+        private void StopVncWindowTracker()
+        {
+            if (vncWindowTracker != null)
+            {
+                vncWindowTracker.Stop();
+                vncWindowTracker.Dispose();
+                vncWindowTracker = null;
+            }
+        }
+
+        internal static bool IsTigerVncDesktopWindow(IntPtr window)
+        {
+            if (window == IntPtr.Zero || !NativeMethods.IsWindow(window))
+                return false;
+            StringBuilder title = new StringBuilder(512);
+            NativeMethods.GetWindowText(window, title, title.Capacity);
+            // TigerVNC's DesktopWindow adds this suffix to the server's desktop name.
+            // Authentication, certificate and options dialogs do not use it.
+            string caption = title.ToString();
+            return caption.EndsWith(" - TigerVNC", StringComparison.Ordinal) ||
+                caption.Contains(" - TigerVNC (");
+        }
+
+        internal static IntPtr FindTigerVncDesktopWindow(uint processId)
+        {
+            IntPtr result = IntPtr.Zero;
+            NativeMethods.EnumDesktopWindows(IntPtr.Zero, delegate(IntPtr window, int parameter)
+            {
+                uint owner;
+                NativeMethods.GetWindowThreadProcessId(window, out owner);
+                if (owner == processId && NativeMethods.IsWindowVisible(window) && IsTigerVncDesktopWindow(window))
+                {
+                    result = window;
+                    return false;
+                }
+                return true;
+            }, IntPtr.Zero);
+            return result;
+        }
+
+        private void TrackVncWindow(object sender, EventArgs e)
+        {
+            if (IsDisposed || Disposing || m_Process == null || m_Process.HasExited)
+            {
+                StopVncWindowTracker();
+                return;
+            }
+            // Keep a captured desktop even when its tab is hidden. Dialogs must
+            // never replace it; only look again after the desktop is destroyed.
+            if (IsTigerVncDesktopWindow(m_AppWin))
+                return;
+            IntPtr window = FindTigerVncDesktopWindow((uint)m_Process.Id);
+            if (window == IntPtr.Zero)
+                return;
+
+            Log.InfoFormat("Replacing VNC startup window {0} with desktop window {1}", m_AppWin, window);
+            m_AppWin = window;
+            this.AttachToWindow();
+            this.MoveWindow("VncDesktopCapture");
         }
 
         private bool IsWindowAppliesForInherit(IntPtr hWnd)
@@ -292,19 +384,12 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 if (worker.CancellationPending)
                     break;
 
-                try
-                {
-                    if (m_Process == null || m_Process.HasExited)
-                        break;
-                    m_Process.Refresh();
-                }
-                catch (InvalidOperationException)
-                {
+                IntPtr window;
+                if (m_Process == null || !TryGetProcessWindow(m_Process, out window))
                     break;
-                }
-                if (this.IsWindowAppliesForInherit(m_Process.MainWindowHandle))
+                if (window != IntPtr.Zero && this.IsWindowAppliesForInherit(window))
                 {
-                    e.Result = m_Process.MainWindowHandle;
+                    e.Result = window;
                     return;
                 }
             }
@@ -556,15 +641,22 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                     }
 
                     m_Process.Exited += delegate {
-                        m_CloseCallback(true);
+                        if (m_CloseCallback != null)
+                            m_CloseCallback(true);
                     };
 
                     m_Process.Start();
 
                     m_Process = this.WaitForTargetProcess(m_Process);
-                    if (this.IsWindowAppliesForInherit(m_Process.MainWindowHandle))
+                    IntPtr window;
+                    if (!TryGetProcessWindow(m_Process, out window))
                     {
-                        m_AppWin = m_Process.MainWindowHandle;
+                        LogStartupExit();
+                        return;
+                    }
+                    if (this.IsWindowAppliesForInherit(window))
+                    {
+                        m_AppWin = window;
 
                         if (IntPtr.Zero == m_AppWin)
                         {
@@ -577,11 +669,14 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                                 {
                                     System.Threading.Thread.Sleep(50);
 
-                                    // Refresh Process object's view of real process
-                                    m_Process.Refresh();
-                                    if (!this.IsWindowAppliesForInherit(m_Process.MainWindowHandle))
+                                    if (!TryGetProcessWindow(m_Process, out window))
+                                    {
+                                        LogStartupExit();
+                                        return;
+                                    }
+                                    if (!this.IsWindowAppliesForInherit(window))
                                         continue;
-                                    m_AppWin = m_Process.MainWindowHandle;
+                                    m_AppWin = window;
                                     if (IntPtr.Zero != m_AppWin)
                                     {
                                         Log.Info("Successfully found handle via polling " + (DateTime.Now - startTime).TotalMilliseconds + " ms");
@@ -599,6 +694,32 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                         bgWinTracker.RunWorkerCompleted += new RunWorkerCompletedEventHandler(bgWinTracker_Done);
                         bgWinTracker.RunWorkerAsync();
                     }
+
+                    if (m_Process.HasExited)
+                    {
+                        LogStartupExit();
+                        return;
+                    }
+                    string title = m_Process.MainWindowTitle;
+                    if (SuperPuTTY.PuTTYAppName + " Command Line Error" == title)
+                    {
+                        Log.WarnFormat("Error while creating putty session: title={0}, handle={1}. Abort capture window", title, this.m_AppWin);
+                        MessageBox.Show("Could not start putty session: Arguments passed to commandline invalid.", "putty command line error.");
+                        this.m_AppWin = IntPtr.Zero;
+                    }
+
+                    this.AttachToWindow();
+                    if (this.proto == SuperPutty.Data.ConnectionProtocol.VNC && VNCStartInfo.IsTigerVncExecutable(ApplicationName))
+                    {
+                        vncWindowTracker = new System.Windows.Forms.Timer { Interval = 200 };
+                        vncWindowTracker.Tick += TrackVncWindow;
+                        vncWindowTracker.Start();
+                    }
+                }
+                catch (InvalidOperationException) when (m_Process != null && m_Process.HasExited)
+                {
+                    LogStartupExit();
+                    return;
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -628,15 +749,6 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                     }
                 }
 
-                if (SuperPuTTY.PuTTYAppName + " Command Line Error" == this.m_Process.MainWindowTitle)
-                {
-                    // dont' try to capture or manipulate the window
-                    Log.WarnFormat("Error while creating putty session: title={0}, handle={1}.  Abort capture window", this.m_Process.MainWindowTitle, this.m_AppWin);
-                    MessageBox.Show("Could not start putty session: Arguments passed to commandline invalid.", "putty command line error.");
-                    this.m_AppWin = IntPtr.Zero;
-                }
-                
-                this.AttachToWindow();
             }
 
             if (this.Visible && this.m_Created && this.b_AppWinFinal && this.ExternalProcessCaptured)
@@ -660,6 +772,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         /// <param name="e"></param>
         protected override void OnHandleDestroyed(EventArgs e)
         {
+            StopVncWindowTracker();
             if (this.UsesManagedChildHost)
             {
                 base.OnHandleDestroyed(e);
@@ -712,6 +825,17 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         }
 
         public virtual bool ExternalProcessCaptured { get { return this.m_AppWin != IntPtr.Zero; } }
+
+        public virtual bool IsSessionActive
+        {
+            get
+            {
+                if (UsesManagedChildHost)
+                    return ExternalProcessCaptured;
+                try { return m_Process != null && !m_Process.HasExited; }
+                catch (InvalidOperationException) { return false; }
+            }
+        }
 
         #endregion    
     

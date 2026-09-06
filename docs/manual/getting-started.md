@@ -69,6 +69,21 @@ The active tab joins visually with its application frame. Each document tab reta
 
 Additional shortcuts can be assigned under **Tools > Options > Shortcuts**.
 
+Assign **RestartSession** there to invoke PuTTY's **Restart Session** command for the current tab. It has no default key binding and applies to PuTTY sessions, not VNC, RDP, or local shell tabs.
+
+Closing an active session tab through its close button, context menu, or **CloseTab** shortcut asks for confirmation. **Cancel** keeps the session open and is the default selection. Sessions that exit on their own close without prompting; an approved multiple-tab close does not prompt again for each tab. Application shutdown continues to use the existing **Confirm Exit** preference.
+
+## Focus retries
+
+When activating a session tab, SuperPuTTY retries focus up to **3 times**, waiting **40 ms** before each attempt. The maximum retry delay is **120 ms**. Existing overrides in the `<appSettings>` section of `SuperPutty.exe.config` still take precedence:
+
+```xml
+<add key="SuperPuTTY.RefocusAttempts" value="3" />
+<add key="SuperPuTTY.RefocusIntervalMs" value="40" />
+```
+
+Restart SuperPuTTY after changing these values.
+
 ## Command line
 
 Run `SuperPutty.exe --help` to display the supported switches. Common examples are:

@@ -473,7 +473,7 @@ namespace SuperPutty
 
         private void btnBrowseVNC_Click(object sender, EventArgs e)
         {
-            dialogBrowseExe("tvnviewer|tvnviewer.exe;vncviewer.exe;vncviewer64.exe", "tvnviewer.exe", textBoxVNCLocation);
+            dialogBrowseExe("VNC viewers|tvnviewer.exe;vncviewer*.exe;*tigervnc*.exe|Executables|*.exe", "tvnviewer.exe", textBoxVNCLocation);
         }
 
         private void btnBrowseRDP_Click(object sender, EventArgs e)

@@ -329,6 +329,8 @@ namespace SuperPutty
             SaveLastWindowBounds();
         }
 
+        internal bool IsShuttingDown { get; private set; }
+
         private void frmSuperPutty_FormClosing(object sender, FormClosingEventArgs e)
         {
             if (SuperPuTTY.Settings.ExitConfirmation && !forceClose)
@@ -338,6 +340,7 @@ namespace SuperPutty
                     e.Cancel = true;
                 }
             }
+            IsShuttingDown = !e.Cancel;
         }
 
         /// <summary>
@@ -2053,6 +2056,9 @@ namespace SuperPutty
                 case SuperPuttyAction.DuplicateSession:
                     if (activePanel != null && activePanel.Session != null)
                         SuperPuTTY.OpenProtoSession(activePanel.Session);
+                    break;
+                case SuperPuttyAction.RestartSession:
+                    success = activePanel != null && activePanel.RestartSession();
                     break;
                 case SuperPuttyAction.GotoCommandBar:
                     if (!this.fullscreenViewState.IsFullScreen)

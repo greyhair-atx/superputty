@@ -69,7 +69,7 @@ namespace SuperPutty.Utils
             }
             else if (session.Proto == ConnectionProtocol.VNC)
             {
-                VNCStartInfo vnc = new VNCStartInfo(session);
+                VNCStartInfo vnc = new VNCStartInfo(session, this.Executable);
                 this.Args = vnc.Args;
                 argsToLog = vnc.ArgsForLog;
                 this.WorkingDir = vnc.StartingDir;

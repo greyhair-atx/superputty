@@ -28,6 +28,8 @@ Run the isolated suite, which excludes tests requiring a real SSH server:
 dotnet vstest .\SuperPuttyUnitTests\bin\x64\Release\SuperPuttyUnitTests.exe --TestCaseFilter:"TestCategory!=NetworkTest"
 ```
 
+The isolated suite covers TigerVNC argument generation, renamed executable recognition, early process exits, and desktop discovery across login and reconnect transitions using local test windows. It also covers active-tab close confirmation and restart-shortcut configuration. These checks do not establish a live VNC connection; run the manual checks below to verify authentication and embedding with the installed viewer.
+
 The Windows integration scripts require an interactive desktop and an existing Release build:
 
 ```powershell
@@ -79,6 +81,10 @@ Use a disposable account and non-production endpoints where possible.
 10. Save and reload a named layout. Restart with `<Auto Restore>` and confirm the window arrangement returns without reopening the previously active connections.
 11. Import `Sessions.example.csv` and confirm fields including `PrivateKeyFile` are preserved.
 12. Install and uninstall both current-user and all-users MSI packages on clean test profiles. Confirm the requested scope, shortcuts, manual link, license page, and third-party notices.
+13. Select a versioned TigerVNC executable and connect using a non-default port. Confirm the log uses `host::port`, complete authentication, and verify the remote desktop replaces the login dialog inside the tab. Test resizing, switching tabs, and reconnecting; confirm an options dialog does not replace the desktop.
+14. Close an active tab using its X, context menu, and assigned **CloseTab** shortcut. Verify **Cancel** preserves it and **OK** closes it. Verify a session that exits on its own closes without prompting and an approved bulk close does not prompt per tab.
+15. Assign **RestartSession** under **Tools > Options > Shortcuts**, restart SuperPuTTY, and verify the binding is retained. Invoke it on a disconnected PuTTY session that remains open and confirm it reconnects. Verify it does not send PuTTY commands to VNC, RDP, MinTTY, or local shell tabs.
+16. Switch repeatedly between terminal tabs and application controls to check focus with the default three attempts at 40 ms intervals.
 
 ## Network tests
 
