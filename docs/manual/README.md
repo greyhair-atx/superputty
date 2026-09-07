@@ -11,7 +11,7 @@ SuperPuTTY is a Windows workspace for organizing PuTTY terminals and related too
 - [Getting started and interface](getting-started.md)
 - [Saved sessions](sessions.md)
 - [Connection types](protocols.md)
-- [Screenshots and capture notes](../images/latest-build/README.md)
+- [Screenshots and capture notes](../README.md)
 - [SCP file transfers](scp-file-transfers.md)
 - [Layouts](layouts.md)
 - [Settings and storage](settings.md)

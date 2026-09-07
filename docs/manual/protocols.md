@@ -45,4 +45,4 @@ These user-supplied screenshots show connected desktops hosted in SuperPuTTY. Th
 
 ![VNC desktop hosted in a SuperPuTTY tab](../images/SP_VNC_2_Screen.png)
 
-See the [current-source screenshot gallery](../images/latest-build/README.md) for session setup, layouts, shortcuts, close confirmation, and file transfers.
+See the [current-source screenshot gallery](../README.md) for session setup, layouts, shortcuts, close confirmation, and file transfers.
