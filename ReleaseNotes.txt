@@ -1,3 +1,12 @@
+1.7.5
+ - Fixed TigerVNC startup arguments and detection of renamed or versioned viewer executables.
+ - Keep tracking TigerVNC windows so the connected desktop replaces the captured login dialog, including after reconnecting.
+ - Handle viewers that exit during startup without throwing a process-information exception.
+ - Ask for confirmation before closing an active session tab, with Cancel selected by default.
+ - Added the configurable RestartSession keyboard shortcut for supported PuTTY sessions (unassigned by default).
+ - Reduced console refocus retries to 3 attempts at 40 ms intervals.
+ - Added current-source screenshots and supplied RDP/VNC desktop examples to the documentation.
+
 1.7.4
  - Added 7-pixel rounded top corners and tighter horizontal text padding to the custom outlined document tabs.
  - Updated DockPanelSuite and DockPanelSuite.ThemeVS2015 to 3.1.1 and Apache log4net to 3.4.0.

@@ -29,9 +29,15 @@ the source so each release tag preserves its matching documentation.
 Current contributor verification steps are in [docs/testing.md](docs/testing.md),
 and private vulnerability reporting guidance is in [SECURITY.md](SECURITY.md).
 
+## Screenshots
+
+![SuperPuTTY split SSH and PowerShell workspace](docs/images/latest-build/workspace-split.png)
+
+See the [screenshot gallery and capture notes](docs/images/latest-build/README.md), including connected RDP and VNC examples.
+
 ## System requirements
 
-The `master` branch and `sp-1.7.4` release produce **64-bit Windows builds
+The `master` branch and `sp-1.7.5` release produce **64-bit Windows builds
 only**. The application, test harness, and MSI installer all target x64; x86
 and AnyCPU configurations are not supported.
 
@@ -46,8 +52,8 @@ Windows for elevation. Neither installer can be installed on 32-bit Windows.
 Community release artifacts use an explicit `x64` suffix. The current release
 contains:
 
-- `SuperPutty-1.7.4-current-user-win-x64-signed.msi` — signed, non-elevated current-user installer
-- `SuperPutty-1.7.4-all-users-win-x64-signed.msi` — signed, elevated all-users installer
+- `SuperPutty-1.7.5-current-user-win-x64-signed.msi` — signed, non-elevated current-user installer
+- `SuperPutty-1.7.5-all-users-win-x64-signed.msi` — signed, elevated all-users installer
 
 ## Automated tests
 

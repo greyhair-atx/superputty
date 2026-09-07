@@ -36,3 +36,13 @@ Win CMD and Windows PowerShell use the existing native Windows console host. The
 **Extra Arguments** are plain text and are passed to the selected client. SuperPuTTY removes recognized embedded password switches while constructing PuTTY and PSCP arguments, but secrets should never be stored in this field. Quote non-secret paths or values containing spaces as required by the external client.
 
 For SSH authentication, prefer a PuTTY profile and Pageant. For SCP, use the session's explicit **Private Key** field or the protected password prompt described in [SCP file transfers](scp-file-transfers.md).
+
+## Desktop examples
+
+These user-supplied screenshots show connected desktops hosted in SuperPuTTY. They are visual examples from a separate run, not captures of the 1.7.5 release package.
+
+![RDP desktop hosted in a SuperPuTTY tab](../images/SP_RDP_2_Screen.png)
+
+![VNC desktop hosted in a SuperPuTTY tab](../images/SP_VNC_2_Screen.png)
+
+See the [current-source screenshot gallery](../images/latest-build/README.md) for session setup, layouts, shortcuts, close confirmation, and file transfers.
