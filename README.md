@@ -37,9 +37,9 @@ This release fixes TigerVNC startup and desktop capture, adds confirmation when 
 
 ## Screenshots
 
-![SuperPuTTY split SSH and PowerShell workspace](docs/images/latest-build/workspace-split.png)
+**[View all screenshots and capture notes](docs/README.md)** — SSH, PowerShell, Command Prompt, RDP, VNC, settings, layouts, and file transfers.
 
-See the [screenshot gallery and capture notes](docs/README.md), including connected RDP and VNC examples.
+[![SuperPuTTY split SSH and PowerShell workspace](docs/images/latest-build/workspace-split.png)](docs/README.md)
 
 ## System requirements
 
