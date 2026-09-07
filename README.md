@@ -29,6 +29,12 @@ the source so each release tag preserves its matching documentation.
 Current contributor verification steps are in [docs/testing.md](docs/testing.md),
 and private vulnerability reporting guidance is in [SECURITY.md](SECURITY.md).
 
+## Version 1.7.5
+
+SuperPuTTY 1.7.5 is available on [GitHub](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.7.5) and [Gitea](https://gitea.uberx.org/vscode/superputty/releases/tag/sp-1.7.5).
+
+This release fixes TigerVNC startup and desktop capture, adds confirmation when closing active tabs and a configurable restart-session shortcut, and reduces console refocus retries. See the [1.7.5 release summary](docs/releases/1.7.5.md) for changes, downloads, validation, and VirusTotal results.
+
 ## Screenshots
 
 ![SuperPuTTY split SSH and PowerShell workspace](docs/images/latest-build/workspace-split.png)

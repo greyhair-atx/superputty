@@ -6,6 +6,7 @@ SuperPuTTY is a Windows workspace for organizing PuTTY terminals and related too
 
 ## Manual contents
 
+- [What's new in 1.7.5 and release validation](../releases/1.7.5.md)
 - [Installation](installation.md)
 - [Getting started and interface](getting-started.md)
 - [Saved sessions](sessions.md)

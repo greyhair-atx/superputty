@@ -1,6 +1,6 @@
 # Current-build screenshots
 
-Captured on September 6, 2026, from an x64 .NET Framework 4.8 build of commit `1d5b68d5813917213eb322f73d1794e6b256d952`. The application displays version 1.7.4.0; these captures use the current source build, not the published release package.
+Captured on September 6, 2026, from an x64 .NET Framework 4.8 build of commit `1d5b68d5813917213eb322f73d1794e6b256d952`, before the 1.7.5 version bump. The application displays version 1.7.4.0 while illustrating features included in **1.7.5**. These are pre-release source-build captures, not screenshots of the published release package. See the [1.7.5 release summary](../../releases/1.7.5.md).
 
 [Open the visual gallery](index.html).
 
