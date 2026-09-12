@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2009 - 2015 Jim Radford http://www.jimradford.com
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -271,7 +271,7 @@ namespace SuperPutty
 
         void UpdateWindowText(string text)
         {
-            this.Text = string.Format("SuperPuTTY - {0}", text);
+            this.Text = string.Format("{0} - {1}", SuperPuTTY.DisplayName, text);
         }
 
         private void frmSuperPutty_Load(object sender, EventArgs e)
@@ -335,7 +335,7 @@ namespace SuperPutty
         {
             if (SuperPuTTY.Settings.ExitConfirmation && !forceClose)
             {
-                if (MessageBox.Show("Exit SuperPuTTY?", "Confirm Exit", MessageBoxButtons.OKCancel, MessageBoxIcon.Exclamation) == DialogResult.Cancel)
+                if (MessageBox.Show("Exit SuperPuTTY Community Edition?", "Confirm Exit", MessageBoxButtons.OKCancel, MessageBoxIcon.Exclamation) == DialogResult.Cancel)
                 {
                     e.Cancel = true;
                 }
@@ -357,7 +357,7 @@ namespace SuperPutty
         {
             if (this.DockPanel.ActiveDocument == null)
             {
-                this.Text = "SuperPuTTY";
+                this.Text = SuperPuTTY.DisplayName;
             }
             else
             {
@@ -2333,7 +2333,7 @@ namespace SuperPutty
                 }
                 else if (showCurrentVersion)
                 {
-                    MessageBox.Show("You are running the latest version of SuperPuTTY", "SuperPuTTY Update Check", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show("You are running the latest version of SuperPuTTY Community Edition", "SuperPuTTY CE Update Check", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             }
             catch (Exception ex)

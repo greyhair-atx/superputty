@@ -4,8 +4,8 @@
     <InstallerScope Condition="'$(InstallerScope)' == ''">PerMachine</InstallerScope>
     <InstallerProductVersion Condition="'$(InstallerProductVersion)' == ''">1.7.5</InstallerProductVersion>
     <InstallerArtifactSuffix Condition="'$(InstallerArtifactSuffix)' == ''">test-x64</InstallerArtifactSuffix>
-    <OutputName Condition="'$(InstallerScope)' == 'PerUser'">SuperPutty-$(InstallerProductVersion)-current-user-$(InstallerArtifactSuffix)</OutputName>
-    <OutputName Condition="'$(InstallerScope)' == 'PerMachine'">SuperPutty-$(InstallerProductVersion)-all-users-$(InstallerArtifactSuffix)</OutputName>
+    <OutputName Condition="'$(InstallerScope)' == 'PerUser'">SuperPuTTY-CE-$(InstallerProductVersion)-current-user-$(InstallerArtifactSuffix)</OutputName>
+    <OutputName Condition="'$(InstallerScope)' == 'PerMachine'">SuperPuTTY-CE-$(InstallerProductVersion)-all-users-$(InstallerArtifactSuffix)</OutputName>
     <DefineConstants>InstallerScope=$(InstallerScope);InstallerProductVersion=$(InstallerProductVersion);$(DefineConstants)</DefineConstants>
     <IntermediateOutputPath>obj\$(Platform)\$(Configuration)\$(InstallerScope)\</IntermediateOutputPath>
     <SuppressIces Condition="'$(InstallerScope)' == 'PerUser'">$(SuppressIces);ICE91</SuppressIces>

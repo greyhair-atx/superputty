@@ -4,12 +4,12 @@
 
 ## Choose a package
 
-Download SuperPuTTY **1.7.5** from [GitHub](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.7.5) or [Gitea](https://gitea.uberx.org/vscode/superputty/releases/tag/sp-1.7.5). This release provides two signed 64-bit installers:
+The pre-branding SuperPuTTY **1.7.5** release is available from [GitHub](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.7.5) or [Gitea](https://gitea.uberx.org/vscode/superputty/releases/tag/sp-1.7.5). New CE builds use the following artifact names (the existing published assets retain their old names):
 
-- **Current user:** `SuperPutty-1.7.5-current-user-win-x64-signed.msi` installs under the current user's Local AppData directory without elevation.
-- **All users:** `SuperPutty-1.7.5-all-users-win-x64-signed.msi` installs under 64-bit Program Files and requests administrator approval.
+- **Current user:** `SuperPuTTY-CE-1.7.5-current-user-win-x64-signed.msi` installs under the current user's Local AppData directory without elevation.
+- **All users:** `SuperPuTTY-CE-1.7.5-all-users-win-x64-signed.msi` installs under 64-bit Program Files and requests administrator approval.
 
-Use only one installed scope on a machine unless you have a specific reason to keep both. The application version is shown under **Help > About SuperPuTTY**.
+Use only one installed scope on a machine unless you have a specific reason to keep both. The application version is shown under **Help > About SuperPuTTY CE**.
 
 ## Install PuTTY and PSCP
 
@@ -36,3 +36,5 @@ On the initial configuration screen:
 The 1.7.5 executable and both installers are Authenticode signed by Christopher Thornton and timestamped. Both release pages include `SHA256SUMS.txt`, `VirusTotal-1.7.5.md`, and `virustotal-results.json`. VirusTotal completed scans of the signed executable and all five shipped DLLs with zero malicious or suspicious findings; the MSI files were not submitted. See the [release summary](../releases/1.7.5.md) for engine limitations and validation details.
 
 The application license is [License.txt](../../License.txt), and installed runtime components are described in [THIRD-PARTY-NOTICES.txt](../../THIRD-PARTY-NOTICES.txt).
+
+Read [branding and compatibility](../branding.md) before upgrading: CE preserves settings, upgrades known community 1.6.0–1.7.5 packages in the same scope, and requires manual removal of ambiguous 1.5 packages. Upstream coexistence is unsupported.

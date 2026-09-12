@@ -79,7 +79,7 @@ namespace SuperPutty.Utils
             if (PathsEqual(preferredFolder, fallbackFolder))
             {
                 throw new IOException(
-                    "The SuperPuTTY settings folder is not writable: " + fallbackFolder,
+                    "The SuperPuTTY CE settings folder is not writable: " + fallbackFolder,
                     configuredFolderError);
             }
 
@@ -87,7 +87,7 @@ namespace SuperPutty.Utils
             if (!TryEnsureWritable(fallbackFolder, out fallbackError))
             {
                 throw new IOException(
-                    "Neither the configured SuperPuTTY settings folder nor the Local AppData fallback is writable.",
+                    "Neither the configured SuperPuTTY CE settings folder nor the Local AppData fallback is writable.",
                     new AggregateException(configuredFolderError, fallbackError));
             }
 

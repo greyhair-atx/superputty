@@ -1,3 +1,9 @@
+SuperPuTTY Community Edition 1.7.5 (branding update, pending release)
+ - Identify this unofficial fork as community-maintained by Chris Thornton, based on Jim Radford's original SuperPuTTY.
+ - Preserve SuperPutty.exe, settings, registry paths, sessions, layouts, and command-line behavior.
+ - Use CE-branded MSI/artifact names and separate scope upgrade identities with a bounded bridge from community 1.6.0-1.7.5.
+ - See docs/branding.md for the manual removal requirement for ambiguous 1.5 packages and coexistence limitations.
+
 1.7.5
  - Fixed TigerVNC startup arguments and detection of renamed or versioned viewer executables.
  - Keep tracking TigerVNC windows so the connected desktop replaces the captured login dialog, including after reconnecting.

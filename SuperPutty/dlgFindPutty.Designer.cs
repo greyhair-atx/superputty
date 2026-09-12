@@ -1,4 +1,4 @@
-﻿namespace SuperPutty
+namespace SuperPutty
 {
     partial class dlgFindPutty
     {
@@ -348,7 +348,7 @@
             this.checkSingleInstanceMode.Name = "checkSingleInstanceMode";
             this.checkSingleInstanceMode.Size = new System.Drawing.Size(271, 17);
             this.checkSingleInstanceMode.TabIndex = 24;
-            this.checkSingleInstanceMode.Text = "Only allow single instance of SuperPuTTY to run";
+            this.checkSingleInstanceMode.Text = "Only allow single instance of SuperPuTTY CE to run";
             this.toolTip.SetToolTip(this.checkSingleInstanceMode, "If checked, new sessions launched from the command line are opened in an existing" +
         " instance");
             this.checkSingleInstanceMode.UseVisualStyleBackColor = true;
@@ -1292,7 +1292,7 @@
             this.ShowIcon = false;
             this.ShowInTaskbar = false;
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
-            this.Text = "SuperPuTTY Options";
+            this.Text = "SuperPuTTY CE Options";
             ((System.ComponentModel.ISupportInitialize)(this.numericUpDown1)).EndInit();
             this.tabControl.ResumeLayout(false);
             this.tabPageGeneral.ResumeLayout(false);

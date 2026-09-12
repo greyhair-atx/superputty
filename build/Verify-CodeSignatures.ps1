@@ -12,8 +12,8 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $artifacts = @(
     (Join-Path $repositoryRoot "bin\$Platform\$Configuration\SuperPutty.exe"),
-    (Join-Path $repositoryRoot "SuperPuttyInstaller\bin\$Platform\$Configuration\SuperPutty-$InstallerVersion-current-user-$InstallerArtifactSuffix.msi"),
-    (Join-Path $repositoryRoot "SuperPuttyInstaller\bin\$Platform\$Configuration\SuperPutty-$InstallerVersion-all-users-$InstallerArtifactSuffix.msi")
+    (Join-Path $repositoryRoot "SuperPuttyInstaller\bin\$Platform\$Configuration\SuperPuTTY-CE-$InstallerVersion-current-user-$InstallerArtifactSuffix.msi"),
+    (Join-Path $repositoryRoot "SuperPuttyInstaller\bin\$Platform\$Configuration\SuperPuTTY-CE-$InstallerVersion-all-users-$InstallerArtifactSuffix.msi")
 )
 
 foreach ($artifact in $artifacts) {

@@ -1,16 +1,17 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("SuperPuTTY")]
-[assembly: AssemblyDescription("PuTTY Window Manager")]
+[assembly: AssemblyTitle("SuperPuTTY Community Edition")]
+[assembly: AssemblyDescription("SuperPuTTY Community Edition - community-maintained PuTTY window manager")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("https://www.jimradford.com/")]
+[assembly: AssemblyCompany("Chris Thornton")]
+// Compatibility: PortableSettingsProvider uses Application.ProductName for SuperPuTTY.settings.
 [assembly: AssemblyProduct("SuperPuTTY")]
-[assembly: AssemblyCopyright("Copyright © 2009 - 2023 Jim Radford")]
+[assembly: AssemblyCopyright("Copyright © 2009 - 2023 Jim Radford; Copyright © 2026 Chris Thornton (community modifications)")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 

@@ -42,7 +42,7 @@ steps:
     restoreSolution: '$(solution)'
 
 - task: VSBuild@1
-  displayName: 'Build SuperPuTTY x64 application'
+  displayName: 'Build SuperPuTTY Community Edition x64 application'
   inputs:
     solution: 'SuperPutty\SuperPutty.csproj'
     platform: '$(buildPlatform)'
@@ -142,7 +142,7 @@ steps:
       Endpoint: 'https://cus.codesigning.azure.net/'
       ArtifactSigningAccountName: 'greyhair-atx'
       CertificateProfileName: 'greyhair-atx-superputty'
-      Files: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x64\$(buildConfiguration)\SuperPutty-$(releaseVersion)-*-$(installerArtifactSuffix).msi'
+      Files: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x64\$(buildConfiguration)\SuperPuTTY-CE-$(releaseVersion)-*-$(installerArtifactSuffix).msi'
       FileDigest: 'SHA256'
       TimestampRfc3161: 'http://timestamp.acs.microsoft.com'
       TimestampDigest: 'SHA256'
@@ -162,7 +162,7 @@ steps:
   inputs:
     targetType: 'filePath'
     filePath: '$(Build.SourcesDirectory)\build\Verify-ReleaseArtifacts.ps1'
-    arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform) -ExpectedVersion $(applicationVersion) -InstallerScope PerUser -MsiName SuperPutty-$(releaseVersion)-current-user-$(installerArtifactSuffix).msi'
+    arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform) -ExpectedVersion $(applicationVersion) -InstallerScope PerUser -MsiName SuperPuTTY-CE-$(releaseVersion)-current-user-$(installerArtifactSuffix).msi'
     pwsh: true
 
 - task: PowerShell@2
@@ -170,7 +170,7 @@ steps:
   inputs:
     targetType: 'filePath'
     filePath: '$(Build.SourcesDirectory)\build\Verify-ReleaseArtifacts.ps1'
-    arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform) -ExpectedVersion $(applicationVersion) -InstallerScope PerMachine -MsiName SuperPutty-$(releaseVersion)-all-users-$(installerArtifactSuffix).msi'
+    arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform) -ExpectedVersion $(applicationVersion) -InstallerScope PerMachine -MsiName SuperPuTTY-CE-$(releaseVersion)-all-users-$(installerArtifactSuffix).msi'
     pwsh: true
 
 - task: PowerShell@2
@@ -192,12 +192,12 @@ steps:
 
 - task: PublishPipelineArtifact@1
   inputs:
-    targetPath: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x64\$(buildConfiguration)\SuperPutty-$(releaseVersion)-current-user-$(installerArtifactSuffix).msi'
+    targetPath: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x64\$(buildConfiguration)\SuperPuTTY-CE-$(releaseVersion)-current-user-$(installerArtifactSuffix).msi'
     artifactType: 'pipeline'
-    artifactName: 'SuperPutty-$(releaseVersion)-current-user-$(installerArtifactSuffix)'
+    artifactName: 'SuperPuTTY-CE-$(releaseVersion)-current-user-$(installerArtifactSuffix)'
 
 - task: PublishPipelineArtifact@1
   inputs:
-    targetPath: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x64\$(buildConfiguration)\SuperPutty-$(releaseVersion)-all-users-$(installerArtifactSuffix).msi'
+    targetPath: '$(Build.SourcesDirectory)\SuperPuttyInstaller\bin\x64\$(buildConfiguration)\SuperPuTTY-CE-$(releaseVersion)-all-users-$(installerArtifactSuffix).msi'
     artifactType: 'pipeline'
-    artifactName: 'SuperPutty-$(releaseVersion)-all-users-$(installerArtifactSuffix)'
+    artifactName: 'SuperPuTTY-CE-$(releaseVersion)-all-users-$(installerArtifactSuffix)'

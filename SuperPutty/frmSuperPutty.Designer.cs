@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace SuperPutty
 {
@@ -548,7 +548,7 @@ namespace SuperPutty
             // 
             this.aboutSuperPuTTYToolStripMenuItem.Name = "aboutSuperPuTTYToolStripMenuItem";
             this.aboutSuperPuTTYToolStripMenuItem.Size = new System.Drawing.Size(175, 22);
-            this.aboutSuperPuTTYToolStripMenuItem.Text = "&About SuperPuTTY";
+            this.aboutSuperPuTTYToolStripMenuItem.Text = "&About " + SuperPuTTY.ShortDisplayName;
             this.aboutSuperPuTTYToolStripMenuItem.Click += new System.EventHandler(this.aboutSuperPuttyToolStripMenuItem_Click);
             // 
             // dockPanel1
@@ -886,7 +886,7 @@ namespace SuperPutty
             // 
             this.notifyicon.ContextMenuStrip = this.notifyIconContextMenuStrip;
             this.notifyicon.Icon = ((System.Drawing.Icon)(resources.GetObject("notifyicon.Icon")));
-            this.notifyicon.Text = "SuperPuTTY";
+            this.notifyicon.Text = SuperPuTTY.DisplayName;
             this.notifyicon.MouseClick += new System.Windows.Forms.MouseEventHandler(this.notifyicon_MouseClick);
             // 
             // notifyIconContextMenuStrip
@@ -900,7 +900,7 @@ namespace SuperPutty
             // 
             this.exitSuperPuTTYToolStripMenuItem.Name = "exitSuperPuTTYToolStripMenuItem";
             this.exitSuperPuTTYToolStripMenuItem.Size = new System.Drawing.Size(160, 22);
-            this.exitSuperPuTTYToolStripMenuItem.Text = "Exit SuperPuTTY";
+            this.exitSuperPuTTYToolStripMenuItem.Text = "Exit " + SuperPuTTY.ShortDisplayName;
             this.exitSuperPuTTYToolStripMenuItem.Click += new System.EventHandler(this.exitSuperPuTTYToolStripMenuItem_Click);
             // 
             // sessionDetailToolStripMenuItem
@@ -921,7 +921,7 @@ namespace SuperPutty
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.KeyPreview = true;
             this.Name = "frmSuperPutty";
-            this.Text = "SuperPuTTY";
+            this.Text = SuperPuTTY.DisplayName;
             this.Activated += new System.EventHandler(this.frmSuperPutty_Activated);
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.frmSuperPutty_FormClosing);
             this.Load += new System.EventHandler(this.frmSuperPutty_Load);

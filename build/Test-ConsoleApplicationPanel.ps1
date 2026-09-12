@@ -38,7 +38,7 @@ function Test-ConsoleProtocol {
     $form = New-Object System.Windows.Forms.Form
     $panel = $null
     try {
-        $form.Text = "SuperPuTTY console panel integration test"
+        $form.Text = "SuperPuTTY CE console panel integration test"
         $form.ClientSize = New-Object System.Drawing.Size(800, 500)
         $form.ShowInTaskbar = $false
         $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual

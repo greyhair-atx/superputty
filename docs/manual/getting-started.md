@@ -39,7 +39,7 @@ Use this menu to show the Sessions, Session Detail, Layouts, and Log Viewer pane
 - **Documentation** opens this manual online when no local CHM manual is installed.
 - **Diagnostics** contains developer and cleanup commands.
 - **Check for Updates** checks the selected update channel.
-- **About SuperPuTTY** shows version and project credits.
+- **About SuperPuTTY CE** shows version and project credits.
 
 ## Sessions and command toolbars
 

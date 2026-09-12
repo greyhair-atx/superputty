@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -54,7 +54,7 @@ namespace SuperPutty
             FormBorderStyle = FormBorderStyle.FixedSingle;
             AcceptButton = okButton;
             CancelButton = cancelButton;
-            Text = "SuperPutty";
+            Text = SuperPutty.SuperPuTTY.DisplayName;
             ResumeLayout(false);
             PerformLayout();
         }

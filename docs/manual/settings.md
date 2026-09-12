@@ -6,7 +6,7 @@
 
 SuperPuTTY uses two related locations:
 
-- `SuperPutty.settings` stores application preferences. It is normally in `%USERPROFILE%`; placing it beside `SuperPutty.exe` enables the established portable-settings behavior.
+- `SuperPutty.settings` stores application preferences. It is normally in `%USERPROFILE%`; the file beside `SuperPutty.exe` is used when no profile settings file exists.
 - The configured settings folder contains `Sessions.XML`, `AutoRestoreLayout.XML`, named layouts, and theme resources.
 
 New profiles reuse an existing writable Documents-based SuperPuTTY folder when available. Otherwise, the application uses `%LOCALAPPDATA%\SuperPuTTY`. If a configured folder becomes unwritable, SuperPuTTY can fall back to Local AppData and copy readable settings without overwriting files already there.

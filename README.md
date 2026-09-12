@@ -1,4 +1,4 @@
-# SuperPuTTY
+# SuperPuTTY Community Edition
 
 [![Community release](https://img.shields.io/github/v/release/greyhair-atx/superputty?display_name=tag&sort=semver&label=community%20release)](https://github.com/greyhair-atx/superputty/releases/latest)
 [![Release downloads](https://img.shields.io/github/downloads/greyhair-atx/superputty/total?label=release%20downloads)](https://github.com/greyhair-atx/superputty/releases)
@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/github/license/greyhair-atx/superputty)](License.txt)
 [![Signed builds](https://img.shields.io/badge/builds-Authenticode%20signed-brightgreen)](https://github.com/greyhair-atx/superputty/releases/latest)
 
-> **Community fork:** This is an active, unofficial fork of
+> **Community fork maintained by Chris Thornton:** This is an active, unofficial fork of
 > [jimradford/superputty](https://github.com/jimradford/superputty). It carries
 > community-maintained fixes and publishes its own versioned x64 releases on
 > [GitHub](https://github.com/greyhair-atx/superputty/releases) and
@@ -17,23 +17,25 @@
 > not official upstream releases. Starting with 1.7.1, release builds are
 > Authenticode signed by Christopher Thornton and timestamped.
 
-SuperPuTTY is a Windows application for managing PuTTY SSH terminals. It also
+SuperPuTTY Community Edition (SuperPuTTY CE) is a Windows application for managing PuTTY SSH terminals. It also
 supports embedded Win CMD and Windows PowerShell consoles, RDP sessions, and a
 simple scripting language for common tasks. Local console windows use a
 dedicated host panel so their capture, focus, resizing, and shutdown behavior
 does not alter the PuTTY hosting path.
 
-The current [SuperPuTTY User Manual](docs/manual/README.md) is maintained with
+The current [SuperPuTTY Community Edition User Manual](docs/manual/README.md) is maintained with
 the source so each release tag preserves its matching documentation.
 
 Current contributor verification steps are in [docs/testing.md](docs/testing.md),
 and private vulnerability reporting guidance is in [SECURITY.md](SECURITY.md).
 
-## Version 1.7.5
+## SuperPuTTY Community Edition 1.7.5
 
-SuperPuTTY 1.7.5 is available on [GitHub](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.7.5) and [Gitea](https://gitea.uberx.org/vscode/superputty/releases/tag/sp-1.7.5).
+The pre-branding SuperPuTTY 1.7.5 release is available on [GitHub](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.7.5) and [Gitea](https://gitea.uberx.org/vscode/superputty/releases/tag/sp-1.7.5).
 
 This release fixes TigerVNC startup and desktop capture, adds confirmation when closing active tabs and a configurable restart-session shortcut, and reduces console refocus retries. See the [1.7.5 release summary](docs/releases/1.7.5.md) for changes, downloads, validation, and VirusTotal results.
+
+The CE branding changes are in this source tree. CE artifacts require a new build, signing, and publication; the existing release links and validation reports refer to the pre-branding binaries. See [branding and compatibility](docs/branding.md) for installer upgrade limits.
 
 ## Screenshots
 
@@ -55,11 +57,11 @@ The current-user x64 MSI installs under Local AppData without elevation. A
 separate all-users x64 MSI installs under native 64-bit Program Files and asks
 Windows for elevation. Neither installer can be installed on 32-bit Windows.
 
-Community release artifacts use an explicit `x64` suffix. The current release
-contains:
+CE release artifacts use an explicit `x64` suffix. A signed CE build
+uses these filenames:
 
-- `SuperPutty-1.7.5-current-user-win-x64-signed.msi` — signed, non-elevated current-user installer
-- `SuperPutty-1.7.5-all-users-win-x64-signed.msi` — signed, elevated all-users installer
+- `SuperPuTTY-CE-1.7.5-current-user-win-x64-signed.msi` — signed, non-elevated current-user installer
+- `SuperPuTTY-CE-1.7.5-all-users-win-x64-signed.msi` — signed, elevated all-users installer
 
 ## Automated tests
 

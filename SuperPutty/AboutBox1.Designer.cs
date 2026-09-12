@@ -1,4 +1,4 @@
-﻿using System.Windows.Forms;
+using System.Windows.Forms;
 
 namespace SuperPutty
 {
@@ -80,7 +80,7 @@ namespace SuperPutty
             // 
             this.okButton.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
             this.okButton.DialogResult = System.Windows.Forms.DialogResult.Cancel;
-            this.okButton.Location = new System.Drawing.Point(470, 281);
+            this.okButton.Location = new System.Drawing.Point(550, 301);
             this.okButton.Name = "okButton";
             this.okButton.Size = new System.Drawing.Size(75, 24);
             this.okButton.TabIndex = 24;
@@ -190,9 +190,7 @@ namespace SuperPutty
             this.textBox1.Size = new System.Drawing.Size(523, 107);
             this.textBox1.TabIndex = 24;
             this.textBox1.TabStop = false;
-            this.textBox1.Text = "SuperPutty is a tabbed interface for the PuTTY SSH Client. It is can be used for " +
-    "both terminal sessions and file transfers both utilizing the secure SSH protocol" +
-    ".";
+            this.textBox1.Text = "SuperPuTTY Community Edition is a tabbed interface for PuTTY terminals and file transfers.";
             // 
             // tabControl1
             // 
@@ -204,7 +202,7 @@ namespace SuperPutty
             this.tabControl1.Location = new System.Drawing.Point(12, 130);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
-            this.tabControl1.Size = new System.Drawing.Size(537, 141);
+            this.tabControl1.Size = new System.Drawing.Size(617, 161);
             this.tabControl1.TabIndex = 25;
             // 
             // tabPage4
@@ -272,7 +270,7 @@ namespace SuperPutty
             this.AcceptButton = this.okButton;
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(559, 317);
+            this.ClientSize = new System.Drawing.Size(639, 337);
             this.Controls.Add(this.labelMaintainer);
             this.Controls.Add(this.labelCopyright);
             this.Controls.Add(this.labelVersion);
@@ -290,7 +288,7 @@ namespace SuperPutty
             this.ShowIcon = false;
             this.ShowInTaskbar = false;
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
-            this.Text = "About SuperPuTTY";
+            this.Text = "About SuperPuTTY Community Edition";
             ((System.ComponentModel.ISupportInitialize)(this.logoPictureBox)).EndInit();
             this.tabPage3.ResumeLayout(false);
             this.tabPage2.ResumeLayout(false);

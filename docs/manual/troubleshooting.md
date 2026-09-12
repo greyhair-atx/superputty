@@ -4,7 +4,7 @@
 
 ## Start with the log
 
-Choose **Tools > Open Log File Location** and open the newest SuperPuTTY log. Record the application version from **Help > About SuperPuTTY** and the PuTTY/PSCP versions involved.
+Choose **Tools > Open Log File Location** and open the newest SuperPuTTY log. Record the application version from **Help > About SuperPuTTY CE** and the PuTTY/PSCP versions involved.
 
 ## A PuTTY window does not embed
 

@@ -2,6 +2,7 @@
 <?if $(var.InstallerScope) = PerUser ?>
   <?define PackageId=GreyhairATX.SuperPutty.CurrentUser ?>
   <?define PackageScope=perUser ?>
+  <?define EditionUpgradeCode=3E4059D9-E5A5-48DE-B787-FC88268C1B95 ?>
   <?define ApplicationShortcutsGuid=CE5F3040-4387-4C28-BFC6-8C719E64A10D ?>
   <?define ThemeIconFilesGuid=FDD258D9-3491-4F9F-B881-BB7ACA915921 ?>
   <?define ProductExeGuid=9540D008-B0DF-464D-9C29-36D91FBC664C ?>
@@ -15,6 +16,7 @@
 <?else?>
   <?define PackageId=GreyhairATX.SuperPutty.AllUsers ?>
   <?define PackageScope=perMachine ?>
+  <?define EditionUpgradeCode=98CB966B-60D4-46C3-AADA-1990464696B8 ?>
   <?define ApplicationShortcutsGuid=46262D1C-86F8-49A6-8A8B-7353B658FB13 ?>
   <?define ThemeIconFilesGuid=BF087426-7B24-4FC7-8353-0DD1732D35A9 ?>
   <?define ProductExeGuid=* ?>
@@ -30,11 +32,11 @@
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
   <Package Id="$(var.PackageId)"
-           Name="SuperPuTTY"
+           Name="SuperPuTTY Community Edition"
            Language="1033"
            Version="$(var.InstallerProductVersion)"
            Manufacturer="Chris Thornton"
-           UpgradeCode="42567f59-2f27-4e5b-a900-9141dc2dd929"
+           UpgradeCode="$(var.EditionUpgradeCode)"
            InstallerVersion="500"
            Scope="$(var.PackageScope)">
 
@@ -45,9 +47,28 @@
     <Property Id="ARPNOREPAIR" Value="1"/>
 
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <!-- The historical UpgradeCode was shared with upstream. Bridge only the known
+         community MSI versions; MSI ignores the fourth version field, so the
+         1.5.0.1 community build cannot be distinguished from upstream 1.5.0.0.
+         FindRelatedProducts/RemoveExistingProducts operate within install scope.
+         Keep this upper bound fixed when increasing the CE release version. -->
+    <Upgrade Id="42567f59-2f27-4e5b-a900-9141dc2dd929">
+      <UpgradeVersion Minimum="1.6.0" IncludeMinimum="yes"
+                      Maximum="1.7.5" IncludeMaximum="yes"
+                      Property="LEGACYCOMMUNITYFOUND" MigrateFeatures="yes" />
+      <UpgradeVersion Maximum="1.6.0" IncludeMaximum="no"
+                      OnlyDetect="yes" Property="LEGACYUPSTREAMFOUND" />
+      <UpgradeVersion Minimum="1.7.5" IncludeMinimum="no"
+                      OnlyDetect="yes" Property="UNKNOWNLEGACYFOUND" />
+    </Upgrade>
+    <Launch Condition="Installed OR NOT LEGACYUPSTREAMFOUND"
+            Message="Back up your settings and uninstall the existing SuperPuTTY 1.5 or earlier installation before installing SuperPuTTY Community Edition. These packages share legacy settings and cannot safely coexist." />
+    <Launch Condition="Installed OR NOT UNKNOWNLEGACYFOUND"
+            Message="An unrecognized newer SuperPuTTY package is installed. Remove it manually before installing SuperPuTTY Community Edition." />
+    <Property Id="ARPCOMMENTS" Value="SuperPuTTY Community Edition - unofficial community-maintained fork of Jim Radford's SuperPuTTY." />
     <MediaTemplate EmbedCab="yes" />
     
-    <Feature Id="ProductFeature" Title="SuperPuTTY" Level="1">
+    <Feature Id="ProductFeature" Title="SuperPuTTY Community Edition" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
       <ComponentGroupRef Id="DefaultTheme" />
       <ComponentRef Id="ApplicationShortcuts" />
@@ -73,7 +94,7 @@
                Value="LaunchApplication"
                Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
     </UI>
-    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch SuperPuTTY" />    
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch SuperPuTTY Community Edition" />
     <Property Id="WixShellExecTarget" Value="[#ProductExe]" />
     <CustomAction Id="LaunchApplication"
                   BinaryRef="Wix4UtilCA_X64"
@@ -111,16 +132,16 @@
         <Component Id="ApplicationShortcuts" Guid="$(var.ApplicationShortcutsGuid)">
 
             <Shortcut Id="ApplicationShortcut1"
-                      Name="SuperPuTTY" 
-                      Description="SuperPuTTY SSH Window Manager"
+                      Name="SuperPuTTY Community Edition"
+                      Description="SuperPuTTY Community Edition SSH Window Manager"
                       Target="[APPLICATIONFOLDER]SuperPutty.exe"
                       WorkingDirectory="APPLICATIONFOLDER" />
 
             <Shortcut Id="UninstallProduct"
-                      Name="Uninstall SuperPuTTY"
+                      Name="Uninstall SuperPuTTY CE"
                       Target="[SystemFolder]msiexec.exe"
                       Arguments="/x [ProductCode]"
-                      Description="Uninstalls SuperPuTTY" />
+                      Description="Uninstalls SuperPuTTY Community Edition" />
 
             <File Id="ProjectWebsiteShortcut"
                   Source="Project Website.url"

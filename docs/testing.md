@@ -1,4 +1,4 @@
-# Testing SuperPuTTY
+# Testing SuperPuTTY Community Edition
 
 This guide describes the checks used for the current 64-bit .NET Framework 4.8 codebase. It replaces older release-specific test notes and unfinished migration plans.
 
@@ -32,6 +32,8 @@ dotnet vstest .\SuperPuttyUnitTests\bin\x64\Release\SuperPuttyUnitTests.exe --Te
 
 The isolated suite covers TigerVNC argument generation, renamed executable recognition, early process exits, and desktop discovery across login and reconnect transitions using local test windows. It also covers active-tab close confirmation and restart-shortcut configuration. These checks do not establish a live VNC connection; run the manual checks below to verify authentication and embedding with the installed viewer.
 
+Branding regressions cover the rendered About dialog, lineage and MIT attribution, executable and assembly identity, legacy profile/portable preferences, and existing session XML. The shutdown script also checks the real main-window title and loads the fixed `Fixtures/LegacyLayout.xml` through the application's named-layout path. This fixture uses the retained DockPanel 1.0 format and `SuperPutty.SessionTreeview` identifier.
+
 The Windows integration scripts require an interactive desktop and an existing Release build:
 
 ```powershell
@@ -58,6 +60,8 @@ Then validate their architecture, version, runtime files, license UI, installati
 ```
 
 The verifier defaults to the current test artifact names. Use `-ExpectedVersion` and `-MsiName` when checking another version or filename.
+
+CE filenames start with `SuperPuTTY-CE-`. The verifier checks MSI/ARP and shortcut names, file description, copyright, separate scope UpgradeCodes, the bounded legacy community bridge, and the upstream detection-only guard. See [branding and compatibility](branding.md) for upgrade consequences and the disposable-machine release test matrix. Administrative extraction checks do not establish live upgrade/uninstall behavior.
 
 For signed release artifacts, run:
 

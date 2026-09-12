@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -24,6 +24,9 @@ namespace SuperPutty
     /// </summary>
     public static class SuperPuTTY 
     {
+        public const string DisplayName = "SuperPuTTY Community Edition";
+        public const string ShortDisplayName = "SuperPuTTY CE";
+
         private static readonly ILog Log = LogManager.GetLogger(typeof(SuperPuTTY));
 
         public static event EventHandler<LayoutChangedEventArgs> LayoutChanging;
@@ -52,7 +55,7 @@ namespace SuperPutty
                 // display help if --help specified
                 if (CommandLine.Help)
                 {
-                    if (DialogResult.Cancel == MessageBox.Show(CommandLineOptions.Usage(), "SuperPutty CLI Help", MessageBoxButtons.OKCancel))
+                    if (DialogResult.Cancel == MessageBox.Show(CommandLineOptions.Usage(), "SuperPuTTY CE CLI Help", MessageBoxButtons.OKCancel))
                     {
                         Environment.Exit(0);
                     }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  *  https://github.com/jimradford/superputty/blob/master/License.txt
  */
 
@@ -13,15 +13,15 @@ namespace SuperPutty
     {
         internal const string OriginalReleaseAttribution = "Version 1.5.0.0 Copyright (c) 2009 - 2023 Jim Radford";
         internal const string OriginalAuthorUrl = "https://www.jimradford.com";
-        internal const string UpdateAttribution = "Updates by C. Thornton";
+        internal const string UpdateAttribution = "Community-maintained fork by Chris Thornton";
         internal const string CommunityRepositoryUrl = "https://github.com/greyhair-atx/superputty";
 
         public AboutBox1()
         {
             InitializeComponent();
             this.Text = String.Format("About {0}", AssemblyTitle);
-            this.labelProductName.Text = AssemblyProduct;
-            this.labelVersion.Text = String.Format("Version {0}", AssemblyVersion);
+            this.labelProductName.Text = AssemblyTitle + " " + Assembly.GetExecutingAssembly().GetName().Version.ToString(3);
+            this.labelVersion.Text = "Based on the original SuperPuTTY by Jim Radford";
             this.labelCopyright.Text = OriginalReleaseAttribution;
             this.linkLabelCompany.Text = OriginalAuthorUrl;
             this.linkLabelCompany.LinkArea = new LinkArea(0, OriginalAuthorUrl.Length);
@@ -31,7 +31,12 @@ namespace SuperPutty
             this.linkLabelCompany2.LinkArea = new LinkArea(0, CommunityRepositoryUrl.Length);
             this.linkLabelCompany2.Links[0].LinkData = CommunityRepositoryUrl;
 
-            textBoxSupportText.AppendText("SuperPuTTY Version: " + SuperPuTTY.Version + System.Environment.NewLine);
+            this.textBox1.Text = "This is not an official upstream SuperPuTTY release." + Environment.NewLine +
+                "Licensed under the MIT License." + Environment.NewLine +
+                "Copyright (c) 2026 Chris Thornton (community modifications)." + Environment.NewLine +
+                "Original project: https://github.com/jimradford/superputty";
+
+            textBoxSupportText.AppendText(SuperPuTTY.DisplayName + " Version: " + SuperPuTTY.Version + Environment.NewLine);
             Assembly[] asms = AppDomain.CurrentDomain.GetAssemblies();
             foreach(var a in asms)
             {                

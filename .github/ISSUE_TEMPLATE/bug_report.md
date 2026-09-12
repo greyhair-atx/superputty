@@ -23,7 +23,7 @@ If applicable, add screenshots to help explain your problem.
 
 **Environment (please complete the following information):**
 
- - SuperPuTTY version: [Help > About SuperPuTTY]
+ - SuperPuTTY CE version: [Help > About SuperPuTTY CE]
  - Windows version and edition: [e.g. Windows 11 24H2]
  - Installer: [current-user, all-users, or portable]
  - Connection type: [e.g. SSH, SCP, RDP, Win CMD]

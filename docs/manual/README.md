@@ -1,6 +1,6 @@
-# SuperPuTTY User Manual
+# SuperPuTTY Community Edition User Manual
 
-This manual applies to the 64-bit Windows community edition of SuperPuTTY 1.7.5 maintained at [greyhair-atx/superputty](https://github.com/greyhair-atx/superputty).
+This manual applies to the 64-bit Windows SuperPuTTY Community Edition 1.7.5 maintained at [greyhair-atx/superputty](https://github.com/greyhair-atx/superputty).
 
 SuperPuTTY is a Windows workspace for organizing PuTTY terminals and related tools in tabs. PuTTY performs the SSH connection and terminal emulation; SuperPuTTY manages sessions, tabs, layouts, file transfers, and supporting tools.
 
@@ -30,7 +30,7 @@ SuperPuTTY is a Windows workspace for organizing PuTTY terminals and related too
 
 ## Project and documentation credits
 
-SuperPuTTY was created and maintained through version 1.5.0.0 by **Jim Radford**, with contributions from the upstream community. The current community updates are maintained by **C. Thornton**.
+SuperPuTTY was created and maintained through version 1.5.0.0 by **Jim Radford**, with contributions from the upstream community. The current community updates are maintained by **Chris Thornton**.
 
 This manual was rewritten and expanded from Jim Radford's [original SuperPuTTY wiki manual](https://github.com/jimradford/superputty/wiki/Documentation). See the [documentation origin and credits](../ORIGINAL-WIKI-NOTICE.md) for provenance.
 

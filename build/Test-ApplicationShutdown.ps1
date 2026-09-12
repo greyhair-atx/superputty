@@ -91,6 +91,9 @@ function New-IsolatedProfile {
     $profile = Join-Path ([IO.Path]::GetTempPath()) ('SuperPutty-Shutdown-' + [Guid]::NewGuid().ToString('N'))
     $settingsDirectory = Join-Path $profile 'settings'
     New-Item -ItemType Directory -Path $settingsDirectory -Force | Out-Null
+    $layoutsDirectory = Join-Path $settingsDirectory 'layouts'
+    New-Item -ItemType Directory -Path $layoutsDirectory | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'SuperPuttyUnitTests/Fixtures/LegacyLayout.xml') -Destination (Join-Path $layoutsDirectory 'Operations.xml')
     $puttyPath = Join-Path $profile 'putty.exe'
     New-Item -ItemType File -Path $puttyPath | Out-Null
     $escapedPuttyPath = [Security.SecurityElement]::Escape($puttyPath)
@@ -104,7 +107,8 @@ function New-IsolatedProfile {
   <ExitConfirmation>$confirmationText</ExitConfirmation>
   <RestoreWindowLocation>False</RestoreWindowLocation>
   <SingleInstanceMode>False</SingleInstanceMode>
-  <DefaultLayoutName></DefaultLayoutName>
+  <DefaultLayoutName>Operations</DefaultLayoutName>
+  <AutoUpdateCheck>False</AutoUpdateCheck>
 </Settings>
 "@
     [IO.File]::WriteAllText((Join-Path $profile 'SuperPuTTY.settings'), $settings)
@@ -120,11 +124,20 @@ function Invoke-ShutdownScenario {
     $profile = New-IsolatedProfile $ExitConfirmation
     $startInfo = [Diagnostics.ProcessStartInfo]::new($appPath)
     $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
     $startInfo.WorkingDirectory = Split-Path -Parent $appPath
     $startInfo.EnvironmentVariables['USERPROFILE'] = $profile
     $process = [Diagnostics.Process]::Start($startInfo)
+    $outputTask = $process.StandardOutput.ReadToEndAsync()
+    $errorTask = $process.StandardError.ReadToEndAsync()
     try {
         $mainWindow = Wait-ForMainWindow $process
+        $title = [Text.StringBuilder]::new(512)
+        [SuperPuttyShutdownNative]::GetWindowText($mainWindow, $title, $title.Capacity) | Out-Null
+        if ($title.ToString() -notlike 'SuperPuTTY Community Edition*') {
+            throw "Unexpected application title: $title"
+        }
         if ($Action -eq 'TitleBar') {
             [SuperPuttyShutdownNative]::PostMessage($mainWindow, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
         }
@@ -134,11 +147,21 @@ function Invoke-ShutdownScenario {
         if ($ExitConfirmation) { Confirm-ExitDialog $process }
         if (-not $process.WaitForExit(15000)) { throw "$Name did not exit within 15 seconds." }
         if ($process.ExitCode -ne 0) { throw "$Name exited with code $($process.ExitCode)." }
+        $output = $outputTask.GetAwaiter().GetResult()
+        $errors = $errorTask.GetAwaiter().GetResult()
+        if ($output -notmatch 'Loaded layout: .*Operations.xml') {
+            throw "The existing named layout did not load. Output: $output $errors"
+        }
         Write-Host "Shutdown test passed: $Name"
     }
     finally {
         if (-not $process.HasExited) { $process.Kill(); $process.WaitForExit() }
-        if (Test-Path -LiteralPath $profile) { Remove-Item -LiteralPath $profile -Recurse -Force }
+        if (Test-Path -LiteralPath $profile) {
+            $resolvedProfile = (Resolve-Path -LiteralPath $profile).Path
+            $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+            if (-not $resolvedProfile.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe test profile cleanup path.' }
+            Remove-Item -LiteralPath $resolvedProfile -Recurse -Force
+        }
     }
 }
 
