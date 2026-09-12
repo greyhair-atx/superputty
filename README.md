@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/github/license/greyhair-atx/superputty)](License.txt)
 [![Signed builds](https://img.shields.io/badge/builds-Authenticode%20signed-brightgreen)](https://github.com/greyhair-atx/superputty/releases/latest)
 
-> **Community fork maintained by Chris Thornton:** This is an active, unofficial fork of
+> **Community fork maintained by Chris Thornton:** This is an active community fork of
 > [jimradford/superputty](https://github.com/jimradford/superputty). It carries
 > community-maintained fixes and publishes its own versioned x64 releases on
 > [GitHub](https://github.com/greyhair-atx/superputty/releases) and

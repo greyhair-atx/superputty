@@ -1,6 +1,6 @@
 # SuperPuTTY Community Edition branding and compatibility
 
-SuperPuTTY Community Edition (SuperPuTTY CE) is an unofficial community-maintained fork by Chris Thornton, based on [Jim Radford's original SuperPuTTY](https://github.com/jimradford/superputty). It is not an official upstream release. The original [MIT License](../License.txt), copyright attribution, and [third-party notices](../THIRD-PARTY-NOTICES.txt) remain intact. Assembly metadata additionally credits Copyright © 2026 Chris Thornton for community modifications.
+SuperPuTTY Community Edition (SuperPuTTY CE) is a community-maintained fork by Chris Thornton, based on [Jim Radford's original SuperPuTTY](https://github.com/jimradford/superputty). It is not an official upstream release. The original [MIT License](../License.txt), copyright attribution, and [third-party notices](../THIRD-PARTY-NOTICES.txt) remain intact. Assembly metadata additionally credits Copyright © 2026 Chris Thornton for community modifications.
 
 Public branding appears in the window title, tray tooltip, menus, About dialog, application file description, MSI product/ARP name, Start menu shortcut, release filenames, and pipeline artifacts. Compact menu labels use SuperPuTTY CE.
 

@@ -65,7 +65,7 @@
             Message="Back up your settings and uninstall the existing SuperPuTTY 1.5 or earlier installation before installing SuperPuTTY Community Edition. These packages share legacy settings and cannot safely coexist." />
     <Launch Condition="Installed OR NOT UNKNOWNLEGACYFOUND"
             Message="An unrecognized newer SuperPuTTY package is installed. Remove it manually before installing SuperPuTTY Community Edition." />
-    <Property Id="ARPCOMMENTS" Value="SuperPuTTY Community Edition - unofficial community-maintained fork of Jim Radford's SuperPuTTY." />
+    <Property Id="ARPCOMMENTS" Value="SuperPuTTY Community Edition - community-maintained fork of Jim Radford's SuperPuTTY." />
     <MediaTemplate EmbedCab="yes" />
     
     <Feature Id="ProductFeature" Title="SuperPuTTY Community Edition" Level="1">
