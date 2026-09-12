@@ -11,9 +11,9 @@ namespace SuperPutty
 
         public static string GetReleaseApiUrl(string channel)
         {
-            return String.Equals(channel, CommunityFork, StringComparison.Ordinal)
-                ? "https://api.github.com/repos/greyhair-atx/superputty/releases/latest"
-                : "https://api.github.com/repos/jimradford/superputty/releases/latest";
+            return String.Equals(channel, OfficialUpstream, StringComparison.Ordinal)
+                ? "https://api.github.com/repos/jimradford/superputty/releases/latest"
+                : "https://api.github.com/repos/greyhair-atx/superputty/releases/latest";
         }
     }
 }

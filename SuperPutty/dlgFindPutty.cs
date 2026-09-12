@@ -196,7 +196,7 @@ namespace SuperPutty
             this.comboBoxUpdateChannel.Items.AddRange(UpdateChannel.Names);
             this.comboBoxUpdateChannel.SelectedItem = UpdateChannel.Names.Contains(SuperPuTTY.Settings.UpdateChannel)
                 ? SuperPuTTY.Settings.UpdateChannel
-                : UpdateChannel.OfficialUpstream;
+                : UpdateChannel.CommunityFork;
             this.textBoxHomeDirPrefix.Text = SuperPuTTY.Settings.PscpHomePrefix;
             this.textBoxRootDirPrefix.Text = SuperPuTTY.Settings.PscpRootHomePrefix;
             this.checkSessionTreeFoldersFirst.Checked = SuperPuTTY.Settings.SessiontreeShowFoldersFirst;

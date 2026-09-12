@@ -22,12 +22,15 @@ namespace SuperPuttyUnitTests
             StringAssert.Contains("greyhair-atx/superputty", UpdateChannel.GetReleaseApiUrl(UpdateChannel.CommunityFork));
         }
 
-        [Test]
-        public void UnknownChannelFallsBackToOfficialUpstream()
+        [TestCase(null)]
+        [TestCase("")]
+        [TestCase(" ")]
+        [TestCase("old or corrupt setting")]
+        public void UnknownChannelFallsBackToCommunityFork(string channel)
         {
             Assert.AreEqual(
-                UpdateChannel.GetReleaseApiUrl(UpdateChannel.OfficialUpstream),
-                UpdateChannel.GetReleaseApiUrl("old or corrupt setting"));
+                UpdateChannel.GetReleaseApiUrl(UpdateChannel.CommunityFork),
+                UpdateChannel.GetReleaseApiUrl(channel));
         }
     }
 }

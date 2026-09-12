@@ -120,10 +120,40 @@ namespace SuperPutty.Utils
 
             try
             {             
-                SettingsXML.Save(GetAppSettingsFilePath());
+                SaveAtomically(SettingsXML, GetAppSettingsFilePath());
             }
             catch(Exception ex){
                 Log.Error("Error saving settings", ex);
+            }
+        }
+
+        internal static void SaveAtomically(XmlDocument document, string filePath)
+        {
+            // Stage on the same volume so publishing never truncates the live file.
+            string temporaryPath = filePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    document.Save(stream);
+                    stream.Flush(true);
+                }
+
+                if (File.Exists(filePath))
+                {
+                    File.Replace(temporaryPath, filePath, filePath + ".bak");
+                }
+                else
+                {
+                    File.Move(temporaryPath, filePath);
+                }
+            }
+            finally
+            {
+                // Preserve the original save error if cleanup also fails.
+                try { File.Delete(temporaryPath); }
+                catch (IOException ex) { Log.Warn("Could not remove temporary settings file", ex); }
+                catch (UnauthorizedAccessException ex) { Log.Warn("Could not remove temporary settings file", ex); }
             }
         }
 

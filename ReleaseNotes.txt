@@ -1,3 +1,8 @@
+SuperPuTTY Community Edition (pending release)
+ - Default new profiles and unrecognized update-channel values to Community fork while preserving explicit channel choices.
+ - Save application preferences with atomic replacement and retain the previous save as SuperPuTTY.settings.bak.
+ - Preserve existing preferences when a write or replacement fails; backup restoration remains manual.
+
 SuperPuTTY Community Edition 1.7.5 (branding update, pending release)
  - Identify this fork as community-maintained by Chris Thornton, based on Jim Radford's original SuperPuTTY.
  - Preserve SuperPutty.exe, settings, registry paths, sessions, layouts, and command-line behavior.

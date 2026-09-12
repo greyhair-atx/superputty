@@ -159,7 +159,7 @@
       <Value Profile="(Default)">True</Value>
     </Setting>
     <Setting Name="UpdateChannel" Provider="SuperPutty.Utils.PortableSettingsProvider" Type="System.String" Scope="User">
-      <Value Profile="(Default)">Official upstream</Value>
+      <Value Profile="(Default)">Community fork</Value>
     </Setting>
     <Setting Name="PscpRootHomePrefix" Provider="SuperPutty.Utils.PortableSettingsProvider" Type="System.String" Scope="User">
       <Value Profile="(Default)">/</Value>

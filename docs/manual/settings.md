@@ -25,6 +25,10 @@ Close SuperPuTTY before making a manual backup. Copy at least:
 
 The application also creates timestamped session backups when replacing the session database.
 
+Application preferences are saved to a temporary file beside `SuperPuTTY.settings`, flushed to disk, and then published with an atomic replacement. After replacing an existing file, `SuperPuTTY.settings.bak` contains the previous save; each successful replacement refreshes this single backup. The first save creates the settings file without a backup. If writing or replacement fails, the application logs the error and does not fall back to overwriting the original file directly.
+
+To restore the preference backup, close SuperPuTTY CE, keep a copy of the current settings file, and copy `SuperPuTTY.settings.bak` over `SuperPuTTY.settings`. Restoration is manual. This preference backup does not include sessions or layouts; keep backing those up separately.
+
 ## Logging
 
 Runtime logs are written under `%TEMP%` by default. Choose **Tools > Open Log File Location** to open the directory in File Explorer. Advanced log4net configuration is in `SuperPutty.exe.config`.
@@ -36,3 +40,5 @@ See [Security and privacy](security.md) for credential, host-key, certificate, s
 ## Updates
 
 The update channel can be selected under **Tools > Options**. Choose the community-fork channel for releases from `greyhair-atx/superputty`, or upstream when following Jim Radford's original project releases.
+
+New profiles default to **Community fork**. Missing or unrecognized channel values also use the community repository. An explicitly saved **Official upstream** or **Community fork** choice is preserved; upgrading does not migrate existing preferences.
