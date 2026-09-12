@@ -4,7 +4,7 @@
 
 ## Choose a package
 
-The pre-branding SuperPuTTY **1.7.5** release is available from [GitHub](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.7.5) or [Gitea](https://gitea.uberx.org/vscode/superputty/releases/tag/sp-1.7.5). New CE builds use the following artifact names (the existing published assets retain their old names):
+The pre-branding SuperPuTTY **1.7.5** release is available from [GitHub](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.7.5). New CE builds use the following artifact names (the existing published assets retain their old names):
 
 - **Current user:** `SuperPuTTY-CE-1.7.5-current-user-win-x64-signed.msi` installs under the current user's Local AppData directory without elevation.
 - **All users:** `SuperPuTTY-CE-1.7.5-all-users-win-x64-signed.msi` installs under 64-bit Program Files and requests administrator approval.

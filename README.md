@@ -12,8 +12,7 @@
 > **Community fork maintained by Chris Thornton:** This is an active community fork of
 > [jimradford/superputty](https://github.com/jimradford/superputty). It carries
 > community-maintained fixes and publishes its own versioned x64 releases on
-> [GitHub](https://github.com/greyhair-atx/superputty/releases) and
-> [Gitea](https://gitea.uberx.org/vscode/superputty/releases). These builds are
+> [GitHub](https://github.com/greyhair-atx/superputty/releases). These builds are
 > not official upstream releases. Starting with 1.7.1, release builds are
 > Authenticode signed by Christopher Thornton and timestamped.
 
@@ -31,7 +30,7 @@ and private vulnerability reporting guidance is in [SECURITY.md](SECURITY.md).
 
 ## SuperPuTTY Community Edition 1.7.5
 
-The pre-branding SuperPuTTY 1.7.5 release is available on [GitHub](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.7.5) and [Gitea](https://gitea.uberx.org/vscode/superputty/releases/tag/sp-1.7.5).
+The pre-branding SuperPuTTY 1.7.5 release is available on [GitHub](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.7.5).
 
 This release fixes TigerVNC startup and desktop capture, adds confirmation when closing active tabs and a configurable restart-session shortcut, and reduces console refocus retries. See the [1.7.5 release summary](docs/releases/1.7.5.md) for changes, downloads, validation, and VirusTotal results.
 

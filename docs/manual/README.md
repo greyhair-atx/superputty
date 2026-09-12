@@ -40,5 +40,4 @@ SuperPuTTY is distributed under the [MIT License](../../License.txt). Runtime de
 
 - [Community source and issue tracker](https://github.com/greyhair-atx/superputty)
 - [Community releases](https://github.com/greyhair-atx/superputty/releases)
-- [Gitea mirror](https://gitea.uberx.org/vscode/superputty)
 - [Original project](https://github.com/jimradford/superputty)
