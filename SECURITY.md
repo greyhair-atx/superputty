@@ -4,7 +4,7 @@
 
 Please do not disclose an unpatched vulnerability, credential, private key, or sensitive log in a public issue.
 
-Use GitHub's private **Report a vulnerability** control for the [community repository](https://github.com/greyhair-atx/superputty/security) when it is available. If private reporting is unavailable, contact the community maintainer before publishing details. Include the affected SuperPuTTY version, reproduction steps, impact, and a minimal redacted log when useful.
+Use the enabled [private vulnerability reporting form](https://github.com/greyhair-atx/superputty/security/advisories/new) for the community repository. Include the affected SuperPuTTY version, reproduction steps, impact, and a minimal redacted log when useful.
 
 Issues in PuTTY, PSCP, FreeRDP, VNC clients, or other separately installed programs should also be reported to that program's maintainer. A SuperPuTTY issue is appropriate when the weakness is caused by how SuperPuTTY launches, configures, or hosts the program.
 

@@ -1,3 +1,9 @@
+SuperPuTTY Community Edition 1.8.0 (local public-launch candidate)
+ - Prepare a clearer landing page, static website, release verification guide and launch drafts.
+ - Add an allowlisted no-install ZIP, SHA-256 asset manifest and CycloneDX runtime-file inventory.
+ - Prepare dual-scope WinGet manifests from actual signed MSI metadata.
+ - Install the original MIT License.txt and verify exact MSI executable and license bytes.
+ - Preserve existing executable, settings, session/layout and installer upgrade identities.
 SuperPuTTY Community Edition 1.7.6
  - Default new profiles and unrecognized update-channel values to Community fork while preserving explicit channel choices.
  - Save application preferences with atomic replacement and retain the previous save as SuperPuTTY.settings.bak.

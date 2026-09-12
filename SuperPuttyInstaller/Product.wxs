@@ -8,6 +8,7 @@
   <?define ProductExeGuid=9540D008-B0DF-464D-9C29-36D91FBC664C ?>
   <?define ProductExeConfigGuid=8D9E5688-B0AD-404F-9790-080C53309B3C ?>
   <?define ThirdPartyNoticesGuid=A2A9347D-6AA5-4EA6-B2A4-6C2A1A9DF013 ?>
+  <?define ProductLicenseGuid=C8D39D3A-5802-4EC4-AAC0-B4A6D1A3F8E0 ?>
   <?define ProductLibLoggingGuid=A80C6002-05B0-491E-B943-0DF0818EAC56 ?>
   <?define ProductLibUIGuid=3489526C-2F15-4D8E-B23F-2C1E29AB0744 ?>
   <?define ProductLibUIThemeGuid=1E746857-0038-4A9D-9139-A10CEED812EB ?>
@@ -22,6 +23,7 @@
   <?define ProductExeGuid=* ?>
   <?define ProductExeConfigGuid=* ?>
   <?define ThirdPartyNoticesGuid=* ?>
+  <?define ProductLicenseGuid=* ?>
   <?define ProductLibLoggingGuid=* ?>
   <?define ProductLibUIGuid=* ?>
   <?define ProductLibUIThemeGuid=* ?>
@@ -190,6 +192,12 @@
         <File Source="$(var.SuperPutty.TargetPath).config" />
 <?if $(var.InstallerScope) = PerUser ?>
         <RegistryValue Root="HKCU" Key="Software\Jim Radford\SuperPuTTY\InstallerComponents" Name="ProductExeConfig" Type="string" Value="[ProductVersion]" KeyPath="yes" />
+<?endif?>
+      </Component>
+      <Component Id="ProductLicense" Guid="$(var.ProductLicenseGuid)">
+        <File Source="$(var.SuperPutty.ProjectDir)..\License.txt" />
+<?if $(var.InstallerScope) = PerUser ?>
+        <RegistryValue Root="HKCU" Key="Software\Jim Radford\SuperPuTTY\InstallerComponents" Name="ProductLicense" Type="string" Value="[ProductVersion]" KeyPath="yes" />
 <?endif?>
       </Component>
       <Component Id="ThirdPartyNotices" Guid="$(var.ThirdPartyNoticesGuid)">

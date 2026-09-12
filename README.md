@@ -1,131 +1,72 @@
 # SuperPuTTY Community Edition
 
-[![Community release](https://img.shields.io/github/v/release/greyhair-atx/superputty?display_name=tag&sort=semver&label=community%20release)](https://github.com/greyhair-atx/superputty/releases/latest)
-[![Release downloads](https://img.shields.io/github/downloads/greyhair-atx/superputty/total?label=release%20downloads)](https://github.com/greyhair-atx/superputty/releases)
-[![Release build](https://img.shields.io/badge/release%20build-verified-brightgreen)](https://github.com/greyhair-atx/superputty/releases/latest)
-[![CodeQL](https://github.com/greyhair-atx/superputty/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/greyhair-atx/superputty/actions/workflows/github-code-scanning/codeql)
-[![.NET Framework 4.8](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](https://dotnet.microsoft.com/en-us/download/dotnet-framework/net48)
-[![Windows x64](https://img.shields.io/badge/Windows-x64-0078D4)](https://github.com/greyhair-atx/superputty/releases/latest)
-[![License: MIT](https://img.shields.io/github/license/greyhair-atx/superputty)](License.txt)
-[![Signed builds](https://img.shields.io/badge/builds-Authenticode%20signed-brightgreen)](https://github.com/greyhair-atx/superputty/releases/latest)
+**A tabbed Windows workspace for PuTTY, PowerShell, Command Prompt, RDP, VNC, and SCP.**
 
-> **Community fork maintained by Chris Thornton:** This is an active community fork of
-> [jimradford/superputty](https://github.com/jimradford/superputty). It carries
-> community-maintained fixes and publishes its own versioned x64 releases on
-> [GitHub](https://github.com/greyhair-atx/superputty/releases). These builds are
-> not official upstream releases. Starting with 1.7.1, release builds are
-> Authenticode signed by Christopher Thornton and timestamped.
+SuperPuTTY Community Edition is an actively maintained, independently published fork of the original SuperPuTTY project. It provides signed Windows x64 releases, current documentation, security improvements, and expanded session-management features.
 
-SuperPuTTY Community Edition (SuperPuTTY CE) is a Windows application for managing PuTTY SSH terminals. It also
-supports embedded Win CMD and Windows PowerShell consoles, RDP sessions, and a
-simple scripting language for common tasks. Local console windows use a
-dedicated host panel so their capture, focus, resizing, and shutdown behavior
-does not alter the PuTTY hosting path.
+**[Download latest release](https://github.com/greyhair-atx/superputty/releases/latest)** · **[User manual](docs/manual/README.md)** · **[Install](docs/manual/installation.md)** · **[Upgrade](docs/manual/upgrading.md)**
 
-The current [SuperPuTTY Community Edition User Manual](docs/manual/README.md) is maintained with
-the source so each release tag preserves its matching documentation.
+[Security policy](SECURITY.md) · [Issue tracker](https://github.com/greyhair-atx/superputty/issues) · [Original upstream](https://github.com/jimradford/superputty)
 
-Current contributor verification steps are in [docs/testing.md](docs/testing.md),
-and private vulnerability reporting guidance is in [SECURITY.md](SECURITY.md).
+> **Independent community fork maintained by Chris Thornton.** This is a community edition, not an official upstream SuperPuTTY or PuTTY release. SuperPuTTY was created by Jim Radford and the original contributors. No upstream endorsement is implied.
 
-## SuperPuTTY Community Edition 1.7.6
+**Launch status:** 1.8.0 is the first fully rebranded public-launch candidate and is **not yet published**. The latest-release button currently serves the existing stable release. The [1.8.0 draft release notes](docs/releases/1.8.0.md) and [launch checklist](docs/PUBLIC-LAUNCH-CHECKLIST.md) describe the pending launch; published 1.7.x downloads remain unchanged.
 
-Version 1.7.6 introduces Community Edition branding, defaults new profiles to the community update channel, and saves preferences with atomic replacement and a previous-save backup.
+## See the workspace
 
-See the [1.7.6 release summary](docs/releases/1.7.6.md) for changes and the [GitHub release](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.7.6) for packages and validation reports.
+[![PowerShell and session navigation in SuperPuTTY](docs/images/latest-build/powershell.png)](docs/README.md)
 
-Existing executable, settings, and session/layout identifiers are preserved. See [branding and compatibility](docs/branding.md) for installer upgrade limits. The [1.7.5 validation results](docs/releases/1.7.5.md) describe the previous release only.
+This existing screenshot illustrates an earlier community build. It is not a 1.8.0 capture. [View the screenshot gallery and capture notes](docs/README.md).
 
-## Screenshots
+## What the community edition adds
 
-**[View all screenshots and capture notes](docs/README.md)** — SSH, PowerShell, Command Prompt, RDP, VNC, settings, layouts, and file transfers.
+- Signed, timestamped Windows x64 packages for current-user or all-users installation.
+- Embedded Windows PowerShell and Command Prompt consoles, RDP integration, improved TigerVNC window capture, and SCP sessions with private-key support.
+- Session search, CSV import, named layouts, active-tab close confirmation, and a configurable restart-session shortcut.
+- HTTPS restrictions for remote scripts and collections, password-argument redaction, and PSCP password delivery through a one-use named pipe.
+- Community updates by default for new profiles, atomic preference saves with a previous-save backup, and a maintained [user manual](docs/manual/README.md).
 
-[![SuperPuTTY split SSH and PowerShell workspace](docs/images/latest-build/workspace-split.png)](docs/README.md)
+PuTTY and other connection programs perform their respective protocol work. SuperPuTTY organizes and hosts them; it is not a credential vault. See [protocols](docs/manual/protocols.md) and [security behavior](SECURITY.md).
 
-## System requirements
+## Requirements and installation choices
 
-The `master` branch and `sp-1.7.5` release produce **64-bit Windows builds
-only**. The application, test harness, and MSI installer all target x64; x86
-and AnyCPU configurations are not supported.
+| Requirement | Support |
+| --- | --- |
+| Operating system | Tested on Windows 11 x64. Windows 10 x64 compatibility is expected but untested for 1.8.0; use an OS edition still receiving security updates |
+| Architecture | x64; no x86 or native ARM64 package |
+| Runtime | .NET Framework 4.8 |
+| SSH, Telnet, serial, raw connections | Separately installed PuTTY |
+| SCP file transfers | Separately installed PSCP |
+| RDP / VNC | Windows RDP components or configured external RDP client; separately installed VNC viewer |
+| Local consoles | Windows PowerShell and Command Prompt; MinTTY when separately installed |
 
-- 64-bit Windows 10 or Windows 11
-- .NET Framework 4.8
-- PuTTY and PSCP installed or supplied separately
+Choose **current user** for Local AppData without elevation, or **all users** for 64-bit Program Files with administrator approval. The prepared 1.8.0 no-install ZIP contains the same application payload; settings still follow existing profile/portable discovery rules. [Installation details and unattended commands](docs/manual/installation.md).
 
-The current-user x64 MSI installs under Local AppData without elevation. A
-separate all-users x64 MSI installs under native 64-bit Program Files and asks
-Windows for elevation. Neither installer can be installed on 32-bit Windows.
+**Existing users:** executable and settings names, registry paths, sessions, layouts, and command-line behavior stay compatible. Same-scope community upgrades are supported; ambiguous upstream-era 1.5 installations require manual removal. Do not share settings between running editions. [Read the upgrade guide first](docs/manual/upgrading.md).
 
-CE release artifacts use an explicit `x64` suffix. A signed CE build
-uses these filenames:
+## Verify a download
 
-- `SuperPuTTY-CE-1.7.6-current-user-win-x64-signed.msi` — signed, non-elevated current-user installer
-- `SuperPuTTY-CE-1.7.6-all-users-win-x64-signed.msi` — signed, elevated all-users installer
+Download packages and checksums from the same [community release](https://github.com/greyhair-atx/superputty/releases). For the prepared 1.8.0 release:
 
-## Automated tests
+```powershell
+Get-AuthenticodeSignature .\SuperPuTTY-CE-1.8.0-current-user-win-x64-signed.msi | Format-List
+Get-FileHash .\SuperPuTTY-CE-1.8.0-current-user-win-x64-signed.msi -Algorithm SHA256
+# After extracting the ZIP or installing:
+Get-AuthenticodeSignature .\SuperPutty.exe | Format-List
+```
 
-`SuperPuttyUnitTests` is an SDK-style .NET Framework 4.8 project using NUnit 3,
-the NUnit 3 adapter, and Microsoft.NET.Test.Sdk. Normal release validation runs
-the isolated test suite and excludes tests that require a configured SCP
-environment.
+Require signature **Status: Valid**, signer **Christopher Thornton** (the signing identity used by Chris Thornton), and a nonempty `TimeStamperCertificate`. Compare the hash with the matching line in `SuperPuTTY-CE-1.8.0-SHA256SUMS.txt`. The ZIP is not Authenticode signed: verify its checksum and the EXE inside it. Checksums detect changed downloads; signatures also verify publisher identity. [Detailed instructions](docs/manual/installation.md#verify-signatures-and-checksums).
 
-The Windows-only console integration test in
-`build\Test-ConsoleApplicationPanel.ps1` launches real Win CMD and PowerShell
-sessions, verifies that each console HWND is parented to its dedicated panel,
-and closes the test sessions cleanly.
+## Help, bugs, and security
 
-CI also verifies the x64 PE header, product version, runtime DLL set, WiX MSI
-architecture and payload, theme icons, title-bar shutdown with confirmation on
-and off, and File > Exit. The verification entry points are:
+Start with the [manual](docs/manual/README.md) and [troubleshooting guide](docs/manual/troubleshooting.md). Report reproducible bugs in the [community issue tracker](https://github.com/greyhair-atx/superputty/issues), including version, Windows version, and redacted logs. Issues are enabled.
 
-- `build\Verify-ReleaseArtifacts.ps1`
-- `build\Test-ApplicationShutdown.ps1`
-- `build\Test-ConsoleApplicationPanel.ps1`
-- `build\Verify-CodeSignatures.ps1` (signed builds only)
+Report vulnerabilities privately through the enabled [GitHub security reporting form](https://github.com/greyhair-atx/superputty/security/advisories/new). Do not put credentials, private keys, or unpatched vulnerability details in public issues. See [SECURITY.md](SECURITY.md) for the reporting policy.
 
-The eight `NetworkTest` cases require a disposable SSH server and separately
-configured PuTTY/PSCP environment; they are not run on normal pull requests.
+## Build and contribute
 
-## Code signing
+Build the complete solution with Visual Studio/MSBuild and the .NET Framework 4.8 developer pack. [Build, tests, installer verification, and signing instructions](docs/testing.md) are maintained alongside the source. [Release preparation](docs/RELEASE-PREPARATION.md) describes the local bundle, SBOM, staged WinGet manifests, and publication gates. Signing uses Azure Artifact Signing; credentials are never included in source or packages.
 
-The Azure pipeline supports optional public-trust Authenticode signing through
-Microsoft Azure Artifact Signing. Signing is disabled by default so normal CI
-builds do not require access to the signing service.
+## License and attribution
 
-To configure a signed build:
-
-1. Install Microsoft's Artifact Signing extension in the Azure DevOps
-   organization.
-2. Create an Azure Resource Manager service connection that uses workload
-   identity federation.
-3. Assign its service principal the `Artifact Signing Certificate Profile
-   Signer` role on the `greyhair-atx` signing account.
-4. Manually run the pipeline, enable **Sign release artifacts with Azure
-   Artifact Signing**, and enter the service-connection name.
-
-The pipeline signs `SuperPutty.exe` before WiX embeds it, signs both completed
-MSIs, and verifies that all three signatures are publicly trusted, identify
-`Christopher Thornton`, and contain timestamps before publishing the installer.
-The signing key remains managed by Azure and is never exported to the pipeline.
-
-## Project resources
-
-- [Official SuperPuTTY repository](https://github.com/jimradford/superputty)
-- [Official releases](https://github.com/jimradford/superputty/releases)
-- [Community user manual](docs/manual/README.md)
-- [Build and test guide](docs/testing.md)
-- [Security policy](SECURITY.md)
-- [Original Jim Radford documentation](https://github.com/jimradford/superputty/wiki/Documentation)
-- [Candidate fixes in this fork](https://github.com/greyhair-atx/superputty/branches)
-- [Community releases from this fork](https://github.com/greyhair-atx/superputty/releases)
-
-Community updates are maintained by C. Thornton at
-[greyhair-atx/superputty](https://github.com/greyhair-atx/superputty).
-
-Use the community issue tracker for behavior introduced by this fork. The
-upstream repository and original wiki remain the authoritative historical
-references for Jim Radford's SuperPuTTY through version 1.5.0.0.
-
-## License
-
-SuperPuTTY is licensed under the MIT License. See `License.txt` for details.
+Distributed under the **MIT License** in [License.txt](License.txt). Jim Radford's original copyright is preserved; community modifications credit Chris Thornton. See [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt) and [documentation provenance](docs/ORIGINAL-WIKI-NOTICE.md). The [original SuperPuTTY repository](https://github.com/jimradford/superputty) and [PuTTY project](https://www.chiark.greenend.org.uk/~sgtatham/putty/) remain independently maintained projects.

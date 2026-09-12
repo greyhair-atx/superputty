@@ -9,6 +9,10 @@ parameters:
   displayName: 'Azure Resource Manager service connection'
   type: string
   default: 'not-configured'
+- name: testInstallerLifecycle
+  displayName: 'Install/uninstall on disposable hosted agent'
+  type: boolean
+  default: false
 
 trigger:
   branches:
@@ -17,7 +21,7 @@ trigger:
     - integration
   tags:
     include:
-    - sp-1.7.6
+    - sp-1.8.0
 
 pool:
   vmImage: 'windows-latest'
@@ -27,8 +31,8 @@ variables:
   buildPlatform: 'x64'
   testPlatform: 'x64'
   buildConfiguration: 'Release'
-  releaseVersion: '1.7.6'
-  applicationVersion: '1.7.6.0'
+  releaseVersion: '1.8.0'
+  applicationVersion: '1.8.0.0'
   ${{ if eq(parameters.enableCodeSigning, true) }}:
     installerArtifactSuffix: 'win-x64-signed'
   ${{ else }}:
@@ -42,18 +46,10 @@ steps:
     restoreSolution: '$(solution)'
 
 - task: VSBuild@1
-  displayName: 'Build SuperPuTTY Community Edition x64 application'
+  displayName: 'Build complete SuperPuTTY Community Edition solution'
   inputs:
-    solution: 'SuperPutty\SuperPutty.csproj'
+    solution: 'SuperPutty.sln'
     platform: '$(buildPlatform)'
-    configuration: '$(buildConfiguration)'
-    msbuildArgs: '/restore'
-
-- task: VSBuild@1
-  displayName: 'Build x64 unit tests'
-  inputs:
-    solution: 'SuperPuttyUnitTests\SuperPuttyUnitTests.csproj'
-    platform: '$(testPlatform)'
     configuration: '$(buildConfiguration)'
     msbuildArgs: '/restore'
 
@@ -69,7 +65,7 @@ steps:
     platform: '$(testPlatform)'
     configuration: '$(buildConfiguration)'
     failOnMinTestsNotRun: true
-    minimumExpectedTests: '106'
+    minimumExpectedTests: '142'
 
 - ${{ if eq(parameters.enableCodeSigning, true) }}:
   - task: AzureCLI@2
@@ -189,6 +185,47 @@ steps:
       filePath: '$(Build.SourcesDirectory)\build\Verify-CodeSignatures.ps1'
       arguments: '-Configuration $(buildConfiguration) -Platform $(buildPlatform) -InstallerVersion $(releaseVersion) -InstallerArtifactSuffix $(installerArtifactSuffix) -ExpectedSigner "Christopher Thornton"'
       pwsh: true
+
+- task: PowerShell@2
+  displayName: 'Prepare verified ZIP, runtime SBOM and checksums'
+  inputs:
+    targetType: 'inline'
+    pwsh: true
+    script: |
+      $signed = '${{ parameters.enableCodeSigning }}' -eq 'True'
+      & ./build/New-ReleaseBundle.ps1 -Version $(releaseVersion) -Configuration $(buildConfiguration) -InstallerArtifactSuffix $(installerArtifactSuffix) -RequireSignatures:$signed
+
+- ${{ if eq(parameters.testInstallerLifecycle, true) }}:
+  - task: PowerShell@2
+    displayName: 'Test unattended install and uninstall in both scopes'
+    env:
+      SUPERPUTTY_DISPOSABLE_TEST: '1'
+    inputs:
+      targetType: 'filePath'
+      filePath: 'build/Test-InstallerLifecycle.ps1'
+      arguments: '-ReleaseDirectory "$(Build.SourcesDirectory)/artifacts/release-$(releaseVersion)/$(installerArtifactSuffix)"'
+      pwsh: true
+
+- ${{ if eq(parameters.enableCodeSigning, true) }}:
+  - task: PowerShell@2
+    displayName: 'Stage WinGet metadata from signed package bytes'
+    inputs:
+      targetType: 'filePath'
+      filePath: 'build/New-WinGetManifest.ps1'
+      arguments: '-Version $(releaseVersion) -ManifestDirectory "$(Build.ArtifactStagingDirectory)/winget"'
+      pwsh: true
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)/winget'
+      artifactType: 'pipeline'
+      artifactName: 'SuperPuTTY-CE-$(releaseVersion)-winget-review'
+
+- task: PublishPipelineArtifact@1
+  displayName: 'Retain verified release bundle for review'
+  inputs:
+    targetPath: '$(Build.SourcesDirectory)/artifacts/release-$(releaseVersion)/$(installerArtifactSuffix)'
+    artifactType: 'pipeline'
+    artifactName: 'SuperPuTTY-CE-$(releaseVersion)-$(installerArtifactSuffix)-bundle'
 
 - task: PublishPipelineArtifact@1
   inputs:

@@ -2,11 +2,13 @@
 
 This guide describes the checks used for the current 64-bit .NET Framework 4.8 codebase. It replaces older release-specific test notes and unfinished migration plans.
 
+For the pending 1.8.0 public launch, see [release preparation](RELEASE-PREPARATION.md) and the [local validation report](LAUNCH-PREPARATION-REPORT.md). The release bundle adds exact-byte payload checks, a no-install ZIP, SHA-256 checksums and a CycloneDX runtime-file inventory. WinGet files and the Pages site remain local staging.
+
 The published **1.7.5** build passed 127 isolated tests and the installer, signing, shutdown, and console capture checks. See the [1.7.5 release validation and VirusTotal summary](releases/1.7.5.md) for recorded results. The commands below describe how to run checks on your own build.
 
 ## Prerequisites
 
-- 64-bit Windows 10 or Windows 11
+- Windows 11 x64 for the validated release test environment. Windows 10 x64 testing is deferred with disclosed limitations for 1.8.0; expected compatibility is not a passing test result.
 - Visual Studio or Build Tools with MSBuild and the .NET Framework 4.8 developer pack
 - The .NET SDK, used to run the NUnit test executable with `dotnet vstest`
 - 64-bit PuTTY and PSCP for manual connection tests

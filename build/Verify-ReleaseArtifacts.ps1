@@ -2,7 +2,7 @@
 param(
     [string] $Configuration = 'Release',
     [string] $Platform = 'x64',
-    [string] $ExpectedVersion = '1.7.6.0',
+    [string] $ExpectedVersion = '1.8.0.0',
     [ValidateSet('PerUser', 'PerMachine')]
     [string] $InstallerScope = 'PerMachine',
     [string] $MsiName
@@ -77,7 +77,9 @@ Assert-Condition ($version.ProductVersion -eq $ExpectedVersion) "Unexpected prod
 $requiredDlls = @(
     'log4net.dll',
     'WeifenLuo.WinFormsUI.Docking.dll',
-    'WeifenLuo.WinFormsUI.Docking.ThemeVS2015.dll'
+    'WeifenLuo.WinFormsUI.Docking.ThemeVS2015.dll',
+    'Interop.MSTSCLib.dll',
+    'AxInterop.MSTSCLib.dll'
 )
 $thirdPartyNoticesName = 'THIRD-PARTY-NOTICES.txt'
 $thirdPartyNoticesPath = Join-Path $appDirectory $thirdPartyNoticesName
@@ -170,8 +172,15 @@ try {
     }
 
     $installedDirectory = $installedApp.DirectoryName
+    Assert-Condition ((Get-FileHash $installedApp.FullName).Hash -eq (Get-FileHash $appPath).Hash) 'MSI executable differs from the verified build (including its signature).'
+    $installedLicense = Join-Path $installedDirectory 'License.txt'
+    Assert-Condition (Test-Path -LiteralPath $installedLicense -PathType Leaf) 'MSI is missing the original MIT license.'
+    Assert-Condition ((Get-FileHash $installedLicense).Hash -eq (Get-FileHash (Join-Path $repoRoot 'License.txt')).Hash) 'MSI license differs from the original.'
     $installedMissingDlls = @($requiredDlls | Where-Object { -not (Test-Path -LiteralPath (Join-Path $installedDirectory $_)) })
     Assert-Condition ($installedMissingDlls.Count -eq 0) "MSI is missing runtime DLLs: $($installedMissingDlls -join ', ')"
+    foreach ($file in @($requiredDlls) + @('SuperPutty.exe.config', $thirdPartyNoticesName)) {
+        Assert-Condition ((Get-FileHash (Join-Path $installedDirectory $file)).Hash -eq (Get-FileHash (Join-Path $appDirectory $file)).Hash) "MSI payload differs from the build: $file"
+    }
     Assert-Condition (Test-Path -LiteralPath (Join-Path $installedDirectory $thirdPartyNoticesName) -PathType Leaf) "MSI is missing $thirdPartyNoticesName."
     $installedThemeCount = @(Get-ChildItem -LiteralPath (Join-Path $installedDirectory 'themes\default\icons') -Filter '*.png' -File).Count
     Assert-Condition ($installedThemeCount -eq 47) "MSI contains $installedThemeCount theme icons instead of 47."
