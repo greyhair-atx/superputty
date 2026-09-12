@@ -10,7 +10,7 @@ SuperPuTTY Community Edition is an actively maintained, independently published 
 
 > **Independent community fork maintained by Chris Thornton.** This is a community edition, not an official upstream SuperPuTTY or PuTTY release. SuperPuTTY was created by Jim Radford and the original contributors. No upstream endorsement is implied.
 
-**Launch status:** 1.8.0 is the first fully rebranded public-launch candidate and is **not yet published**. The latest-release button currently serves the existing stable release. The [1.8.0 draft release notes](docs/releases/1.8.0.md) and [launch checklist](docs/PUBLIC-LAUNCH-CHECKLIST.md) describe the pending launch; published 1.7.x downloads remain unchanged.
+**Latest stable release: [1.8.0](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.0).** Download signed Windows x64 installers or the no-install ZIP, with checksums, a runtime SBOM, and completed VirusTotal reports. [Project website](https://greyhair-atx.github.io/superputty/) · [Release notes](docs/releases/1.8.0.md) · [Validation results](docs/RELEASE-1.8.0-RESULTS.md). Published 1.7.x downloads remain unchanged.
 
 ## See the workspace
 
@@ -40,13 +40,13 @@ PuTTY and other connection programs perform their respective protocol work. Supe
 | RDP / VNC | Windows RDP components or configured external RDP client; separately installed VNC viewer |
 | Local consoles | Windows PowerShell and Command Prompt; MinTTY when separately installed |
 
-Choose **current user** for Local AppData without elevation, or **all users** for 64-bit Program Files with administrator approval. The prepared 1.8.0 no-install ZIP contains the same application payload; settings still follow existing profile/portable discovery rules. [Installation details and unattended commands](docs/manual/installation.md).
+Choose **current user** for Local AppData without elevation, or **all users** for 64-bit Program Files with administrator approval. The 1.8.0 no-install ZIP contains the same application payload; settings still follow existing profile/portable discovery rules. [Installation details and unattended commands](docs/manual/installation.md).
 
 **Existing users:** executable and settings names, registry paths, sessions, layouts, and command-line behavior stay compatible. Same-scope community upgrades are supported; ambiguous upstream-era 1.5 installations require manual removal. Do not share settings between running editions. [Read the upgrade guide first](docs/manual/upgrading.md).
 
 ## Verify a download
 
-Download packages and checksums from the same [community release](https://github.com/greyhair-atx/superputty/releases). For the prepared 1.8.0 release:
+Download packages and checksums from the same [community release](https://github.com/greyhair-atx/superputty/releases). For the 1.8.0 release:
 
 ```powershell
 Get-AuthenticodeSignature .\SuperPuTTY-CE-1.8.0-current-user-win-x64-signed.msi | Format-List

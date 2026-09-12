@@ -1,5 +1,8 @@
 # Public launch checklist — 1.8.0
 
+> **Published September 12, 2026:** [sp-1.8.0](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.0), built from clean commit `20b78c60ec02adc0af970e2d975ef615b63e58b8`. Final EXE/DLL scans completed with zero malicious or suspicious detections. The earlier preparation history below describes candidate-stage evidence; see the live release for final artifacts, identities and validation. Publication and the public project website were approved by the maintainer.
+
+
 **Staging only.** No release, website, metadata change, package submission, or announcement is authorized by this checklist. Obtain the maintainer's explicit approval for each external phase. Existing 1.7.x releases must remain available and unchanged.
 
 ## Repository settings (manual)

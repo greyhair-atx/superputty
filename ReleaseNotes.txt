@@ -1,4 +1,4 @@
-SuperPuTTY Community Edition 1.8.0 (local public-launch candidate)
+SuperPuTTY Community Edition 1.8.0
  - Prepare a clearer landing page, static website, release verification guide and launch drafts.
  - Add an allowlisted no-install ZIP, SHA-256 asset manifest and CycloneDX runtime-file inventory.
  - Prepare dual-scope WinGet manifests from actual signed MSI metadata.

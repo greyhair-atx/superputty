@@ -1,5 +1,8 @@
 # SuperPuTTY Community Edition 1.8.0 — local preparation report
 
+> **Published September 12, 2026:** [sp-1.8.0](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.0), built from clean commit `20b78c60ec02adc0af970e2d975ef615b63e58b8`. Final EXE/DLL scans completed with zero malicious or suspicious detections. The earlier preparation history below describes candidate-stage evidence; see the live release for final artifacts, identities and validation. Publication and the public project website were approved by the maintainer.
+
+
 Prepared September 12, 2026. **Not published, pushed, tagged, deployed, submitted or announced.** Repository/account settings were not changed. Existing published 1.7.x artifacts were not modified.
 
 ## Outcome

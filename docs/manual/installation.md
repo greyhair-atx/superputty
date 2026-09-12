@@ -4,7 +4,7 @@
 
 ## Choose a package
 
-Download the [latest stable release](https://github.com/greyhair-atx/superputty/releases/latest). **1.8.0 is currently a local launch candidate, not a published release.** The filenames below describe the prepared 1.8.0 packages; use the version actually shown on the release page. Choose one of the two Windows x64 packages:
+Download [SuperPuTTY Community Edition 1.8.0](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.0), the latest stable release. The filenames below identify its signed Windows x64 packages. Choose one of the two Windows x64 packages:
 
 - **Current user:** `SuperPuTTY-CE-1.8.0-current-user-win-x64-signed.msi` installs under the current user's Local AppData directory without elevation.
 - **All users:** `SuperPuTTY-CE-1.8.0-all-users-win-x64-signed.msi` installs under 64-bit Program Files and requests administrator approval.
@@ -41,7 +41,7 @@ Get-AuthenticodeSignature .\SuperPutty.exe | Format-List
 Get-FileHash .\SuperPuTTY-CE-1.8.0-current-user-win-x64-signed.msi -Algorithm SHA256
 ```
 
-Expect `Valid`, signer **Christopher Thornton**, and a timestamp certificate. Compare the complete SHA-256 value with the matching filename in `SuperPuTTY-CE-1.8.0-SHA256SUMS.txt`. For earlier releases use their own checksum files. Prior VirusTotal results apply only to their respective bytes; no 1.8.0 VirusTotal scan is claimed.
+Expect `Valid`, signer **Christopher Thornton**, and a timestamp certificate. Compare the complete SHA-256 value with the matching filename in `SuperPuTTY-CE-1.8.0-SHA256SUMS.txt`. For earlier releases use their own checksum files. The final 1.8.0 EXE and five DLLs completed VirusTotal scans with zero malicious or suspicious detections; the MSIs were not submitted. See the release assets for per-file results and engine limitations.
 
 ## No-install ZIP
 

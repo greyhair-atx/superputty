@@ -1,12 +1,12 @@
 # SuperPuTTY Community Edition User Manual
 
-This manual applies to the 64-bit Windows SuperPuTTY Community Edition 1.8.0 (launch candidate) maintained at [greyhair-atx/superputty](https://github.com/greyhair-atx/superputty).
+This manual applies to the 64-bit Windows SuperPuTTY Community Edition 1.8.0 maintained at [greyhair-atx/superputty](https://github.com/greyhair-atx/superputty).
 
 SuperPuTTY is a Windows workspace for organizing PuTTY terminals and related tools in tabs. PuTTY performs the SSH connection and terminal emulation; SuperPuTTY manages sessions, tabs, layouts, file transfers, and supporting tools.
 
 ## Manual contents
 
-- [1.8.0 launch candidate and draft release notes](../releases/1.8.0.md)
+- [1.8.0 release notes and validation](../releases/1.8.0.md)
 - [Historical 1.7.5 release validation](../releases/1.7.5.md)
 - [Installation](installation.md)
 - [Upgrading and coexistence](upgrading.md)
