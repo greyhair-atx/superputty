@@ -17,7 +17,7 @@ trigger:
     - integration
   tags:
     include:
-    - sp-1.7.5
+    - sp-1.7.6
 
 pool:
   vmImage: 'windows-latest'
@@ -27,8 +27,8 @@ variables:
   buildPlatform: 'x64'
   testPlatform: 'x64'
   buildConfiguration: 'Release'
-  releaseVersion: '1.7.5'
-  applicationVersion: '1.7.5.0'
+  releaseVersion: '1.7.6'
+  applicationVersion: '1.7.6.0'
   ${{ if eq(parameters.enableCodeSigning, true) }}:
     installerArtifactSuffix: 'win-x64-signed'
   ${{ else }}:

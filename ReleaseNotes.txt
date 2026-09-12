@@ -1,4 +1,4 @@
-SuperPuTTY Community Edition (pending release)
+SuperPuTTY Community Edition 1.7.6
  - Default new profiles and unrecognized update-channel values to Community fork while preserving explicit channel choices.
  - Save application preferences with atomic replacement and retain the previous save as SuperPuTTY.settings.bak.
  - Preserve existing preferences when a write or replacement fails; backup restoration remains manual.

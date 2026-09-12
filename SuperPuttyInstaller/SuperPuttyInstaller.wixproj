@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <InstallerScope Condition="'$(InstallerScope)' == ''">PerMachine</InstallerScope>
-    <InstallerProductVersion Condition="'$(InstallerProductVersion)' == ''">1.7.5</InstallerProductVersion>
+    <InstallerProductVersion Condition="'$(InstallerProductVersion)' == ''">1.7.6</InstallerProductVersion>
     <InstallerArtifactSuffix Condition="'$(InstallerArtifactSuffix)' == ''">test-x64</InstallerArtifactSuffix>
     <OutputName Condition="'$(InstallerScope)' == 'PerUser'">SuperPuTTY-CE-$(InstallerProductVersion)-current-user-$(InstallerArtifactSuffix)</OutputName>
     <OutputName Condition="'$(InstallerScope)' == 'PerMachine'">SuperPuTTY-CE-$(InstallerProductVersion)-all-users-$(InstallerArtifactSuffix)</OutputName>

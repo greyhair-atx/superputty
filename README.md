@@ -28,13 +28,13 @@ the source so each release tag preserves its matching documentation.
 Current contributor verification steps are in [docs/testing.md](docs/testing.md),
 and private vulnerability reporting guidance is in [SECURITY.md](SECURITY.md).
 
-## SuperPuTTY Community Edition 1.7.5
+## SuperPuTTY Community Edition 1.7.6
 
-The pre-branding SuperPuTTY 1.7.5 release is available on [GitHub](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.7.5).
+Version 1.7.6 introduces Community Edition branding, defaults new profiles to the community update channel, and saves preferences with atomic replacement and a previous-save backup.
 
-This release fixes TigerVNC startup and desktop capture, adds confirmation when closing active tabs and a configurable restart-session shortcut, and reduces console refocus retries. See the [1.7.5 release summary](docs/releases/1.7.5.md) for changes, downloads, validation, and VirusTotal results.
+See the [1.7.6 release summary](docs/releases/1.7.6.md) for changes and the [GitHub release](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.7.6) for packages and validation reports.
 
-The CE branding changes are in this source tree. CE artifacts require a new build, signing, and publication; the existing release links and validation reports refer to the pre-branding binaries. See [branding and compatibility](docs/branding.md) for installer upgrade limits.
+Existing executable, settings, and session/layout identifiers are preserved. See [branding and compatibility](docs/branding.md) for installer upgrade limits. The [1.7.5 validation results](docs/releases/1.7.5.md) describe the previous release only.
 
 ## Screenshots
 
@@ -59,8 +59,8 @@ Windows for elevation. Neither installer can be installed on 32-bit Windows.
 CE release artifacts use an explicit `x64` suffix. A signed CE build
 uses these filenames:
 
-- `SuperPuTTY-CE-1.7.5-current-user-win-x64-signed.msi` — signed, non-elevated current-user installer
-- `SuperPuTTY-CE-1.7.5-all-users-win-x64-signed.msi` — signed, elevated all-users installer
+- `SuperPuTTY-CE-1.7.6-current-user-win-x64-signed.msi` — signed, non-elevated current-user installer
+- `SuperPuTTY-CE-1.7.6-all-users-win-x64-signed.msi` — signed, elevated all-users installer
 
 ## Automated tests
 
