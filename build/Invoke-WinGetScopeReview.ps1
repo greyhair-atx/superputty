@@ -13,7 +13,9 @@ if(Test-Path "$stage/results/controller-started.txt"){
     $scopeResult=Get-Content "$stage/results/user/summary.json" -Raw|ConvertFrom-Json
     $bootstrapOnly=$true
     if(Test-Path "$stage/results/user/operations.json"){
-        $ops=@(Get-Content "$stage/results/user/operations.json" -Raw|ConvertFrom-Json)
+        # Windows PowerShell 5.1 emits a JSON array as one pipeline object.
+        # Direct assignment preserves its three entries instead of wrapping it.
+        $ops=Get-Content "$stage/results/user/operations.json" -Raw|ConvertFrom-Json
         $bootstrapOnly=($ops.Count -eq 3 -and $ops[0].name -eq 'version' -and $ops[0].exitCode -eq 0 -and $ops[1].name -eq 'validate' -and $ops[1].exitCode -eq 0 -and $ops[2].name -eq 'install' -and $ops[2].exitCode -eq -1978335230 -and -not (Test-Path "$stage/results/user/install-msi.log"))
     }
     if($previous.success -or -not $previous.hostFilesPreserved -or -not $previous.localManifestSettingRestored -or ($previous.PSObject.Properties.Name -contains 'localManifestPolicyRestored' -and -not $previous.localManifestPolicyRestored) -or -not $scopeResult.cleanupSucceeded -or -not $scopeResult.settingsPreserved -or -not $bootstrapOnly -or (Test-Path "$stage/results/machine")){throw 'Retry is limited to a clean pre-installation bootstrap failure.'}
