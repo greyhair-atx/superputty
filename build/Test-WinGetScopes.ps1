@@ -63,12 +63,23 @@ try{
     $menu=[Environment]::GetFolderPath($(if($Scope -eq 'user'){'Programs'}else{'CommonPrograms'}))
     Assert (Test-Path "$menu/SuperPuTTY/SuperPuTTY Community Edition.lnk") 'Start menu shortcut missing.'
     Assert-Settings
-    Invoke-WinGet 'uninstall' @('uninstall','--product-code',$code,'--exact','--scope',$Scope,'--silent','--disable-interactivity','--accept-source-agreements','--verbose-logs','--log',"$results/uninstall-msi.log")
+    # Capture discovery evidence before removal; the package is not yet in the
+    # public catalog, so use the local manifest for WinGet's uninstall lookup.
+    $arpRoot=if($Scope -eq 'user'){'HKCU:'}else{'HKLM:'}
+    $arpPath="$arpRoot\Software\Microsoft\Windows\CurrentVersion\Uninstall\$code"
+    Get-ItemProperty -LiteralPath $arpPath|Select-Object DisplayName,DisplayVersion,Publisher,UninstallString,WindowsInstaller,SystemComponent|ConvertTo-Json|Set-Content "$results/installed-registration.json"
+    & $WingetPath list --name 'SuperPuTTY Community Edition' --scope $Scope --accept-source-agreements --disable-interactivity --verbose-logs *> "$results/discovery.log"
+    Invoke-WinGet 'uninstall' @('uninstall','--manifest',"$stage/manifests",'--scope',$Scope,'--silent','--disable-interactivity','--accept-source-agreements','--verbose-logs','--log',"$results/uninstall-msi.log")
     Assert ((Product-State) -ne 5) 'Product remains registered.'
     Assert (-not (Test-Path $exe)) 'Executable remains after uninstall.'
     Assert-Settings
     $success=$true
 }finally{
+    $diagnostics=Join-Path $env:LOCALAPPDATA 'Packages/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe/LocalState/DiagOutputDir'
+    if(Test-Path $diagnostics){
+        New-Item -ItemType Directory -Path "$results/winget-diagnostics" -Force|Out-Null
+        Get-ChildItem $diagnostics -File|Copy-Item -Destination "$results/winget-diagnostics" -ErrorAction Continue
+    }
     if((Product-State) -eq 5){
         $p=Start-Process msiexec.exe -ArgumentList @('/x',$code,'/qn','/norestart','/l*v',"`"$results/cleanup-msi.log`"") -WindowStyle Hidden -PassThru
         if(-not $p.WaitForExit(180000)){throw 'Cleanup timed out; retain test account for investigation.'}

@@ -1,12 +1,12 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$StageDirectory,[switch]$RetryFailedBootstrap)
+param([Parameter(Mandatory)][string]$StageDirectory,[switch]$RetryFailedBootstrap,[switch]$RetryCleanedUninstallFailure)
 $ErrorActionPreference='Stop'
 $stage=[IO.Path]::GetFullPath($StageDirectory)
 $principal=[Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Run this review controller from Administrator PowerShell in the authorized VM.'}
 if(-not (Test-Path "$stage/host-baseline.json")){throw 'Prepared baseline missing.'}
 if(Test-Path "$stage/results/controller-started.txt"){
-    if(-not $RetryFailedBootstrap){throw 'This stage has already run. Review its results before preparing another run.'}
+    if(-not $RetryFailedBootstrap -and -not $RetryCleanedUninstallFailure){throw 'This stage has already run. Review its results before preparing another run.'}
     # Only retry the reviewed pre-installation failure. Later failures need
     # separate investigation; never discard an installed product's account.
     $previous=Get-Content "$stage/results/controller-summary.json" -Raw|ConvertFrom-Json
@@ -18,7 +18,12 @@ if(Test-Path "$stage/results/controller-started.txt"){
         $ops=Get-Content "$stage/results/user/operations.json" -Raw|ConvertFrom-Json
         $bootstrapOnly=($ops.Count -eq 3 -and $ops[0].name -eq 'version' -and $ops[0].exitCode -eq 0 -and $ops[1].name -eq 'validate' -and $ops[1].exitCode -eq 0 -and $ops[2].name -eq 'install' -and $ops[2].exitCode -eq -1978335230 -and -not (Test-Path "$stage/results/user/install-msi.log"))
     }
-    if($previous.success -or -not $previous.hostFilesPreserved -or -not $previous.localManifestSettingRestored -or ($previous.PSObject.Properties.Name -contains 'localManifestPolicyRestored' -and -not $previous.localManifestPolicyRestored) -or -not $scopeResult.cleanupSucceeded -or -not $scopeResult.settingsPreserved -or -not $bootstrapOnly -or (Test-Path "$stage/results/machine")){throw 'Retry is limited to a clean pre-installation bootstrap failure.'}
+    $cleanedUninstallOnly=$false
+    if($RetryCleanedUninstallFailure -and $ops.Count -eq 5){
+        $cleanupLog=Get-Content "$stage/results/user/cleanup-msi.log" -Raw
+        $cleanedUninstallOnly=($ops[0].name -eq 'version' -and $ops[0].exitCode -eq 0 -and $ops[1].name -eq 'effective-settings' -and $ops[1].exitCode -eq 0 -and $ops[2].name -eq 'validate' -and $ops[2].exitCode -eq 0 -and $ops[3].name -eq 'install' -and $ops[3].exitCode -eq 0 -and $ops[4].name -eq 'uninstall' -and $ops[4].exitCode -eq -1978335212 -and $cleanupLog.Contains('MainEngineThread is returning 0'))
+    }
+    if($previous.success -or -not $previous.hostFilesPreserved -or -not $previous.localManifestSettingRestored -or ($previous.PSObject.Properties.Name -contains 'localManifestPolicyRestored' -and -not $previous.localManifestPolicyRestored) -or -not $scopeResult.cleanupSucceeded -or -not $scopeResult.settingsPreserved -or -not (($RetryFailedBootstrap -and $bootstrapOnly) -or $cleanedUninstallOnly) -or (Test-Path "$stage/results/machine")){throw 'Retry requires the reviewed failure with successful cleanup and preservation checks.'}
     $oldName=$previous.temporaryAccount
     if($oldName -notmatch '^SPCEtest[0-9a-f]{8}$'){throw 'Unexpected temporary account name.'}
     $oldUser=Get-LocalUser -Name $oldName
