@@ -48,6 +48,9 @@ $success=$false
 $cleanupSucceeded=$false
 try{
     Invoke-WinGet 'version' @('--version')
+    Invoke-WinGet 'effective-settings' @('settings','export')
+    $effective=Get-Content "$results/effective-settings.log" -Raw|ConvertFrom-Json
+    Assert ([bool]$effective.adminSettings.LocalManifestFiles) 'Local manifests are not enabled for the test account.'
     Invoke-WinGet 'validate' @('validate',"$stage/manifests")
     Invoke-WinGet 'install' @('install','--manifest',"$stage/manifests",'--scope',$Scope,'--silent','--disable-interactivity','--accept-package-agreements','--accept-source-agreements','--verbose-logs','--log',"$results/install-msi.log")
     Assert ((Product-State) -eq 5) 'Product registration missing.'

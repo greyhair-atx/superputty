@@ -11,7 +11,12 @@ if(Test-Path "$stage/results/controller-started.txt"){
     # separate investigation; never discard an installed product's account.
     $previous=Get-Content "$stage/results/controller-summary.json" -Raw|ConvertFrom-Json
     $scopeResult=Get-Content "$stage/results/user/summary.json" -Raw|ConvertFrom-Json
-    if($previous.success -or -not $previous.hostFilesPreserved -or -not $previous.localManifestSettingRestored -or -not $scopeResult.cleanupSucceeded -or -not $scopeResult.settingsPreserved -or (Test-Path "$stage/results/user/operations.json") -or (Test-Path "$stage/results/machine")){throw 'Retry is limited to a clean pre-installation bootstrap failure.'}
+    $bootstrapOnly=$true
+    if(Test-Path "$stage/results/user/operations.json"){
+        $ops=@(Get-Content "$stage/results/user/operations.json" -Raw|ConvertFrom-Json)
+        $bootstrapOnly=($ops.Count -eq 3 -and $ops[0].name -eq 'version' -and $ops[0].exitCode -eq 0 -and $ops[1].name -eq 'validate' -and $ops[1].exitCode -eq 0 -and $ops[2].name -eq 'install' -and $ops[2].exitCode -eq -1978335230 -and -not (Test-Path "$stage/results/user/install-msi.log"))
+    }
+    if($previous.success -or -not $previous.hostFilesPreserved -or -not $previous.localManifestSettingRestored -or ($previous.PSObject.Properties.Name -contains 'localManifestPolicyRestored' -and -not $previous.localManifestPolicyRestored) -or -not $scopeResult.cleanupSucceeded -or -not $scopeResult.settingsPreserved -or -not $bootstrapOnly -or (Test-Path "$stage/results/machine")){throw 'Retry is limited to a clean pre-installation bootstrap failure.'}
     $oldName=$previous.temporaryAccount
     if($oldName -notmatch '^SPCEtest[0-9a-f]{8}$'){throw 'Unexpected temporary account name.'}
     $oldUser=Get-LocalUser -Name $oldName
@@ -37,6 +42,11 @@ if(-not (Test-Path $winget)){throw 'WinGet package is missing from the administr
 $settings=& $winget settings export|ConvertFrom-Json
 if($LASTEXITCODE -ne 0){throw 'Cannot read WinGet admin settings.'}
 $wasEnabled=[bool]$settings.adminSettings.LocalManifestFiles
+$policyPath='HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppInstaller'
+$policyKeyExisted=Test-Path $policyPath
+$policy=Get-ItemProperty $policyPath -Name EnableLocalManifestFiles -ErrorAction SilentlyContinue
+$policyExisted=$null -ne $policy
+if($policyExisted -and ($policy.EnableLocalManifestFiles -ne 1 -or (Get-Item $policyPath).GetValueKind('EnableLocalManifestFiles') -ne 'DWord')){throw 'An existing policy restricts local manifests; this runner will not override it.'}
 $name='SPCEtest'+[Guid]::NewGuid().ToString('N').Substring(0,8)
 $user=$null
 $markerPath='HKCU:\Software\Jim Radford\SuperPuTTY'
@@ -46,7 +56,13 @@ $markerValue=if($markerExisted){$marker.installed}else{$null}
 $markerKind=if($markerExisted){(Get-Item $markerPath).GetValueKind('installed')}else{$null}
 $controllerSuccess=$false
 try{
-    if(-not $wasEnabled){& $winget settings --enable LocalManifestFiles *> "$stage/results/enable-local-manifests.log";if($LASTEXITCODE -ne 0){throw 'Cannot enable local manifests.'}}
+    # WinGet admin settings are scoped to the invoking user's SID. Use the
+    # documented machine policy for the duration of this cross-account test.
+    # https://github.com/microsoft/winget-cli/blob/master/doc/admx/DesktopAppInstaller.admx
+    if(-not $policyExisted){
+        New-Item -Path $policyPath -Force|Out-Null
+        New-ItemProperty -Path $policyPath -Name EnableLocalManifestFiles -PropertyType DWord -Value 1 -Force|Out-Null
+    }
     $password=ConvertTo-SecureString ('Aa!9'+[Guid]::NewGuid().ToString('N')+[Guid]::NewGuid().ToString('N')) -AsPlainText -Force
     $user=New-LocalUser -Name $name -Password $password -Description 'Temporary SuperPuTTY WinGet test' -AccountNeverExpires
     Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $name
@@ -89,13 +105,21 @@ try {
     # Restore only that value; do not migrate or replace settings registry keys.
     if($markerExisted){New-Item -Path $markerPath -Force|Out-Null;New-ItemProperty -Path $markerPath -Name installed -Value $markerValue -PropertyType $markerKind -Force|Out-Null}
     elseif(Get-ItemProperty $markerPath -Name installed -ErrorAction SilentlyContinue){Remove-ItemProperty -Path $markerPath -Name installed}
-    if(-not $wasEnabled){& $winget settings --disable LocalManifestFiles *> "$stage/results/restore-local-manifests.log";if($LASTEXITCODE -ne 0){$controllerSuccess=$false}}
+    if(-not $policyExisted){
+        Remove-ItemProperty -Path $policyPath -Name EnableLocalManifestFiles -ErrorAction SilentlyContinue
+        if(-not $policyKeyExisted -and (Test-Path $policyPath)){
+            $key=Get-Item $policyPath
+            if($key.ValueCount -eq 0 -and $key.SubKeyCount -eq 0){Remove-Item -LiteralPath $policyPath}
+        }
+    }
+    $policyAfter=Get-ItemProperty $policyPath -Name EnableLocalManifestFiles -ErrorAction SilentlyContinue
+    $policyRestored=if($policyExisted){$null -ne $policyAfter -and $policyAfter.EnableLocalManifestFiles -eq 1}else{$null -eq $policyAfter}
     $restored=& $winget settings export|ConvertFrom-Json
     $settingRestored=([bool]$restored.adminSettings.LocalManifestFiles -eq $wasEnabled)
     $preserved=$true
     foreach($entry in (Get-Content "$stage/host-baseline.json" -Raw|ConvertFrom-Json)){
         if(-not (Test-Path -LiteralPath $entry.path) -or (Get-FileHash -LiteralPath $entry.path).Hash -ne $entry.hash){$preserved=$false}
     }
-    [pscustomobject]@{success=($controllerSuccess -and $settingRestored -and $preserved);localManifestSettingRestored=$settingRestored;hostFilesPreserved=$preserved;temporaryAccount=$name;temporaryAccountRemoved=($null -eq (Get-LocalUser -Name $name -ErrorAction SilentlyContinue));completedUtc=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json|Set-Content "$stage/results/controller-summary.json"
+    [pscustomobject]@{success=($controllerSuccess -and $settingRestored -and $policyRestored -and $preserved);localManifestSettingRestored=$settingRestored;localManifestPolicyRestored=$policyRestored;hostFilesPreserved=$preserved;temporaryAccount=$name;temporaryAccountRemoved=($null -eq (Get-LocalUser -Name $name -ErrorAction SilentlyContinue));completedUtc=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json|Set-Content "$stage/results/controller-summary.json"
     Write-Output "Review finished. Results: $stage/results/controller-summary.json"
 }
