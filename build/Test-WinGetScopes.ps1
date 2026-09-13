@@ -54,6 +54,9 @@ try{
     Invoke-WinGet 'validate' @('validate',"$stage/manifests")
     Invoke-WinGet 'install' @('install','--manifest',"$stage/manifests",'--scope',$Scope,'--silent','--disable-interactivity','--accept-package-agreements','--accept-source-agreements','--verbose-logs','--log',"$results/install-msi.log")
     Assert ((Product-State) -eq 5) 'Product registration missing.'
+    $assignment=$msi.GetType().InvokeMember('ProductInfo','GetProperty',$null,$msi,@($code,'AssignmentType'))
+    Assert ([string]$assignment -eq $(if($Scope -eq 'user'){'0'}else{'1'})) 'Windows Installer assignment does not match requested scope.'
+    [pscustomobject]@{productCode=$code;requestedScope=$Scope;assignmentType=$assignment}|ConvertTo-Json|Set-Content "$results/msi-scope.json"
     $exe=Join-Path $folder 'SuperPutty.exe'
     Assert (Test-Path $exe) 'Expected executable is missing.'
     Assert ((Get-FileHash $exe).Hash -eq '29A7B0D634B0ABABC5D95A925CE55FA56B5865BAFEDDDCE67AFB1D2AE68D3969') 'Installed executable differs from published release.'
@@ -63,13 +66,17 @@ try{
     $menu=[Environment]::GetFolderPath($(if($Scope -eq 'user'){'Programs'}else{'CommonPrograms'}))
     Assert (Test-Path "$menu/SuperPuTTY/SuperPuTTY Community Edition.lnk") 'Start menu shortcut missing.'
     Assert-Settings
-    # Capture discovery evidence before removal; the package is not yet in the
-    # public catalog, so use the local manifest for WinGet's uninstall lookup.
-    $arpRoot=if($Scope -eq 'user'){'HKCU:'}else{'HKLM:'}
-    $arpPath="$arpRoot\Software\Microsoft\Windows\CurrentVersion\Uninstall\$code"
-    Get-ItemProperty -LiteralPath $arpPath|Select-Object DisplayName,DisplayVersion,Publisher,UninstallString,WindowsInstaller,SystemComponent|ConvertTo-Json|Set-Content "$results/installed-registration.json"
-    & $WingetPath list --name 'SuperPuTTY Community Edition' --scope $Scope --accept-source-agreements --disable-interactivity --verbose-logs *> "$results/discovery.log"
-    Invoke-WinGet 'uninstall' @('uninstall','--manifest',"$stage/manifests",'--scope',$Scope,'--silent','--disable-interactivity','--accept-source-agreements','--verbose-logs','--log',"$results/uninstall-msi.log")
+    # Windows Installer reports per-user assignment even when this Windows VM
+    # exposes the ARP entry under HKLM. WinGet infers scope from that hive, so
+    # use the unique ProductCode without an uninstall scope filter.
+    $registrations=@(foreach($arpRoot in @('HKCU:','HKLM:')){
+        $arpPath="$arpRoot\Software\Microsoft\Windows\CurrentVersion\Uninstall\$code"
+        if(Test-Path -LiteralPath $arpPath){Get-ItemProperty -LiteralPath $arpPath|Select-Object PSPath,DisplayName,DisplayVersion,Publisher,UninstallString,WindowsInstaller,SystemComponent}
+    })
+    $registrations|ConvertTo-Json|Set-Content "$results/installed-registration.json"
+    Assert ($registrations.Count -ge 1) 'No uninstall registration found in either hive.'
+    & $WingetPath list --name 'SuperPuTTY Community Edition' --accept-source-agreements --disable-interactivity --verbose-logs *> "$results/discovery.log"
+    Invoke-WinGet 'uninstall' @('uninstall','--product-code',$code,'--exact','--silent','--disable-interactivity','--accept-source-agreements','--verbose-logs','--log',"$results/uninstall-msi.log")
     Assert ((Product-State) -ne 5) 'Product remains registered.'
     Assert (-not (Test-Path $exe)) 'Executable remains after uninstall.'
     Assert-Settings
