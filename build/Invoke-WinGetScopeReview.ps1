@@ -1,11 +1,24 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$StageDirectory,[switch]$RetryFailedBootstrap,[switch]$RetryCleanedUninstallFailure,[switch]$RetryCleanedRegistrationFailure)
+param([Parameter(Mandatory)][string]$StageDirectory,[switch]$RetryFailedBootstrap,[switch]$RetryCleanedUninstallFailure,[switch]$RetryCleanedRegistrationFailure,[switch]$ResumePassedUser)
 $ErrorActionPreference='Stop'
 $stage=[IO.Path]::GetFullPath($StageDirectory)
 $principal=[Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Run this review controller from Administrator PowerShell in the authorized VM.'}
 if(-not (Test-Path "$stage/host-baseline.json")){throw 'Prepared baseline missing.'}
-if(Test-Path "$stage/results/controller-started.txt"){
+if($ResumePassedUser){
+    $previous=Get-Content "$stage/results/controller-summary.json" -Raw|ConvertFrom-Json
+    $passedUser=Get-Content "$stage/results/user/summary.json" -Raw|ConvertFrom-Json
+    $passedOps=Get-Content "$stage/results/user/operations.json" -Raw|ConvertFrom-Json
+    if($previous.success -or -not $previous.hostFilesPreserved -or -not $previous.localManifestSettingRestored -or -not $previous.localManifestPolicyRestored -or -not $passedUser.success -or -not $passedUser.cleanupSucceeded -or -not $passedUser.settingsPreserved -or $passedOps.Count -ne 5 -or ($passedOps.name -join ',') -ne 'version,effective-settings,validate,install,uninstall' -or @($passedOps|Where-Object exitCode -NE 0).Count -ne 0 -or (Test-Path "$stage/results/machine")){throw 'Resume requires a completed passing user lifecycle and no machine test yet.'}
+    $resumeName=$previous.temporaryAccount
+    if($resumeName -notmatch '^SPCEtest[0-9a-f]{8}$' -or $passedUser.identity -ne "$env:COMPUTERNAME\$resumeName"){throw 'Passing test account identity mismatch.'}
+    if((Get-LocalUser -Name $resumeName).Description -ne 'Temporary SuperPuTTY WinGet test'){throw 'Unexpected retained account.'}
+    Copy-Item "$stage/results/controller-summary.json" "$stage/results/controller-before-machine.json"
+    if(Test-Path "$stage/results/controller-error.log"){
+        Move-Item -LiteralPath "$stage/results/controller-error.log" -Destination "$stage/results/controller-before-machine-error.log"
+    }
+}
+if((Test-Path "$stage/results/controller-started.txt") -and -not $ResumePassedUser){
     if(-not $RetryFailedBootstrap -and -not $RetryCleanedUninstallFailure -and -not $RetryCleanedRegistrationFailure){throw 'This stage has already run. Review its results before preparing another run.'}
     # Only retry the reviewed pre-installation failure. Later failures need
     # separate investigation; never discard an installed product's account.
@@ -60,7 +73,7 @@ $policyKeyExisted=Test-Path $policyPath
 $policy=Get-ItemProperty $policyPath -Name EnableLocalManifestFiles -ErrorAction SilentlyContinue
 $policyExisted=$null -ne $policy
 if($policyExisted -and ($policy.EnableLocalManifestFiles -ne 1 -or (Get-Item $policyPath).GetValueKind('EnableLocalManifestFiles') -ne 'DWord')){throw 'An existing policy restricts local manifests; this runner will not override it.'}
-$name='SPCEtest'+[Guid]::NewGuid().ToString('N').Substring(0,8)
+$name=if($ResumePassedUser){$resumeName}else{'SPCEtest'+[Guid]::NewGuid().ToString('N').Substring(0,8)}
 $user=$null
 $markerPath='HKCU:\Software\Jim Radford\SuperPuTTY'
 $marker=Get-ItemProperty $markerPath -Name installed -ErrorAction SilentlyContinue
@@ -76,6 +89,9 @@ try{
         New-Item -Path $policyPath -Force|Out-Null
         New-ItemProperty -Path $policyPath -Name EnableLocalManifestFiles -PropertyType DWord -Value 1 -Force|Out-Null
     }
+    if($ResumePassedUser){
+        $user=Get-LocalUser -Name $name
+    }else{
     $password=ConvertTo-SecureString ('Aa!9'+[Guid]::NewGuid().ToString('N')+[Guid]::NewGuid().ToString('N')) -AsPlainText -Force
     $user=New-LocalUser -Name $name -Password $password -Description 'Temporary SuperPuTTY WinGet test' -AccountNeverExpires
     Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $name
@@ -94,12 +110,17 @@ try {
     if(-not `$userPackage){throw 'App Installer registration did not complete for the temporary account.'}
     `$userWinget=Join-Path `$userPackage.InstallLocation 'winget.exe'
     & '$escapedStage/Test-WinGetScopes.ps1' -StageDirectory '$escapedStage' -Scope user -WingetPath `$userWinget *> '$escapedStage/results/user-output.log'
+    exit 0
 } catch { `$_ | Out-String | Add-Content '$escapedStage/results/user-error.log'; exit 1 }
 "@|Set-Content "$stage/Run-StandardUser.ps1"
     $credential=[Management.Automation.PSCredential]::new("$env:COMPUTERNAME\$name",$password)
     $child=Start-Process "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe" -Credential $credential -LoadUserProfile -WorkingDirectory $stage -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$stage/Run-StandardUser.ps1`"") -WindowStyle Hidden -PassThru
     if(-not $child.WaitForExit(600000)){throw 'Standard-user test timed out; inspect running process before cleanup.'}
-    if($child.ExitCode -ne 0){throw 'Standard-user WinGet test failed; see results/user-error.log and results/user/.'}
+    $child.Refresh()
+    $childResult=Get-Content "$stage/results/user/summary.json" -Raw|ConvertFrom-Json
+    [pscustomobject]@{exitCode=$child.ExitCode;success=$childResult.success}|ConvertTo-Json|Set-Content "$stage/results/child-status.json"
+    if(($null -ne $child.ExitCode -and $child.ExitCode -ne 0) -or -not $childResult.success -or -not $childResult.cleanupSucceeded){throw 'Standard-user WinGet test failed; see results/user-error.log and results/user/.'}
+    }
     & "$stage/Test-WinGetScopes.ps1" -StageDirectory $stage -Scope machine -WingetPath $winget *> "$stage/results/machine-output.log"
     $summaries=@('user','machine'|ForEach-Object {Get-Content "$stage/results/$_/summary.json" -Raw|ConvertFrom-Json})
     if(@($summaries|Where-Object {-not $_.success -or -not $_.cleanupSucceeded}).Count){throw 'One or more scope tests failed.'}
