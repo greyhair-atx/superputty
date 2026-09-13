@@ -40,7 +40,8 @@ Recommended topics (already present at the September 12, 2026 inspection):
 - [x] Change the README/site status from **launch candidate** to **released** only after the release is live.
 - [x] Pages is published from `master` → `/docs`; deployment succeeded on `c69acae`, and the live site responds with HTTP 200.
 - [x] Revalidated WinGet manifests and downloaded both published MSIs: SHA-256 values match the manifests and both Authenticode signatures are valid.
-- [ ] Test installation through WinGet for both scopes in a disposable guest, then submit to `microsoft/winget-pkgs` within the maintainer-approved scope. No WinGet install test or submission is recorded yet.
+- [ ] Test installation through WinGet for both scopes, then submit to `microsoft/winget-pkgs`. The maintainer has authorized this work; schema 1.12.0 validation passed, the submission branch is prepared, and the VM test runner awaits an Administrator PowerShell run. No WinGet install test or pull request is recorded yet. See [WinGet staging](../packaging/winget/README.md).
+- [x] Update announcement drafts to describe 1.8.0 as released. The drafts have not been posted.
 - [ ] Approve announcements individually. Ask upstream respectfully; do not imply endorsement. Plan Chocolatey only after WinGet is stable.
 
 ## Suggested launch order

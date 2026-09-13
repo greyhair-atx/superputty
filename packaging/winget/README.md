@@ -3,11 +3,15 @@
 `ChrisThornton.SuperPuTTYCommunityEdition/1.8.0/` contains a multi-file WinGet manifest generated from the actual signed MSI bundle. Both `Scope: user` and `Scope: machine` are explicitly represented under separate x64 installers. MSI ProductCodes and AppsAndFeatures UpgradeCodes are read from the finished packages, never guessed from the edition name. Publisher is Chris Thornton; certificate identity is Christopher Thornton.
 
 ```powershell
-pwsh -NoProfile -File .\build\New-WinGetManifest.ps1 -Version 1.8.0
+pwsh -NoProfile -File .\build\New-WinGetManifest.ps1 -Version 1.8.0 -ReleaseDirectory .\artifacts\release-1.8.0\final
 winget validate .\packaging\winget\ChrisThornton.SuperPuTTYCommunityEdition\1.8.0
 ```
 
-The generated schema version is 1.10.0. `wix` is the MSI installer type; unattended switches are `/qn /norestart` and `/passive /norestart`. The direct HTTPS asset URLs point only to `greyhair-atx/superputty` and the published `sp-1.8.0` tag. **Both URLs are live.** On September 12, 2026, both MSIs were downloaded again: their SHA-256 values matched these manifests and their Authenticode signatures were valid. `winget validate` also passed. Installation through WinGet in a disposable guest remains pending. Schema validation does not prove installation or download success. Do not create a fork or pull request until the immutable approved artifacts are published and their downloadable hashes match.
+The generated schema version is 1.12.0, as recommended by the community repository's submission template. `wix` is the MSI installer type; unattended switches are `/qn /norestart` and `/passive /norestart`. The direct HTTPS asset URLs point only to `greyhair-atx/superputty` and the published `sp-1.8.0` tag. **Both URLs are live.** On September 12, 2026, both MSIs were downloaded again: their SHA-256 values matched these manifests and their Authenticode signatures were valid. `winget validate` also passed. Schema validation does not prove installation success.
+
+The maintainer has authorized testing and submission. The three manifests are prepared on [the submission branch](https://github.com/greyhair-atx/winget-pkgs/tree/new-package/superputty-ce-1.8.0/manifests/c/ChrisThornton/SuperPuTTYCommunityEdition/1.8.0). Installation through WinGet remains pending; a pull request has not yet been opened.
+
+For the authorized Windows 11 workstation VM, `build/Invoke-WinGetScopeReview.ps1` runs a prepared stage from Administrator PowerShell. It creates a temporary standard account for current-user installation and runs the all-users test elevated. `build/Test-WinGetScopes.ps1` installs the published 1.8.0 packages through WinGet, checks registration, executable hash/signature/branding, installed license, shortcut and settings preservation, then uninstalls through WinGet using the exact MSI ProductCode. The controller restores the previous local-manifest setting and historical shortcut registry marker, checks the host file baseline, and removes the temporary account/profile after success. On failure it retains the account and logs for investigation. These tests are specific to the immutable 1.8.0 release identities.
 
 ## Windows Sandbox test plan
 

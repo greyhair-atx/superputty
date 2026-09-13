@@ -7,7 +7,7 @@ if(-not $ManifestDirectory){$ManifestDirectory=Join-Path $repo "packaging/winget
 $build=Get-Content (Join-Path $ReleaseDirectory "SuperPuTTY-CE-$Version-build-manifest.json") -Raw|ConvertFrom-Json
 if(-not $build.signaturesRequired -or $build.version -ne $Version -or $build.packages.Count -ne 2){throw 'Expected a verified, signed dual-scope release bundle.'}
 $id='ChrisThornton.SuperPuTTYCommunityEdition'
-$schema='1.10.0'
+$schema='1.12.0'
 New-Item -ItemType Directory -Force -Path $ManifestDirectory|Out-Null
 $lines=@("# yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.$schema.schema.json","PackageIdentifier: $id","PackageVersion: $Version",'InstallerType: wix','InstallerLocale: en-US','MinimumOSVersion: 10.0.0.0','InstallModes:','- interactive','- silent','- silentWithProgress','InstallerSwitches:','  Silent: /qn /norestart','  SilentWithProgress: /passive /norestart','UpgradeBehavior: install','Installers:')
 foreach($package in $build.packages){

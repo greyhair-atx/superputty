@@ -1,6 +1,6 @@
 # Launch announcement drafts
 
-**Not posted.** Use only after release approval, live-download verification, and approval of the individual message. Replace future-tense launch status only once 1.8.0 is published. All public links point to the community GitHub repository.
+**Released; announcement drafts not posted.** Version 1.8.0 is published and its live downloads have been verified. Review and approve each message and destination before posting. All public links point to the community GitHub repository.
 
 ## GitHub Discussions
 
@@ -12,7 +12,7 @@ Please read the upgrade notes before installing, especially if you use upstream 
 
 ## LinkedIn
 
-I've prepared SuperPuTTY Community Edition 1.8.0: an independently maintained Windows x64 workspace for PuTTY, PowerShell, Command Prompt, RDP, VNC, and SCP sessions. It builds on Jim Radford's original MIT-licensed project, with signed releases, current documentation, and continued security and usability work.
+I've released SuperPuTTY Community Edition 1.8.0: an independently maintained Windows x64 workspace for PuTTY, PowerShell, Command Prompt, RDP, VNC, and SCP sessions. It builds on Jim Radford's original MIT-licensed project, with signed releases, current documentation, and continued security and usability work.
 
 The release includes separate current-user/all-users installers, checksum verification, and upgrade guidance. This is a community fork, not an official upstream or PuTTY release. Details: https://github.com/greyhair-atx/superputty
 
@@ -38,7 +38,7 @@ Hi Jim,
 
 I'm Chris Thornton, maintaining the `greyhair-atx/superputty` fork as SuperPuTTY Community Edition. I want to make its independent status clear while preserving the MIT license, your copyright, the original contributors' attribution, and links to the original project.
 
-The community releases are signed Windows x64 builds with current documentation, security improvements, and ongoing maintenance. The public launch is planned as version 1.8.0. If you are comfortable with it, would you consider adding a link to the community edition in the upstream README? I would be happy to provide neutral wording that makes clear it is a separate fork, not the official replacement.
+The community releases are signed Windows x64 builds with current documentation, security improvements, and ongoing maintenance. Version 1.8.0 is now released. If you are comfortable with it, would you consider adding a link to the community edition in the upstream README? I would be happy to provide neutral wording that makes clear it is a separate fork, not the official replacement.
 
 I would also welcome contributing appropriate fixes upstream in a form that suits your project. Thank you for creating SuperPuTTY and making it available under the MIT License.
 
