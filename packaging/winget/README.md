@@ -7,7 +7,7 @@ pwsh -NoProfile -File .\build\New-WinGetManifest.ps1 -Version 1.8.0
 winget validate .\packaging\winget\ChrisThornton.SuperPuTTYCommunityEdition\1.8.0
 ```
 
-The generated schema version is 1.10.0. `wix` is the MSI installer type; unattended switches are `/qn /norestart` and `/passive /norestart`. The direct HTTPS asset URLs point only to `greyhair-atx/superputty` and the planned `sp-1.8.0` tag. **These URLs are intentionally not live yet.** Schema validation does not prove installation or download success. Do not create a fork or pull request until the immutable approved artifacts are published and their downloadable hashes match.
+The generated schema version is 1.10.0. `wix` is the MSI installer type; unattended switches are `/qn /norestart` and `/passive /norestart`. The direct HTTPS asset URLs point only to `greyhair-atx/superputty` and the published `sp-1.8.0` tag. **Both URLs are live.** On September 12, 2026, both MSIs were downloaded again: their SHA-256 values matched these manifests and their Authenticode signatures were valid. `winget validate` also passed. Installation through WinGet in a disposable guest remains pending. Schema validation does not prove installation or download success. Do not create a fork or pull request until the immutable approved artifacts are published and their downloadable hashes match.
 
 ## Windows Sandbox test plan
 
