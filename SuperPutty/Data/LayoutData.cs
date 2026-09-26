@@ -14,6 +14,23 @@ namespace SuperPutty.Data
             this.Name = Path.GetFileNameWithoutExtension(filePath);
         }
 
+        internal static bool TryValidateName(string name, out string error)
+        {
+            error = "Enter a valid layout filename without a path.";
+            if (string.IsNullOrWhiteSpace(name) || name.Length > 251 || name != name.Trim()
+                || name.EndsWith(".", StringComparison.Ordinal) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+                || Path.IsPathRooted(name))
+                return false;
+            string stem = name.Split('.')[0].ToUpperInvariant();
+            if (stem == "CON" || stem == "PRN" || stem == "AUX" || stem == "NUL"
+                || stem == "CONIN$" || stem == "CONOUT$"
+                || (stem.Length == 4 && (stem.StartsWith("COM") || stem.StartsWith("LPT"))
+                    && "123456789¹²³".IndexOf(stem[3]) >= 0))
+                return false;
+            error = null;
+            return true;
+        }
+
         public string Name { get; set; }
         public string FilePath { get; set; }
 

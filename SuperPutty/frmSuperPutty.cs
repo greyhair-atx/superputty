@@ -1674,7 +1674,7 @@ namespace SuperPutty
                             }
                             catch (InvalidOperationException)
                             {
-                                SuperPuTTY.ReportStatus("Unable to send input: the terminal is unavailable or not responding.");
+                                SuperPuTTY.ReportStatus("Unable to send input: the terminal is unavailable, busy running a script, or not responding.");
                                 continue;
                             }
 

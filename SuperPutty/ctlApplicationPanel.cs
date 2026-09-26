@@ -65,9 +65,11 @@ namespace SuperPutty
         internal PuttyClosedCallback m_CloseCallback;
         private event Action Captured;
 
+        internal virtual bool ScriptInputReady { get { return !ScriptsStopped && ExternalProcessCaptured; } }
+
         internal void WhenCaptured(Action action)
         {
-            if (ExternalProcessCaptured)
+            if (ScriptInputReady)
                 action();
             else
                 Captured += action;

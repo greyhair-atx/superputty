@@ -195,27 +195,46 @@ namespace SuperPutty
 
         public static void RenameLayout(LayoutData layout, string newName)
         {
-            if (layout != null)
-            {
-                LayoutData existing = FindLayout(newName);
-                if (existing == null)
-                {
-                    Log.InfoFormat($"Renaming layout: {layout.Name} -> {newName}");
-                    // rename layout and file
-                    string fileOld = layout.FilePath;
-                    string fileNew = Path.Combine(Path.GetDirectoryName(layout.FilePath), newName) + ".xml";
-                    File.Move(fileOld, fileNew);
-                    layout.Name = newName;
-                    layout.FilePath = fileNew;
+            RenameLayout(layout, newName, () => Settings.Save());
+        }
 
-                    // Notify
-                    layouts.ResetItem(layouts.IndexOf(layout));
-                }
-                else
+        internal static void RenameLayout(LayoutData layout, string newName, Action persistSettings)
+        {
+            if (layout == null) return;
+            string error;
+            if (layout.IsReadOnly) throw new ArgumentException("This layout cannot be renamed.");
+            if (!LayoutData.TryValidateName(newName, out error)) throw new ArgumentException(error, nameof(newName));
+            if (string.Equals(layout.Name, newName, StringComparison.OrdinalIgnoreCase)) return;
+            if (layouts.Any(item => item != layout && string.Equals(item.Name, newName, StringComparison.OrdinalIgnoreCase)))
+                throw new ArgumentException("A layout with the same name exists.", nameof(newName));
+
+            string fileOld = Path.GetFullPath(layout.FilePath);
+            string directory = Path.GetDirectoryName(fileOld);
+            string fileNew = Path.GetFullPath(Path.Combine(directory, newName + ".xml"));
+            if (!string.Equals(Path.GetDirectoryName(fileNew), directory, StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("The renamed layout must stay in its original directory.", nameof(newName));
+
+            string oldDefault = Settings.DefaultLayoutName;
+            bool wasDefault = string.Equals(oldDefault, layout.Name, StringComparison.OrdinalIgnoreCase);
+            File.Move(fileOld, fileNew);
+            if (wasDefault)
+            {
+                try
                 {
-                    throw new ArgumentException($"Layout with the same name exists: {newName}");
+                    Settings.DefaultLayoutName = newName;
+                    persistSettings();
+                }
+                catch
+                {
+                    Settings.DefaultLayoutName = oldDefault;
+                    File.Move(fileNew, fileOld);
+                    throw;
                 }
             }
+            layout.Name = newName;
+            layout.FilePath = fileNew;
+            int index = layouts.IndexOf(layout);
+            if (index >= 0) layouts.ResetItem(index);
         }
 
         public static LayoutData FindLayout(string name)

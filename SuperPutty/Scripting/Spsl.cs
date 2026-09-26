@@ -4,6 +4,7 @@
 
 using System;
 using System.Linq;
+using System.Collections.Generic;
 using System.Threading;
 using log4net;
 using SuperPutty;
@@ -16,12 +17,37 @@ namespace SuperPuTTY.Scripting
     {
         private static readonly ILog Log = LogManager.GetLogger(typeof(SPSL));
 
+        // Reserve the complete target set for a whole script, including sleeps and prompts.
+        // Acquire all targets together so overlapping broadcasts cannot deadlock.
+        private static readonly object reservationLock = new object();
+        private static readonly Dictionary<IntPtr, Thread> reservations = new Dictionary<IntPtr, Thread>();
+
+        private static bool TryReserve(IEnumerable<IntPtr> handles)
+        {
+            lock (reservationLock)
+            {
+                var keys = handles.Distinct().ToArray();
+                if (keys.Any(key => reservations.ContainsKey(key) && reservations[key] != Thread.CurrentThread))
+                    return false;
+                foreach (var key in keys) reservations[key] = Thread.CurrentThread;
+                return true;
+            }
+        }
+
+        private static void ReleaseReservations()
+        {
+            lock (reservationLock)
+                foreach (var key in reservations.Where(pair => pair.Value == Thread.CurrentThread).Select(pair => pair.Key).ToArray())
+                    reservations.Remove(key);
+        }
+
         [ThreadStatic]
         private static ScriptTarget[] currentTargets;
 
         internal sealed class ScriptTarget
         {
             private readonly IntPtr handle;
+            internal IntPtr Handle { get { return handle; } }
             private readonly uint processId;
             private readonly uint threadId;
             private readonly Func<bool> sessionAlive;
@@ -35,7 +61,7 @@ namespace SuperPuTTY.Scripting
 
             internal static ScriptTarget ForPanel(ApplicationPanel panel)
             {
-                return new ScriptTarget(panel.AppWindowHandle, () => !panel.ScriptsStopped);
+                return new ScriptTarget(panel.AppWindowHandle, () => panel.ScriptInputReady);
             }
 
             internal bool IsAlive
@@ -52,7 +78,20 @@ namespace SuperPuTTY.Scripting
 
             internal void Send(CommandData command)
             {
-                if (IsAlive) command.SendToTerminalChecked(handle, () => IsAlive);
+                if (!IsAlive) return;
+                bool alreadyOwned;
+                lock (reservationLock)
+                {
+                    alreadyOwned = reservations.ContainsKey(handle) && reservations[handle] == Thread.CurrentThread;
+                    if (!TryReserve(new[] { handle }))
+                        throw new InvalidOperationException("A script is already using this terminal.");
+                }
+                try { if (IsAlive) command.SendToTerminalChecked(handle, () => IsAlive); }
+                finally
+                {
+                    if (!alreadyOwned)
+                        lock (reservationLock) reservations.Remove(handle);
+                }
             }
         }
 
@@ -168,29 +207,18 @@ namespace SuperPuTTY.Scripting
             var worker = new Thread(delegate ()
             {
                 currentTargets = targets;
-                for (int index = 0; index < scriptlines.Length; index++)
+                try
                 {
-                    try
-                    {
-                        CheckCancellation();
-                        CommandData command;
-                        TryParseScriptLine(scriptlines[index], out command);
-                        CheckCancellation();
-                        if (command != null)
-                            foreach (var target in targets) target.Send(command);
-                    }
-                    catch (OperationCanceledException) { return; }
-                    catch (Exception ex)
-                    {
-                        // Script arguments can contain credentials. Do not log the line or exception message.
-                        int lineNumber = index + 1;
-                        Log.WarnFormat("SPSL stopped at line {0}: {1}", lineNumber, ex.GetType().Name);
-                        if (onError != null)
-                            onError(lineNumber);
-                        else
-                            ReportScriptError(lineNumber, ex is NotSupportedException);
-                        return;
-                    }
+                    CheckCancellation();
+                    while (!TryReserve(targets.Select(target => target.Handle)))
+                        Wait(50);
+                    ExecuteLines(targets, scriptlines, onError);
+                }
+                catch (OperationCanceledException) { }
+                finally
+                {
+                    ReleaseReservations();
+                    currentTargets = null;
                 }
             })
             {
@@ -199,6 +227,34 @@ namespace SuperPuTTY.Scripting
             };
             worker.SetApartmentState(ApartmentState.STA);
             return worker;
+        }
+
+        private static void ExecuteLines(ScriptTarget[] targets, string[] scriptlines, Action<int> onError)
+        {
+            for (int index = 0; index < scriptlines.Length; index++)
+            {
+                try
+                {
+                    CheckCancellation();
+                    CommandData command;
+                    TryParseScriptLine(scriptlines[index], out command);
+                    CheckCancellation();
+                    if (command != null)
+                        foreach (var target in targets) target.Send(command);
+                }
+                catch (OperationCanceledException) { return; }
+                catch (Exception ex)
+                {
+                    // Script arguments can contain credentials. Do not log the line or exception message.
+                    int lineNumber = index + 1;
+                    Log.WarnFormat("SPSL stopped at line {0}: {1}", lineNumber, ex.GetType().Name);
+                    if (onError != null)
+                        onError(lineNumber);
+                    else
+                        ReportScriptError(lineNumber, ex is NotSupportedException);
+                    return;
+                }
+            }
         }
 
         private static void ReportScriptError(int lineNumber, bool unsupported)

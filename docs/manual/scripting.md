@@ -41,6 +41,10 @@ Use the Script Editor from the command toolbar to create, load, save, and run sc
 
 A failed or unsupported command stops the script and reports its line number in the status area. Later commands are not executed. Remote startup scripts download in the background with a ten-second overall deadline; closing the session cancels its pending download. Startup scripts wait until the terminal window has been captured before executing.
 
+Scripts with overlapping target sessions run one at a time, including their sleeps and prompts. A later script waits until all its target sessions are available; closing its targets cancels the wait. Scripts on separate sessions can run concurrently. Command-toolbar input to a session reserved by a script is rejected with a busy status message.
+
+For the embedded Microsoft RDP client, startup scripts wait for the login-complete event, rather than merely the creation of the RDP window.
+
 Canceling either input prompt stops the script without sending text or Enter. Closing a target session stops input to that session; when no original target sessions remain, the script stops, including pending sleeps and prompts. Script Editor targets are fixed when Run is clicked, so changing the toolbar selection does not redirect a running script.
 
 With no initially selected terminals, scripts may still run `OPENSESSION` and `SLEEP`. They do not automatically target newly opened sessions. Input commands and prompts require a terminal selected when the script starts; place subsequent input in the new session's startup script or select it before running another script.

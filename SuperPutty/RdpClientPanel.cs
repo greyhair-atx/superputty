@@ -29,6 +29,7 @@ namespace SuperPutty
         private AxMsRdpClient10NotSafeForScripting client;
         private bool configured;
         private bool connecting;
+        private volatile bool loginComplete;
         private bool closing;
         private int closeNotified;
         private readonly System.Threading.Timer displayResizeTimer;
@@ -58,6 +59,8 @@ namespace SuperPutty
                 return this.IsHandleCreated ? this.Handle : IntPtr.Zero;
             }
         }
+
+        internal override bool ScriptInputReady { get { return loginComplete && base.ScriptInputReady; } }
 
         public override bool ExternalProcessCaptured
         {
@@ -339,11 +342,15 @@ namespace SuperPutty
 
         private void Client_OnLoginComplete(object sender, EventArgs e)
         {
+            if (this.closing || this.IsDisposed || this.Disposing) return;
+            this.loginComplete = true;
+            this.NotifyWindowCaptured();
             Log.InfoFormat("RDP ActiveX login completed for {0}", this.session.Host);
         }
 
         private void Client_OnDisconnected(object sender, IMsTscAxEvents_OnDisconnectedEvent e)
         {
+            this.loginComplete = false;
             this.connecting = false;
             if (this.closing)
             {
@@ -374,6 +381,7 @@ namespace SuperPutty
 
         private void Client_OnFatalError(object sender, IMsTscAxEvents_OnFatalErrorEvent e)
         {
+            this.loginComplete = false;
             Log.ErrorFormat("RDP ActiveX fatal error {0}", e.errorCode);
             this.NotifyClosed(true);
         }
@@ -385,6 +393,7 @@ namespace SuperPutty
                 return;
             }
 
+            this.loginComplete = false;
             this.closing = true;
             try
             {

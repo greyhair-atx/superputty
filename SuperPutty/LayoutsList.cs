@@ -1,6 +1,9 @@
 ﻿using System;
 using System.ComponentModel;
 using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Configuration;
 using System.Windows.Forms;
 using SuperPutty.Data;
 using SuperPutty.Gui;
@@ -122,7 +125,13 @@ namespace SuperPutty
                 };
                 if (DialogResult.OK == renameDialog.ShowDialog(this))
                 {
-                    SuperPuTTY.RenameLayout(layout, renameDialog.ItemName);
+                    try { SuperPuTTY.RenameLayout(layout, renameDialog.ItemName); }
+                    catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
+                        || ex is ArgumentException || ex is ConfigurationErrorsException)
+                    {
+                        MessageBox.Show(this, "Unable to rename layout: " + ex.Message, "Rename Layout",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
                 }
             }
             
@@ -130,8 +139,8 @@ namespace SuperPutty
 
         bool ValidateLayoutName(string name, out string error)
         {
-            LayoutData layout = SuperPuTTY.FindLayout(name);
-            if (layout != null)
+            if (!LayoutData.TryValidateName(name, out error)) return false;
+            if (SuperPuTTY.Layouts.Any(layout => string.Equals(layout.Name, name, StringComparison.OrdinalIgnoreCase)))
             {
                 error = "Layout exists with same name";
                 return false;
