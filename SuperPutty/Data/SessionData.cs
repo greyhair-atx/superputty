@@ -20,6 +20,7 @@
  */
 
 using System;
+using System.Xml;
 using System.Collections.Generic;
 using Microsoft.Win32;
 using WeifenLuo.WinFormsUI.Docking;
@@ -243,8 +244,17 @@ namespace SuperPutty.Data
             }
         }
 
+        // Keep imported credentials available for this process, but never persist them.
+        [XmlAttribute("ExtraArgs")]
+        [Browsable(false)]
+        public string PersistedExtraArgs
+        {
+            get { return CommandLineOptions.RemoveSensitiveArguments(ExtraArgs); }
+            set { ExtraArgs = value; }
+        }
+
         private string _ExtraArgs;
-        [XmlAttribute]
+        [XmlIgnore]
         [DisplayName("Extra Arguments")]
         [Description("Extra PuTTY arguments.")]
         public string ExtraArgs
@@ -742,7 +752,15 @@ namespace SuperPutty.Data
                     string fileBaseName = Path.GetFileNameWithoutExtension(fileName);
                     string dirName = Path.GetDirectoryName(fileName);
                     string backupName = Path.Combine(dirName, string.Format("{0}.{1:yyyyMMdd_hhmmss}.XML", fileBaseName, DateTime.Now));
-                    File.Copy(fileName, backupName, true);
+                    XmlDocument backup = new XmlDocument { XmlResolver = null };
+                    using (XmlReader reader = XmlReader.Create(fileName, new XmlReaderSettings
+                    {
+                        DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null
+                    }))
+                        backup.Load(reader);
+                    foreach (XmlAttribute args in backup.SelectNodes("//@ExtraArgs"))
+                        args.Value = CommandLineOptions.RemoveSensitiveArguments(args.Value);
+                    backup.Save(backupName);
                     File.SetAttributes(backupName, File.GetAttributes(backupName) & ~FileAttributes.ReadOnly);
 
                     // limit last count saves
@@ -839,7 +857,7 @@ namespace SuperPutty.Data
 
             foreach (PropertyInfo pi in SessionToCopy.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
-                if (pi.CanWrite)
+                if (pi.CanWrite && pi.Name != nameof(PersistedExtraArgs))
                 {
                     pi.SetValue(this, pi.GetValue(SessionToCopy, null), null);
                 }

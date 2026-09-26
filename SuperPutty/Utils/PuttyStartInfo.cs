@@ -52,6 +52,7 @@ namespace SuperPutty.Utils
         public PuttyStartInfo(SessionData session)
         {
             string argsToLog = null;
+            bool puttyArguments = false;
 
             this.Executable = GetExecutable(session);
 
@@ -94,12 +95,16 @@ namespace SuperPutty.Utils
             }
             else
             {
+                puttyArguments = true;
                 this.Args = MakeArgs(session, true);
                 argsToLog = MakeArgs(session, false);
             }
 
             // attempt to parse env vars
             this.Args = this.Args.Contains('%') ? TryParseEnvVars(this.Args) : this.Args;
+
+            if (puttyArguments && !SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
+                this.Args = CommandLineOptions.RemoveSensitiveArguments(this.Args);
 
             Log.InfoFormat("Putty Args: '{0}'", CommandLineOptions.RedactSensitiveArguments(argsToLog ?? this.Args));
         }
@@ -119,10 +124,13 @@ namespace SuperPutty.Utils
             args += "-P " + session.Port + " ";
             args += !String.IsNullOrEmpty(session.PuttySession) ? "-load " + CommandLineOptions.QuoteArgument(session.PuttySession) + " " : "";
 
-            args += !String.IsNullOrEmpty(SuperPuTTY.Settings.PuttyDefaultParameters) ? SuperPuTTY.Settings.PuttyDefaultParameters + " " : "";
+            string defaults = TryParseEnvVars(SuperPuTTY.Settings.PuttyDefaultParameters ?? String.Empty);
+            defaults = SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg
+                ? defaults : CommandLineOptions.RemoveSensitiveArguments(defaults);
+            args += defaults + " ";
 
             //If extra args contains the password, delete it (it's in session.password)
-            string extraArgs = CommandLineOptions.replacePassword(session.ExtraArgs,"");            
+            string extraArgs = CommandLineOptions.RemoveSensitiveArguments(TryParseEnvVars(session.ExtraArgs ?? String.Empty));
             args += !String.IsNullOrEmpty(extraArgs) ? extraArgs + " " : "";
             args += !String.IsNullOrEmpty(session.Username) && session.Username.Length > 0 ? " -l " + CommandLineOptions.QuoteArgument(session.Username) + " " : "";
             args += CommandLineOptions.QuoteArgument(session.Host);

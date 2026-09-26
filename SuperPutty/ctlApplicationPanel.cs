@@ -31,6 +31,7 @@ using System.Collections.Generic;
 using SuperPutty.Utils;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace SuperPutty
 {
@@ -48,10 +49,10 @@ namespace SuperPutty
         private static string ActivatorTypeName = ConfigurationManager.AppSettings["SuperPuTTY.ActivatorTypeName"] ?? typeof(KeyEventWindowActivator).FullName;
 
         private Process m_Process;
+        private CancellationTokenSource startupCancellation;
+        private bool startupInProgress;
         private bool m_Created = false;
         private IntPtr m_AppWin;
-        private bool b_AppWinFinal = true;
-        private System.ComponentModel.BackgroundWorker bgWinTracker;
         private List<IntPtr> m_hWinEventHooks = new List<IntPtr>();
         private List<NativeMethods.WinEventDelegate> lpfnWinEventProcs = new List<NativeMethods.WinEventDelegate>();
         private WindowActivator m_windowActivator = null;
@@ -60,6 +61,23 @@ namespace SuperPutty
         private System.Windows.Forms.Timer vncWindowTracker;
 
         internal PuttyClosedCallback m_CloseCallback;
+        private event Action Captured;
+
+        internal void WhenCaptured(Action action)
+        {
+            if (ExternalProcessCaptured)
+                action();
+            else
+                Captured += action;
+        }
+
+        protected void NotifyWindowCaptured()
+        {
+            Action captured = Captured;
+            Captured = null;
+            captured?.Invoke();
+        }
+
 
         /// <summary>Set the name of the application executable to launch</summary>
         [Category("Data"), Description("The path/file to launch"), DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
@@ -92,8 +110,6 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             this.ApplicationParameters = "";
             this.ApplicationWorkingDirectory = "";
             this.proto = proto;
-            this.bgWinTracker = new System.ComponentModel.BackgroundWorker();
-            this.bgWinTracker.WorkerSupportsCancellation = true;
 
             this.Disposed += new EventHandler(ApplicationPanel_Disposed);
             SuperPuTTY.LayoutChanged += new EventHandler<Data.LayoutChangedEventArgs>(SuperPuTTY_LayoutChanged);
@@ -122,6 +138,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
         void ApplicationPanel_Disposed(object sender, EventArgs e)
         {
+            CancelStartup();
             StopVncWindowTracker();
             this.Disposed -= new EventHandler(ApplicationPanel_Disposed);
             SuperPuTTY.LayoutChanged -= new EventHandler<Data.LayoutChangedEventArgs>(SuperPuTTY_LayoutChanged);
@@ -135,6 +152,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             });
             this.m_hWinEventHooks.Clear();
             this.lpfnWinEventProcs.Clear();
+            Captured = null;
         }
 
         void SuperPuTTY_LayoutChanged(object sender, Data.LayoutChangedEventArgs e)
@@ -210,13 +228,34 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         ///  and return new process if needed
         /// </summary>
         /// <param name="prc">The first child process to start tracing on</param>
-        private Process WaitForTargetProcess(Process prc)
+        internal static Task WaitForInputIdleAsync(Process process, int timeoutMs, CancellationToken cancellation)
         {
-            // Wait for application to start and become idle
-            if (this.proto != SuperPutty.Data.ConnectionProtocol.WINCMD && this.proto != SuperPutty.Data.ConnectionProtocol.PS) /* Console applications don't respond to some GUI specific calls */
-                prc.WaitForInputIdle();
+            return Task.Run(() =>
+            {
+                Stopwatch elapsed = Stopwatch.StartNew();
+                while (elapsed.ElapsedMilliseconds < timeoutMs)
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    if (process.HasExited || process.WaitForInputIdle(Math.Min(100,
+                        Math.Max(1, timeoutMs - (int)elapsed.ElapsedMilliseconds))))
+                        return;
+                }
+                throw new TimeoutException("The application did not become ready before the startup timeout.");
+            }, cancellation);
+        }
 
-            return prc;
+        private void CancelStartup()
+        {
+            startupCancellation?.Cancel();
+            if (!startupInProgress)
+                return;
+            try
+            {
+                if (m_Process != null && !m_Process.HasExited)
+                    m_Process.Kill();
+            }
+            catch (InvalidOperationException) { }
+            catch (Win32Exception ex) { Log.Warn("Unable to stop the starting application", ex); }
         }
 
         internal static bool TryGetProcessWindow(Process process, out IntPtr window)
@@ -268,6 +307,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                     RegisterWinEventHook(NativeMethods.WinEvents.EVENT_OBJECT_NAMECHANGE, lpfnWinEventProc);
                     RegisterWinEventHook(NativeMethods.WinEvents.EVENT_SYSTEM_FOREGROUND, lpfnWinEventProc);
                 }
+                NotifyWindowCaptured();
             }
             else
             {
@@ -362,57 +402,6 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                     return false;
                 default:
                     return true;
-            }
-        }
-
-        private void CreateVirtWindow()
-        {
-            Log.Info("Creating virtual window");
-            IntPtr hWnd = NativeMethods.CreateWindowEx(NativeMethods.WS_EX_TRANSPARENT ,new StringBuilder("STATIC"), new StringBuilder(""), 0, 1, 1,
-                        1, 1, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-            m_AppWin = hWnd;
-            if (hWnd == IntPtr.Zero)
-                Log.Info("Failed to create virtual window");
-        }
-
-        private void bgWinTracker_DoWork(object sender, DoWorkEventArgs e)
-        {
-            BackgroundWorker worker = (BackgroundWorker)sender;
-            while (!worker.CancellationPending)
-            {
-                System.Threading.Thread.Sleep(1000);
-                if (worker.CancellationPending)
-                    break;
-
-                IntPtr window;
-                if (m_Process == null || !TryGetProcessWindow(m_Process, out window))
-                    break;
-                if (window != IntPtr.Zero && this.IsWindowAppliesForInherit(window))
-                {
-                    e.Result = window;
-                    return;
-                }
-            }
-            e.Cancel = true;
-        }
-
-        private void bgWinTracker_Done(
-            object sender, RunWorkerCompletedEventArgs e)
-        {
-            if (e.Error != null || e.Cancelled || IsDisposed || Disposing || !IsHandleCreated)
-                return;
-
-            m_AppWin = (IntPtr)e.Result;
-            Log.Info("Catched delayed window from caller bgWinTracker_Done");
-            b_AppWinFinal = true;
-
-            this.AttachToWindow();
-            // Move the child so it's located over the parent
-            this.MoveWindow("OnVisChanged");
-            
-            if (RefocusOnVisChanged && NativeMethods.GetForegroundWindow() != this.m_AppWin)
-            {
-                this.BeginInvoke(new MethodInvoker(delegate { this.ReFocusPuTTY("OnVisChanged"); }));
             }
         }
 
@@ -604,7 +593,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         /// Create (start) the hosted application when the parent becomes visible
         /// </summary>
         /// <param name="e">Not used</param>
-        protected override void OnVisibleChanged(EventArgs e)
+        protected override async void OnVisibleChanged(EventArgs e)
         {
             if (this.UsesManagedChildHost)
             {
@@ -612,9 +601,12 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 return;
             }
 
-            if (!m_Created && !String.IsNullOrEmpty(ApplicationName)) // only allow one instance of the child
+            if (Visible && !m_Created && !String.IsNullOrEmpty(ApplicationName)) // only allow one instance of the child
             {
                 m_Created = true;
+                startupInProgress = true;
+                startupCancellation = new CancellationTokenSource();
+                CancellationToken cancellation = startupCancellation.Token;
                 m_AppWin = IntPtr.Zero;
                 try
                 {
@@ -641,58 +633,35 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                     }
 
                     m_Process.Exited += delegate {
-                        if (m_CloseCallback != null)
-                            m_CloseCallback(true);
+                        RunOnUiThread(() => m_CloseCallback?.Invoke(true));
                     };
 
                     m_Process.Start();
 
-                    m_Process = this.WaitForTargetProcess(m_Process);
-                    IntPtr window;
-                    if (!TryGetProcessWindow(m_Process, out window))
-                    {
-                        LogStartupExit();
+                    await WaitForInputIdleAsync(m_Process, GetMaxWindowPoolingTime() * 1000, cancellation);
+                    cancellation.ThrowIfCancellationRequested();
+                    if (IsDisposed || Disposing || !IsHandleCreated)
                         return;
-                    }
-                    if (this.IsWindowAppliesForInherit(window))
+                    Stopwatch captureWait = Stopwatch.StartNew();
+                    while (true)
                     {
-                        m_AppWin = window;
-
-                        if (IntPtr.Zero == m_AppWin)
+                        IntPtr window;
+                        if (!TryGetProcessWindow(m_Process, out window))
                         {
-                            int poolInterval = this.GetMaxWindowPoolingTime();
-                            Log.WarnFormat("Unable to get handle for process on first try.{0}", LoopWaitForHandle ? "  Polling " + poolInterval + " s for handle." : "");
-                            if (LoopWaitForHandle)
-                            {
-                                DateTime startTime = DateTime.Now;
-                                while ((DateTime.Now - startTime).TotalSeconds < poolInterval)
-                                {
-                                    System.Threading.Thread.Sleep(50);
-
-                                    if (!TryGetProcessWindow(m_Process, out window))
-                                    {
-                                        LogStartupExit();
-                                        return;
-                                    }
-                                    if (!this.IsWindowAppliesForInherit(window))
-                                        continue;
-                                    m_AppWin = window;
-                                    if (IntPtr.Zero != m_AppWin)
-                                    {
-                                        Log.Info("Successfully found handle via polling " + (DateTime.Now - startTime).TotalMilliseconds + " ms");
-                                        break;
-                                    }
-                                }
-                            }
+                            LogStartupExit();
+                            return;
                         }
-                    }
-                    else
-                    {
-                        b_AppWinFinal = false;
-                        this.CreateVirtWindow();
-                        bgWinTracker.DoWork += new DoWorkEventHandler(bgWinTracker_DoWork);
-                        bgWinTracker.RunWorkerCompleted += new RunWorkerCompletedEventHandler(bgWinTracker_Done);
-                        bgWinTracker.RunWorkerAsync();
+                        if (window != IntPtr.Zero && IsWindowAppliesForInherit(window))
+                        {
+                            m_AppWin = window;
+                            break;
+                        }
+                        if ((!LoopWaitForHandle && proto != Data.ConnectionProtocol.RDP) ||
+                            captureWait.ElapsedMilliseconds >= GetMaxWindowPoolingTime() * 1000)
+                            throw new TimeoutException("No application window appeared before the capture timeout.");
+                        await Task.Delay(50, cancellation);
+                        if (IsDisposed || Disposing || !IsHandleCreated)
+                            return;
                     }
 
                     if (m_Process.HasExited)
@@ -716,42 +685,28 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                         vncWindowTracker.Start();
                     }
                 }
-                catch (InvalidOperationException) when (m_Process != null && m_Process.HasExited)
+                catch (OperationCanceledException) { }
+                catch (Exception ex) when (ex is InvalidOperationException || ex is Win32Exception || ex is TimeoutException)
                 {
-                    LogStartupExit();
-                    return;
+                    bool wasCanceled = cancellation.IsCancellationRequested;
+                    CancelStartup();
+                    Log.Warn("Unable to start hosted application", ex);
+                    if (!IsDisposed && !Disposing && !wasCanceled)
+                        MessageBox.Show(this, "The application could not be started or captured. Check its path and connection settings.",
+                            "Application Startup Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
-                catch (InvalidOperationException ex)
+                finally
                 {
-                    /* Possible Causes:
-                     * No file name was specified in the Process component's StartInfo.
-                     * -or-
-                     * The ProcessStartInfo.UseShellExecute member of the StartInfo property is true while ProcessStartInfo.RedirectStandardInput, 
-                     * ProcessStartInfo.RedirectStandardOutput, or ProcessStartInfo.RedirectStandardError is true. 
-                     */
-                    MessageBox.Show(this, ex.Message, "Invalid Operation Error");
-                    throw;
-                }
-                catch (Win32Exception ex)
-                {
-                    /*
-                     * Checks are elsewhere to ensure these don't occur, but incase they do we're gonna bail with a nasty exception
-                     * which will hopefully send users kicking and screaming at me to fix this (And hopefully they will include a 
-                     * stacktrace!)
-                     */
-                    if (ex.NativeErrorCode == NativeMethods.ERROR_ACCESS_DENIED)
-                    {
-                        throw;
-                    }
-                    else if (ex.NativeErrorCode == NativeMethods.ERROR_FILE_NOT_FOUND)
-                    {
-                        throw;
-                    }
+                    startupInProgress = false;
+                    startupCancellation.Dispose();
+                    startupCancellation = null;
                 }
 
             }
 
-            if (this.Visible && this.m_Created && this.b_AppWinFinal && this.ExternalProcessCaptured)
+            if (IsDisposed || Disposing || !IsHandleCreated)
+                return;
+            if (this.Visible && this.m_Created && this.ExternalProcessCaptured)
             {
                 // Move the child so it's located over the parent
                 this.MoveWindow("OnVisChanged");
@@ -772,6 +727,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         /// <param name="e"></param>
         protected override void OnHandleDestroyed(EventArgs e)
         {
+            CancelStartup();
             StopVncWindowTracker();
             if (this.UsesManagedChildHost)
             {
@@ -793,8 +749,6 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 System.Threading.Thread.Sleep(ClosePuttyWaitTimeMs);
 
                 m_AppWin = IntPtr.Zero;
-                if (this.bgWinTracker.IsBusy == true)
-                    this.bgWinTracker.CancelAsync();
             }
 
             base.OnHandleDestroyed(e);

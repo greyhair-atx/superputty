@@ -36,7 +36,7 @@ namespace SuperPutty.Utils
     {
         private static readonly ILog Log = LogManager.GetLogger(typeof(CommandLineOptions));
         private static readonly Regex SensitiveArgumentRegex = new Regex(
-            @"(?ix)(?<prefix>(?:^|\s)(?:-pw|-password|/password|/p)(?:\s+|=|:))(?<value>""[^""]*""|\S+)",
+            @"(?ix)(?<prefix>(?:^|\s)(?:-pw|-password|/password|/p)(?:\s+|=|:))(?<value>""(?:\\.|[^""\\])*""|\S+)",
             RegexOptions.Compiled);
         private static readonly Regex UriPasswordRegex = new Regex(
             @"(?i)(?<prefix>\b[a-z][a-z0-9+.-]*://[^\s/:@]+:)[^\s]*(?<suffix>@)",

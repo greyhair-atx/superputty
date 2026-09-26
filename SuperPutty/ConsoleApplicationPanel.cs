@@ -293,6 +293,7 @@ namespace SuperPutty
                 this.protocol, this.consoleProcess.ProcessName, this.consoleWindow);
             this.MoveConsoleWindow();
             this.BeginInvoke(new MethodInvoker(delegate { this.ReFocusPuTTY("ConsoleCaptureCompleted"); }));
+            this.NotifyWindowCaptured();
         }
 
         private bool AttachConsoleWindow()

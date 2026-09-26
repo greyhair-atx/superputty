@@ -570,8 +570,11 @@ namespace SuperPutty
 
                         if (!String.IsNullOrEmpty(script))
                         {
-                            ExecuteScriptEventArgs scriptArgs = new ExecuteScriptEventArgs() { Script = script, Handle = panel.AppPanel.AppWindowHandle };
-                            SPSL.BeginExecuteScript(scriptArgs);
+                            panel.AppPanel.WhenCaptured(() =>
+                            {
+                                ExecuteScriptEventArgs scriptArgs = new ExecuteScriptEventArgs() { Script = script, Handle = panel.AppPanel.AppWindowHandle };
+                                SPSL.BeginExecuteScript(scriptArgs);
+                            });
                         }
                     }
                 } catch (InvalidOperationException ex)

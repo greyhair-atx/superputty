@@ -33,7 +33,9 @@ Win CMD and Windows PowerShell use the existing native Windows console host. The
 
 ## Arguments and credentials
 
-**Extra Arguments** are plain text and are passed to the selected client. SuperPuTTY removes recognized embedded password switches while constructing PuTTY and PSCP arguments, but secrets should never be stored in this field. Quote non-secret paths or values containing spaces as required by the external client.
+**Extra Arguments** are passed to the selected client. Recognized password switches are removed when saving or exporting session XML and when creating a new session backup. Imported legacy passwords remain available in memory for the current run, subject to the plaintext-password forwarding setting, but are not saved again. Previously created backups are not rewritten and may still contain old passwords. Do not put other secrets in this field. Quote non-secret paths or values containing spaces as required by the external client.
+
+When plaintext-password forwarding is disabled, PuTTY's default parameters are also filtered, including password switches supplied through environment variables.
 
 For SSH authentication, prefer a PuTTY profile and Pageant. For SCP, use the session's explicit **Private Key** field or the protected password prompt described in [SCP file transfers](scp-file-transfers.md).
 
