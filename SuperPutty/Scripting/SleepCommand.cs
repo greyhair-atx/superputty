@@ -35,7 +35,7 @@ namespace SuperPuTTY.Scripting
             int duration = 0;            
             if(int.TryParse(arg, out duration) && duration > 0)
             {
-                Thread.Sleep(duration);
+                SPSL.Wait(duration);
             }
             else
             {

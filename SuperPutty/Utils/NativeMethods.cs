@@ -57,6 +57,7 @@ namespace SuperPutty.Utils
             WS_EX_TOOLWINDOW = 0x00000080,
             WS_EX_NOACTIVATE = 0x08000000,
             WS_CHILD = 0x40000000,
+            WS_POPUP = 0x80000000,
             WS_VISIBLE = 0x10000000,
             WS_EX_TRANSPARENT = 0x00000020;
 
@@ -1125,13 +1126,16 @@ namespace SuperPutty.Utils
         #region Pinvoke/Win32 Methods
 
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern long SetParent(IntPtr hWndChild, IntPtr hWndParent);
+        public static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndParent);
+
+        [DllImport("kernel32.dll", EntryPoint = "SetLastError")]
+        internal static extern void ClearLastError(uint error);
 
         [DllImport("user32.dll", EntryPoint = "GetWindowLongA", SetLastError = true)]
-        public static extern long GetWindowLong(IntPtr hWnd, int nIndex);
+        public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
 
         [DllImport("user32.dll", EntryPoint = "SetWindowLongA", SetLastError = true)]
-        public static extern long SetWindowLong(IntPtr hWnd, int nIndex, long dwNewLong);
+        public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
         // http://msdn.microsoft.com/en-us/library/windows/desktop/ms644898%28v=vs.85%29.aspx
         // This static method is required because legacy OSes do not support
@@ -1153,8 +1157,12 @@ namespace SuperPutty.Utils
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool MoveWindow(IntPtr hWnd, int x, int y, int cx, int cy, bool repaint);
 
-        [DllImport("user32.dll", EntryPoint = "PostMessageA", SetLastError = true)]
-        public static extern bool PostMessage(IntPtr hWnd, uint Msg, long wParam, long lParam);
+        [DllImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)]
+        public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true)]
+        internal static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint message, IntPtr wParam,
+            IntPtr lParam, uint flags, uint timeout, out UIntPtr result);
 
         [DllImport("user32.dll")]
         public static extern int SendMessage(IntPtr hWnd, uint Msg, long wParam, long lParam);

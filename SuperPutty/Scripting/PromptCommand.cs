@@ -15,9 +15,7 @@ namespace SuperPuTTY.Scripting
         /// <returns>A string containing commands to send with variables replaced with a carriage return sent at the end</returns>
         internal static CommandData PromptHandler(string arg)
         {
-            string result = Microsoft.VisualBasic.Interaction.InputBox(arg);
-            CommandData data = new CommandData(result, new KeyEventArgs(Keys.Enter), TimeSpan.FromMilliseconds(50));
-            return data;
+            return ShowScriptPrompt(arg, false);
         }
     }
 }

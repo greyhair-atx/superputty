@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SuperPuTTY.Scripting
 {
@@ -19,7 +21,7 @@ namespace SuperPuTTY.Scripting
                 String.IsNullOrEmpty(uri.UserInfo);
         }
 
-        internal static string Download(Uri uri)
+        internal static async Task<string> DownloadAsync(Uri uri, CancellationToken cancellation)
         {
             Uri secureUri;
             if (uri == null || !TryGetSecureUri(uri.AbsoluteUri, out secureUri))
@@ -32,31 +34,51 @@ namespace SuperPuTTY.Scripting
             request.ReadWriteTimeout = RequestTimeoutMilliseconds;
             request.UserAgent = "SuperPuTTY-SPSL";
 
-            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+            using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
             {
-                if ((int)response.StatusCode < 200 || (int)response.StatusCode >= 300)
-                    throw new InvalidOperationException("Remote SPSL request returned " + response.StatusCode + ".");
-                if (!String.Equals(response.ResponseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException("Remote SPSL response did not use HTTPS.");
-                if (response.ContentLength > MaximumScriptBytes)
-                    throw new InvalidOperationException("Remote SPSL script exceeds the 1 MiB limit.");
-
-                using (Stream input = response.GetResponseStream())
-                using (MemoryStream output = new MemoryStream())
+                deadline.CancelAfter(RequestTimeoutMilliseconds);
+                using (deadline.Token.Register(request.Abort))
+                try
                 {
-                    byte[] buffer = new byte[8192];
-                    int read;
-                    while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                    deadline.Token.ThrowIfCancellationRequested();
+                    using (HttpWebResponse response = (HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false))
                     {
-                        if (output.Length + read > MaximumScriptBytes)
+                        if ((int)response.StatusCode < 200 || (int)response.StatusCode >= 300)
+                            throw new InvalidOperationException("Remote SPSL request returned " + response.StatusCode + ".");
+                        if (!String.Equals(response.ResponseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidOperationException("Remote SPSL response did not use HTTPS.");
+                        if (response.ContentLength > MaximumScriptBytes)
                             throw new InvalidOperationException("Remote SPSL script exceeds the 1 MiB limit.");
-                        output.Write(buffer, 0, read);
-                    }
 
-                    output.Position = 0;
-                    using (StreamReader reader = new StreamReader(output, Encoding.UTF8, true))
-                        return reader.ReadToEnd();
+                        using (Stream input = response.GetResponseStream())
+                            return await ReadScriptAsync(input, deadline.Token).ConfigureAwait(false);
+                    }
                 }
+                catch (Exception ex) when (deadline.IsCancellationRequested)
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    throw new TimeoutException("Remote script download exceeded its overall time limit.", ex);
+                }
+            }
+        }
+
+        internal static async Task<string> ReadScriptAsync(Stream input, CancellationToken cancellation)
+        {
+            using (MemoryStream output = new MemoryStream())
+            {
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = await input.ReadAsync(buffer, 0, buffer.Length, cancellation).ConfigureAwait(false)) > 0)
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    if (output.Length + read > MaximumScriptBytes)
+                        throw new InvalidOperationException("Remote SPSL script exceeds the 1 MiB limit.");
+                    output.Write(buffer, 0, read);
+                }
+                cancellation.ThrowIfCancellationRequested();
+                output.Position = 0;
+                using (StreamReader reader = new StreamReader(output, Encoding.UTF8, true))
+                    return reader.ReadToEnd();
             }
         }
     }

@@ -185,6 +185,14 @@ namespace SuperPutty.Data
             }
         }
 
+        internal static ConnectionProtocol[] GetProtocolDisplayOrder()
+        {
+            return new[] { ConnectionProtocol.SSH, ConnectionProtocol.Serial, ConnectionProtocol.VNC,
+                ConnectionProtocol.RDP, ConnectionProtocol.WINCMD, ConnectionProtocol.PS, ConnectionProtocol.SCP,
+                ConnectionProtocol.Cygterm, ConnectionProtocol.Mintty, ConnectionProtocol.Raw,
+                ConnectionProtocol.Rlogin, ConnectionProtocol.Telnet };
+        }
+
         private ConnectionProtocol _Proto;
         [XmlAttribute]
         [DisplayName("Connection Type")]
@@ -751,7 +759,7 @@ namespace SuperPutty.Data
                     // backup
                     string fileBaseName = Path.GetFileNameWithoutExtension(fileName);
                     string dirName = Path.GetDirectoryName(fileName);
-                    string backupName = Path.Combine(dirName, string.Format("{0}.{1:yyyyMMdd_hhmmss}.XML", fileBaseName, DateTime.Now));
+                    string backupName = Path.Combine(dirName, string.Format("{0}.{1:yyyyMMdd_HHmmss}.XML", fileBaseName, DateTime.Now));
                     XmlDocument backup = new XmlDocument { XmlResolver = null };
                     using (XmlReader reader = XmlReader.Create(fileName, new XmlReaderSettings
                     {
@@ -769,7 +777,7 @@ namespace SuperPutty.Data
                     oldFiles.Reverse();
                     if (oldFiles.Count > count)
                     {
-                        for (int i = 20; i < oldFiles.Count; i++)
+                        for (int i = count; i < oldFiles.Count; i++)
                         {
                             Log.InfoFormat("Cleaning up old file, {0}", oldFiles[i]);
                             File.Delete(oldFiles[i]);

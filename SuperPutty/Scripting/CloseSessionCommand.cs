@@ -31,7 +31,7 @@ namespace SuperPuTTY.Scripting
         /// <returns>A <seealso cref="CommandData"/> object containing the character to send</returns>
         internal static CommandData CloseSessionHandler(string arg)
         {
-            throw new NotImplementedException();            
+            throw new NotSupportedException("CLOSESESSION is not supported. Close the session tab manually.");
         }
     }
 }

@@ -21,17 +21,13 @@
 
 using System;
 using System.Text;
-using System.Threading;
 using System.Windows.Forms;
-using log4net;
 
 namespace SuperPutty.Utils
 {
     /// <summary>Store and retrieve commands and keystrokes for sending to sessions</summary>
     public class CommandData
     {
-        private static readonly ILog Log = LogManager.GetLogger(typeof(CommandData));
-
         /// <summary>Get the command to send</summary>
         public string Command { get; private set; }
         /// <summary>Get the keystrokes to send</summary>
@@ -77,36 +73,64 @@ namespace SuperPutty.Utils
         /// <param name="handle">The Windows Handle to send to</param>
         public void SendToTerminal(IntPtr handle)
         {
-            // Command text may contain passwords, tokens, or other secrets. Never log it.
-            Log.DebugFormat("SendToTerminal: Handle={0}", handle);
-            if (!string.IsNullOrEmpty(this.Command))
+            var target = new global::SuperPuTTY.Scripting.SPSL.ScriptTarget(handle);
+            target.Send(this);
+        }
+
+        internal void SendToTerminalChecked(IntPtr handle, Func<bool> isAlive)
+        {
+            // Keep keyboard messages targeted to this window, without changing global keyboard state.
+            Action<int, int, int> post = (message, key, flags) =>
             {
-                // send normal string command
-                foreach (Char c in this.Command)
+                if (!isAlive()) return;
+                if (!NativeMethods.PostMessage(handle, (uint)message, new IntPtr(key), new IntPtr(flags)))
+                    throw new InvalidOperationException("Unable to queue terminal input.");
+            };
+            if (!string.IsNullOrEmpty(Command))
+            {
+                foreach (char c in Command)
                 {
-                    NativeMethods.SendMessage(handle, NativeMethods.WM_CHAR, (int)c, 0);
+                    if (!isAlive()) return;
+                    // Bound synchronous text delivery so hung terminals cannot strand a script.
+                    UIntPtr result;
+                    if (NativeMethods.SendMessageTimeout(handle, NativeMethods.WM_CHAR, new IntPtr(c),
+                        IntPtr.Zero, 0x23, 250, out result) == IntPtr.Zero)
+                    {
+                        if (!isAlive()) return;
+                        throw new InvalidOperationException("Terminal did not accept input in time.");
+                    }
                 }
             }
-
-            if (this.KeyData != null)
-            {
-                // special keys
-                if (this.KeyData.Control) { NativeMethods.PostMessage(handle, NativeMethods.WM_KEYDOWN, NativeMethods.VK_CONTROL, 0); }
-                if (this.KeyData.Shift) { NativeMethods.PostMessage(handle, NativeMethods.WM_KEYDOWN, NativeMethods.VK_SHIFT, 0); }
-
-                char charStr = Convert.ToChar(this.KeyData.KeyCode);
-                NativeMethods.PostMessage(handle, NativeMethods.WM_KEYDOWN, (int)charStr, 0);
-
-                if (this.KeyData.Shift) { NativeMethods.PostMessage(handle, NativeMethods.WM_KEYUP, NativeMethods.VK_SHIFT, 0); }
-                if (this.KeyData.Control) { NativeMethods.PostMessage(handle, NativeMethods.WM_KEYUP, NativeMethods.VK_CONTROL, 0); }
-            }
-
-            if (this.Delay > TimeSpan.Zero)
-            {
-                Thread.Sleep(this.Delay);
-            }
+            if (KeyData != null) SendKeys(KeyData, post);
+            if (Delay > TimeSpan.Zero) global::SuperPuTTY.Scripting.SPSL.Wait((int)Delay.TotalMilliseconds);
         }
-        
+
+        internal static void SendKeys(KeyEventArgs keys, Action<int, int, int> post)
+        {
+            Action<Keys, bool, bool> send = (key, up, alt) =>
+            {
+                int scan = (int)NativeMethods.MapVirtualKey((uint)key, 0);
+                int flags = 1 | (scan << 16);
+                if (key == Keys.Insert || key == Keys.Delete || key == Keys.Home || key == Keys.End
+                    || key == Keys.Prior || key == Keys.Next || key == Keys.Left || key == Keys.Right
+                    || key == Keys.Up || key == Keys.Down || key == Keys.Divide || key == Keys.NumLock)
+                    flags |= 1 << 24;
+                if (alt) flags |= 1 << 29;
+                if (up) flags |= unchecked((int)0xc0000000);
+                bool system = alt || key == Keys.Menu || key == Keys.F10;
+                post(system ? (up ? NativeMethods.WM_SYSKEYUP : NativeMethods.WM_SYSKEYDOWN)
+                    : (up ? NativeMethods.WM_KEYUP : NativeMethods.WM_KEYDOWN), (int)key, flags);
+            };
+            if (keys.Control) send(Keys.ControlKey, false, false);
+            if (keys.Shift) send(Keys.ShiftKey, false, false);
+            if (keys.Alt) send(Keys.Menu, false, false);
+            send(keys.KeyCode, false, keys.Alt);
+            send(keys.KeyCode, true, keys.Alt);
+            if (keys.Alt) send(Keys.Menu, true, true);
+            if (keys.Shift) send(Keys.ShiftKey, true, false);
+            if (keys.Control) send(Keys.ControlKey, true, false);
+        }
+
         public override string ToString()
         {
             StringBuilder sb = new StringBuilder();

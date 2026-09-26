@@ -137,8 +137,11 @@ namespace SuperPutty
             this.protoTypesMap["RDP"] = ConnectionProtocol.RDP;
             this.protoTypesMap["Win CMD"] = ConnectionProtocol.WINCMD;
             this.protoTypesMap["PowerShell"] = ConnectionProtocol.PS;
-            foreach (System.Collections.DictionaryEntry protoEntry in this.protoTypesMap)
-                comboBoxProto.Items.Add(protoEntry.Key);
+            comboBoxProto.Sorted = false;
+            foreach (ConnectionProtocol protocol in SessionData.GetProtocolDisplayOrder())
+                foreach (System.Collections.DictionaryEntry protoEntry in this.protoTypesMap)
+                    if ((ConnectionProtocol)protoEntry.Value == protocol)
+                        comboBoxProto.Items.Add(protoEntry.Key);
             comboBoxProto.SelectedItem = "SSH";
             comboBoxProto.DropDownStyle = ComboBoxStyle.DropDownList;
         }

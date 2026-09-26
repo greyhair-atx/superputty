@@ -9,9 +9,10 @@ namespace SuperPutty
         private Label displayMessage;
         private TextBox textBox1;
 
-        public frmPrivatePrompt(String arg)
+        public frmPrivatePrompt(String arg, bool maskPassword = true)
         {
             InitializeComponent(arg);
+            textBox1.UseSystemPasswordChar = maskPassword;
         }
 
         private void InitializeComponent(String arg)

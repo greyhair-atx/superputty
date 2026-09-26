@@ -16,6 +16,64 @@ namespace SuperPuTTY.Scripting
     {
         private static readonly ILog Log = LogManager.GetLogger(typeof(SPSL));
 
+        [ThreadStatic]
+        private static ScriptTarget[] currentTargets;
+
+        internal sealed class ScriptTarget
+        {
+            private readonly IntPtr handle;
+            private readonly uint processId;
+            private readonly uint threadId;
+            private readonly Func<bool> sessionAlive;
+
+            internal ScriptTarget(IntPtr handle, Func<bool> sessionAlive = null)
+            {
+                this.handle = handle;
+                this.sessionAlive = sessionAlive;
+                threadId = NativeMethods.GetWindowThreadProcessId(handle, out processId);
+            }
+
+            internal static ScriptTarget ForPanel(ApplicationPanel panel)
+            {
+                return new ScriptTarget(panel.AppWindowHandle, () => !panel.ScriptsStopped);
+            }
+
+            internal bool IsAlive
+            {
+                get
+                {
+                    uint owner;
+                    return (sessionAlive == null || sessionAlive()) && threadId != 0
+                        && NativeMethods.IsWindow(handle)
+                        && NativeMethods.GetWindowThreadProcessId(handle, out owner) == threadId
+                        && owner == processId;
+                }
+            }
+
+            internal void Send(CommandData command)
+            {
+                if (IsAlive) command.SendToTerminalChecked(handle, () => IsAlive);
+            }
+        }
+
+        internal static void CheckCancellation()
+        {
+            if (currentTargets != null && !currentTargets.Any(target => target.IsAlive))
+                throw new OperationCanceledException();
+        }
+
+        internal static void Wait(int milliseconds)
+        {
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            do
+            {
+                CheckCancellation();
+                int remaining = milliseconds - (int)elapsed.ElapsedMilliseconds;
+                if (remaining <= 0) return;
+                Thread.Sleep(Math.Min(remaining, 50));
+            } while (true);
+        }
+
         /// <summary>Holds the Key and associate Key entry</summary>
         private class SPSLFunction
         {
@@ -49,6 +107,7 @@ namespace SuperPuTTY.Scripting
         public static bool TryParseScriptLine(String line, out CommandData commandData)
         {
             commandData = null;
+            line = line == null ? null : line.TrimStart();
             if (string.IsNullOrEmpty(line)
                 || line.StartsWith("#")) // a comment line, ignore
             {
@@ -59,7 +118,7 @@ namespace SuperPuTTY.Scripting
             string command = string.Empty;
             string args = string.Empty;
 
-            int index = line.IndexOf(' ');
+            int index = line.IndexOfAny(new[] { ' ', '\t' });
             if (index > 0)
             {
                 command = line.Substring(0, index);
@@ -79,8 +138,7 @@ namespace SuperPuTTY.Scripting
             }
             else
             {
-                Log.WarnFormat("Command {0} Not Supported", command);
-                return false;
+                throw new NotSupportedException("Unsupported SPSL command.");
             }
         }
 
@@ -96,17 +154,34 @@ namespace SuperPuTTY.Scripting
             }
         }
 
-        internal static Thread CreateExecutionThread(ExecuteScriptEventArgs scriptArgs, string[] scriptlines)
+        internal static Thread CreateExecutionThread(ExecuteScriptEventArgs scriptArgs, string[] scriptlines, Action<int> onError = null)
         {
-            return new Thread(delegate ()
+            var targets = scriptArgs.Targets ?? new[] { new ScriptTarget(scriptArgs.Handle) };
+            var worker = new Thread(delegate ()
             {
-                foreach (string line in scriptlines)
+                currentTargets = targets;
+                for (int index = 0; index < scriptlines.Length; index++)
                 {
-                    CommandData command;
-                    TryParseScriptLine(line, out command);
-                    if (command != null)
+                    try
                     {
-                        command.SendToTerminal(scriptArgs.Handle);
+                        CheckCancellation();
+                        CommandData command;
+                        TryParseScriptLine(scriptlines[index], out command);
+                        CheckCancellation();
+                        if (command != null)
+                            foreach (var target in targets) target.Send(command);
+                    }
+                    catch (OperationCanceledException) { return; }
+                    catch (Exception ex)
+                    {
+                        // Script arguments can contain credentials. Do not log the line or exception message.
+                        int lineNumber = index + 1;
+                        Log.WarnFormat("SPSL stopped at line {0}: {1}", lineNumber, ex.GetType().Name);
+                        if (onError != null)
+                            onError(lineNumber);
+                        else
+                            ReportScriptError(lineNumber, ex is NotSupportedException);
+                        return;
                     }
                 }
             })
@@ -114,6 +189,25 @@ namespace SuperPuTTY.Scripting
                 IsBackground = true,
                 Name = "SPSL script execution"
             };
+            worker.SetApartmentState(ApartmentState.STA);
+            return worker;
+        }
+
+        private static void ReportScriptError(int lineNumber, bool unsupported)
+        {
+            var form = SuperPutty.SuperPuTTY.MainForm;
+            if (form == null || form.IsDisposed || !form.IsHandleCreated)
+                return;
+            try
+            {
+                form.BeginInvoke(new Action(() =>
+                {
+                    if (!form.IsDisposed)
+                        SuperPutty.SuperPuTTY.ReportStatus("Script stopped at line {0}: {1}", lineNumber,
+                            unsupported ? "command is not supported" : "command failed; check its arguments");
+                }));
+            }
+            catch (InvalidOperationException) { } // The application closed while reporting the error.
         }
 
         /// <summary>Find Valid spsl script commands from lookup table and retrieve the Function to execute</summary>

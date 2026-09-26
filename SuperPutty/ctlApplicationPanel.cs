@@ -32,6 +32,7 @@ using SuperPutty.Utils;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 
 namespace SuperPutty
 {
@@ -50,6 +51,7 @@ namespace SuperPutty
 
         private Process m_Process;
         private CancellationTokenSource startupCancellation;
+        internal volatile bool ScriptsStopped;
         private bool startupInProgress;
         private bool m_Created = false;
         private IntPtr m_AppWin;
@@ -138,6 +140,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
         void ApplicationPanel_Disposed(object sender, EventArgs e)
         {
+            ScriptsStopped = true;
             CancelStartup();
             StopVncWindowTracker();
             this.Disposed -= new EventHandler(ApplicationPanel_Disposed);
@@ -283,12 +286,55 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 this.proto, ApplicationName, m_Process.ExitCode);
         }
 
+        internal static void ReparentWindow(IntPtr child, IntPtr parent)
+        {
+            if (!NativeMethods.IsWindow(child) || !NativeMethods.IsWindow(parent))
+                throw new InvalidOperationException("The application or host window no longer exists.");
+            NativeMethods.ClearLastError(0);
+            int originalStyle = NativeMethods.GetWindowLong(child, NativeMethods.GWL_STYLE);
+            int error = Marshal.GetLastWin32Error();
+            if (originalStyle == 0 && error != 0)
+                throw new Win32Exception(error);
+            int childStyle = unchecked((int)(((uint)originalStyle | NativeMethods.WS_CHILD) & ~NativeMethods.WS_POPUP));
+            NativeMethods.ClearLastError(0);
+            int previousStyle = NativeMethods.SetWindowLong(child, NativeMethods.GWL_STYLE, childStyle);
+            error = Marshal.GetLastWin32Error();
+            if (previousStyle == 0 && error != 0)
+                throw new Win32Exception(error, "Unable to prepare the application window for embedding.");
+            try
+            {
+                NativeMethods.ClearLastError(0);
+                IntPtr previousParent = NativeMethods.SetParent(child, parent);
+                error = Marshal.GetLastWin32Error();
+                if (previousParent == IntPtr.Zero && error != 0)
+                    throw new Win32Exception(error, "Unable to embed the application window.");
+                if (NativeMethods.GetParent(child) != parent)
+                {
+                    NativeMethods.SetParent(child, previousParent);
+                    throw new InvalidOperationException("The application window was not embedded in its host.");
+                }
+            }
+            catch
+            {
+                NativeMethods.SetWindowLong(child, NativeMethods.GWL_STYLE, originalStyle);
+                throw;
+            }
+        }
+
+        internal static bool CaptureTimedOut(Data.ConnectionProtocol protocol, bool windowPresented,
+            long elapsedMilliseconds, int timeoutMilliseconds)
+        {
+            // An external RDP client may be waiting on a person to finish authentication.
+            return !(protocol == Data.ConnectionProtocol.RDP && windowPresented) &&
+                elapsedMilliseconds >= timeoutMilliseconds;
+        }
+
         private void AttachToWindow()
         {
             if (this.m_AppWin != IntPtr.Zero)
             {
                 // Set the application as a child of the parent form
-                NativeMethods.SetParent(m_AppWin, this.Handle);
+                ReparentWindow(m_AppWin, this.Handle);
 
                 // Show it! (must be done before we set the windows visibility parameters below
                 NativeMethods.ShowWindow(m_AppWin, NativeMethods.WindowShowStyle.Maximize);
@@ -298,7 +344,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 lStyle &= ~NativeMethods.WS_BORDER;
                 if (this.proto == SuperPutty.Data.ConnectionProtocol.VNC)
                     lStyle |= NativeMethods.WS_HSCROLL | NativeMethods.WS_VSCROLL;
-                NativeMethods.SetWindowLong(m_AppWin, NativeMethods.GWL_STYLE, lStyle);
+                NativeMethods.SetWindowLong(m_AppWin, NativeMethods.GWL_STYLE, unchecked((int)lStyle));
                 // Hooks are process-scoped and remain valid when VNC replaces its window.
                 if (this.lpfnWinEventProcs.Count == 0)
                 {
@@ -385,8 +431,18 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
             Log.InfoFormat("Replacing VNC startup window {0} with desktop window {1}", m_AppWin, window);
             m_AppWin = window;
-            this.AttachToWindow();
-            this.MoveWindow("VncDesktopCapture");
+            try
+            {
+                this.AttachToWindow();
+                this.MoveWindow("VncDesktopCapture");
+            }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Win32Exception)
+            {
+                m_AppWin = IntPtr.Zero;
+                StopVncWindowTracker();
+                Log.Warn("Unable to embed the VNC desktop", ex);
+                SuperPuTTY.ReportStatus("The VNC desktop could not be embedded. Close and reopen the session to retry.");
+            }
         }
 
         private bool IsWindowAppliesForInherit(IntPtr hWnd)
@@ -396,7 +452,6 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 case SuperPutty.Data.ConnectionProtocol.RDP:
                     StringBuilder winTitleBuf = new StringBuilder(256);
                     int winTitleLen = NativeMethods.GetWindowText(hWnd, winTitleBuf, winTitleBuf.Capacity - 1);
-                    Log.Info("IsWindowAppliesForInherit: Evaluating window " + winTitleBuf.ToString());
                     if (winTitleLen > 0 && (winTitleBuf.ToString().Contains(" - Remote Desktop Connection") || winTitleBuf.ToString().Contains("FreeRDP: ")))
                         return true;
                     return false;
@@ -643,6 +698,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                     if (IsDisposed || Disposing || !IsHandleCreated)
                         return;
                     Stopwatch captureWait = Stopwatch.StartNew();
+                    bool windowPresented = false;
                     while (true)
                     {
                         IntPtr window;
@@ -651,13 +707,15 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                             LogStartupExit();
                             return;
                         }
+                        if (window != IntPtr.Zero && NativeMethods.IsWindow(window))
+                            windowPresented = true;
                         if (window != IntPtr.Zero && IsWindowAppliesForInherit(window))
                         {
                             m_AppWin = window;
                             break;
                         }
                         if ((!LoopWaitForHandle && proto != Data.ConnectionProtocol.RDP) ||
-                            captureWait.ElapsedMilliseconds >= GetMaxWindowPoolingTime() * 1000)
+                            CaptureTimedOut(proto, windowPresented, captureWait.ElapsedMilliseconds, GetMaxWindowPoolingTime() * 1000))
                             throw new TimeoutException("No application window appeared before the capture timeout.");
                         await Task.Delay(50, cancellation);
                         if (IsDisposed || Disposing || !IsHandleCreated)
@@ -690,6 +748,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 {
                     bool wasCanceled = cancellation.IsCancellationRequested;
                     CancelStartup();
+                    m_AppWin = IntPtr.Zero;
                     Log.Warn("Unable to start hosted application", ex);
                     if (!IsDisposed && !Disposing && !wasCanceled)
                         MessageBox.Show(this, "The application could not be started or captured. Check its path and connection settings.",
@@ -727,6 +786,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         /// <param name="e"></param>
         protected override void OnHandleDestroyed(EventArgs e)
         {
+            ScriptsStopped = true;
             CancelStartup();
             StopVncWindowTracker();
             if (this.UsesManagedChildHost)
@@ -741,9 +801,9 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 // ask in the Background whether the session shall be closed.
                 // Otherwise an annoying beep is generated everytime a terminal session is closed.
                 if (this.ApplicationCloseWithDestroy) {
-                    NativeMethods.PostMessage(m_AppWin, NativeMethods.WM_DESTROY, 0, 0);
+                    NativeMethods.PostMessage(m_AppWin, NativeMethods.WM_DESTROY, IntPtr.Zero, IntPtr.Zero);
                 } else {
-                    NativeMethods.PostMessage(m_AppWin, NativeMethods.WM_CLOSE, 0, 0);
+                    NativeMethods.PostMessage(m_AppWin, NativeMethods.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
                 }
 
                 System.Threading.Thread.Sleep(ClosePuttyWaitTimeMs);

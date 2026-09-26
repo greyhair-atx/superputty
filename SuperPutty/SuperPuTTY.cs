@@ -16,6 +16,8 @@ using System.Drawing;
 using SuperPutty.Scp;
 using SuperPuTTY.Scripting;
 using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SuperPutty
 {
@@ -516,73 +518,94 @@ namespace SuperPutty
                     ReportStatus($"Opened session: {session.SessionId} [{session.Proto}]");
 
                     if (!string.IsNullOrWhiteSpace(session.SPSLFileName))
-                    {
-                        string fileName = session.SPSLFileName;
-                        string script = string.Empty;
-
-                        if(Regex.IsMatch(fileName, @"^https?:\/\/", RegexOptions.IgnoreCase))
-                        {
-                            Uri scriptUri;
-                            if (!RemoteSpslLoader.TryGetSecureUri(fileName, out scriptUri))
-                            {
-                                MessageBox.Show(
-                                    "Remote SPSL scripts must use HTTPS. The script was not executed.\n\n" + fileName,
-                                    "Blocked Insecure Remote Script",
-                                    MessageBoxButtons.OK,
-                                    MessageBoxIcon.Warning);
-                            }
-                            else if (MessageBox.Show(
-                                "This remote SPSL script can type commands into the session.\n\n" +
-                                scriptUri.AbsoluteUri +
-                                "\n\nDownload and run this script?",
-                                "Trust Remote SPSL Script?",
-                                MessageBoxButtons.YesNo,
-                                MessageBoxIcon.Warning,
-                                MessageBoxDefaultButton.Button2) == DialogResult.Yes)
-                            {
-                                try
-                                {
-                                    script = RemoteSpslLoader.Download(scriptUri);
-                                }
-                                catch(Exception ex)
-                                {
-                                    Log.Warn("Unable to securely download remote SPSL script from host " + scriptUri.Host, ex);
-                                    MessageBox.Show(
-                                        "The remote SPSL script could not be downloaded securely and was not executed.",
-                                        "Remote Script Error",
-                                        MessageBoxButtons.OK,
-                                        MessageBoxIcon.Warning);
-                                }
-                            }
-                        }
-                        else
-                        {
-                            if (fileName.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
-                            {
-                                fileName = fileName.Substring("file://".Length);
-                            }
-
-                            if (File.Exists(fileName))
-                            {
-                                script = File.ReadAllText(fileName);
-                            }
-                        }
-
-                        if (!String.IsNullOrEmpty(script))
-                        {
-                            panel.AppPanel.WhenCaptured(() =>
-                            {
-                                ExecuteScriptEventArgs scriptArgs = new ExecuteScriptEventArgs() { Script = script, Handle = panel.AppPanel.AppWindowHandle };
-                                SPSL.BeginExecuteScript(scriptArgs);
-                            });
-                        }
-                    }
+                        StartSessionScript(panel, session.SPSLFileName);
                 } catch (InvalidOperationException ex)
                 {
                     MessageBox.Show("Error trying to create session " + ex.Message, "Failed to create session panel", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
             return panel;
+        }
+
+        private static async void StartSessionScript(ctlPuttyPanel panel, string fileName)
+        {
+            using (var cancellation = new CancellationTokenSource())
+            {
+                EventHandler closed = (sender, args) => cancellation.Cancel();
+                panel.Disposed += closed;
+                try
+                {
+                    string script = string.Empty;
+
+                    if(Regex.IsMatch(fileName, @"^https?:\/\/", RegexOptions.IgnoreCase))
+                    {
+                        Uri scriptUri;
+                        if (!RemoteSpslLoader.TryGetSecureUri(fileName, out scriptUri))
+                        {
+                            MessageBox.Show(
+                                "Remote SPSL scripts must use HTTPS. The script was not executed.\n\n" + fileName,
+                                "Blocked Insecure Remote Script",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Warning);
+                        }
+                        else if (MessageBox.Show(
+                            "This remote SPSL script can type commands into the session.\n\n" +
+                            scriptUri.AbsoluteUri +
+                            "\n\nDownload and run this script?",
+                            "Trust Remote SPSL Script?",
+                            MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Warning,
+                            MessageBoxDefaultButton.Button2) == DialogResult.Yes)
+                        {
+                            try
+                            {
+                                script = await RemoteSpslLoader.DownloadAsync(scriptUri, cancellation.Token);
+                            }
+                            catch (OperationCanceledException) { return; }
+                            catch(Exception ex)
+                            {
+                                Log.Warn("Unable to securely download remote SPSL script from host " + scriptUri.Host, ex);
+                                if (panel.IsDisposed || panel.Disposing) return;
+                                MessageBox.Show(
+                                    "The remote SPSL script could not be downloaded securely and was not executed.",
+                                    "Remote Script Error",
+                                    MessageBoxButtons.OK,
+                                    MessageBoxIcon.Warning);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (fileName.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+                        {
+                            fileName = fileName.Substring("file://".Length);
+                        }
+
+                        if (File.Exists(fileName))
+                        {
+                            script = await Task.Run(() => File.ReadAllText(fileName), cancellation.Token);
+                        }
+                    }
+
+                    if (panel.IsDisposed || panel.Disposing || cancellation.IsCancellationRequested) return;
+                    if (!String.IsNullOrEmpty(script))
+                    {
+                        panel.AppPanel.WhenCaptured(() =>
+                        {
+                            ExecuteScriptEventArgs scriptArgs = new ExecuteScriptEventArgs() { Script = script, Targets = new[] { SPSL.ScriptTarget.ForPanel(panel.AppPanel) } };
+                            SPSL.BeginExecuteScript(scriptArgs);
+                        });
+                    }
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception ex)
+                {
+                    Log.Warn("Unable to load startup script", ex);
+                    if (!panel.IsDisposed && !panel.Disposing)
+                        ReportStatus("Startup script could not be loaded.");
+                }
+                finally { panel.Disposed -= closed; }
+            }
         }
 
         /// <summary>Retrieve a <seealso cref="SessionData"/> object and open a new putty scp window</summary>

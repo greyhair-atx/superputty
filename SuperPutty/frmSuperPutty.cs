@@ -1504,7 +1504,7 @@ namespace SuperPutty
             if (this.tbComboProtocol.Items.Count == 0)
             {
                 this.tbComboProtocol.Items.Clear();
-                foreach (ConnectionProtocol protocol in Enum.GetValues(typeof(ConnectionProtocol)))
+                foreach (ConnectionProtocol protocol in SessionData.GetProtocolDisplayOrder())
                 {
                     if (protocol != ConnectionProtocol.SSH2 && protocol != ConnectionProtocol.SSHNet)
                         this.tbComboProtocol.Items.Add(protocol.ToString());
@@ -1663,7 +1663,15 @@ namespace SuperPutty
                             IntPtr handle = panel.AppPanel.AppWindowHandle;
                             //Log.InfoFormat("SendCommand: session={0}, command=[{1}], handle={2}", panel.Session.SessionId, command, handle);
 
-                            command.SendToTerminal(handle);
+                            try
+                            {
+                                command.SendToTerminal(handle);
+                            }
+                            catch (InvalidOperationException)
+                            {
+                                SuperPuTTY.ReportStatus("Unable to send input: the terminal is unavailable or not responding.");
+                                continue;
+                            }
 
                             sent++;                 
                         }
@@ -2382,22 +2390,18 @@ namespace SuperPutty
                 if (scriptlines.Length > 0 
                     && e.IsSPSL)
                 {
-                    new Thread(delegate()
+                    // Snapshot selection on the UI thread. Never retarget a running script.
+                    var targets = new List<SPSL.ScriptTarget>();
+                    foreach (IDockContent doc in VisualOrderTabSwitchStrategy.GetDocuments(this.DockPanel))
                     {
-                        foreach (string line in scriptlines)
-                        {
-                            CommandData command;                                                                                    
-                            SPSL.TryParseScriptLine(line, out command);
-                            if (command != null)
-                            {
-                                TrySendCommandsFromToolbar(command, false);
-                            }
-                        }
-                    })
-                    {
-                        IsBackground = true,
-                        Name = "SPSL script execution"
-                    }.Start();
+                        var panel = doc as ctlPuttyPanel;
+                        if (panel == null || !this.sendCommandsDocumentSelector.IsDocumentSelected(panel)) continue;
+                        string icon = this.toolStripButtonChooseIconGroup.ImageKey;
+                        if (icon != "" && icon != "stop" && panel.Session.ImageKey != icon) continue;
+                        targets.Add(SPSL.ScriptTarget.ForPanel(panel.AppPanel));
+                    }
+                    e.Targets = targets.ToArray();
+                    SPSL.BeginExecuteScript(e);
                 }
                 else // Not a spsl script
                 {

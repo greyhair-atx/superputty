@@ -15,7 +15,7 @@ SuperPuTTY Scripting Language (SPSL) sends scripted input to terminal windows. S
 | `PROMPT` | message | Requests visible user input |
 | `PWDPROMPT` | message | Requests masked sensitive input |
 | `OPENSESSION` | session name | Opens a saved session |
-| `CLOSESESSION` | session name | Closes a session selected by the command implementation |
+| `CLOSESESSION` | session name | Not supported; stops the script with an error. Close the tab manually. |
 
 Commands are matched without regard to letter case. The argument begins after the first space and continues to the end of the line.
 
@@ -30,6 +30,10 @@ SENDLINE whoami
 ```
 
 Use the Script Editor from the command toolbar to create, load, save, and run scripts. A saved session can also reference an SPSL file to run when the session opens.
+
+A failed or unsupported command stops the script and reports its line number in the status area. Later commands are not executed. Remote startup scripts download in the background with a ten-second overall deadline; closing the session cancels its pending download. Startup scripts wait until the terminal window has been captured before executing.
+
+Canceling either input prompt stops the script without sending text or Enter. Closing a target session stops input to that session; when no original target sessions remain, the script stops, including pending sleeps and prompts. Script Editor targets are fixed when Run is clicked, so changing the toolbar selection does not redirect a running script.
 
 A session may reference a local script path or an HTTPS URL. SuperPuTTY asks for confirmation before a remote script can type into a session. Remote scripts reject redirects and embedded URL credentials, time out after ten seconds, and are limited to 1 MiB. Plain HTTP remote scripts are blocked.
 

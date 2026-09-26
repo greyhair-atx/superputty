@@ -17,20 +17,31 @@ namespace SuperPuTTY.Scripting
         /// <returns>A string containing commands to send with variables replaced with a carriage return sent at the end</returns>
         internal static CommandData PrivatePromptHandler(string arg)
         {
-            String result;
-            frmPrivatePrompt testDialog = new frmPrivatePrompt("Insert your password");
-            if (testDialog.ShowDialog() == DialogResult.OK)
+            return ShowScriptPrompt("Insert your password", true);
+        }
+
+        internal static CommandData ShowScriptPrompt(string message, bool password,
+            Action<frmPrivatePrompt> onShown = null)
+        {
+            SPSL.CheckCancellation();
+            using (var dialog = new frmPrivatePrompt(message, password))
+            using (var timer = new Timer { Interval = 50 })
             {
-                result = testDialog.GetResult();
+                timer.Tick += (sender, e) =>
+                {
+                    try { SPSL.CheckCancellation(); }
+                    catch (OperationCanceledException) { dialog.DialogResult = DialogResult.Cancel; dialog.Close(); }
+                };
+                dialog.Shown += (sender, e) =>
+                {
+                    timer.Start();
+                    if (onShown != null) onShown(dialog);
+                };
+                if (dialog.ShowDialog() != DialogResult.OK)
+                    throw new OperationCanceledException();
+                SPSL.CheckCancellation();
+                return new CommandData(dialog.GetResult(), new KeyEventArgs(Keys.Enter), TimeSpan.FromMilliseconds(50));
             }
-            else
-            {
-                result = "Cancelled";
-            }
-            testDialog.Dispose();
-            
-            CommandData data = new CommandData(result, new KeyEventArgs(Keys.Enter), TimeSpan.FromMilliseconds(50));
-            return data;
         }
     }
 }
