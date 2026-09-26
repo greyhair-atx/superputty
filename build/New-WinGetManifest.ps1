@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$Version='1.8.0',[string]$ReleaseDirectory,[string]$ManifestDirectory)
+param([string]$Version='1.8.1',[string]$ReleaseDirectory,[string]$ManifestDirectory)
 $ErrorActionPreference='Stop'
 $repo=Split-Path -Parent $PSScriptRoot
 if(-not $ReleaseDirectory){$ReleaseDirectory=Join-Path $repo "artifacts/release-$Version/win-x64-signed"}

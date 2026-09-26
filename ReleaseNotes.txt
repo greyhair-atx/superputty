@@ -1,3 +1,12 @@
+SuperPuTTY Community Edition 1.8.1
+ - Fix script cancellation, prompts, key parsing/repeats, input ordering, and concurrent session scripting.
+ - Wait for embedded RDP login before starting scripts; improve external client capture and asynchronous startup.
+ - Preserve default layouts during renames and reject invalid layout filenames.
+ - Harden client argument handling and external application URLs; improve backup retention and timestamps.
+ - Move legacy/untested protocols to the bottom of the protocol selectors.
+ - Scripting compatibility: invalid expressions and unsupported modified special keys now stop with an error.
+ - See docs/releases/1.8.1.md for detailed changes and validation scope.
+
 SuperPuTTY Community Edition 1.8.0
  - Prepare a clearer landing page, static website, release verification guide and launch drafts.
  - Add an allowlisted no-install ZIP, SHA-256 asset manifest and CycloneDX runtime-file inventory.

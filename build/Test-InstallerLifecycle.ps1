@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$ReleaseDirectory,[string]$Version='1.8.0')
+param([Parameter(Mandatory)][string]$ReleaseDirectory,[string]$Version='1.8.1')
 $ErrorActionPreference='Stop'
 if($env:SUPERPUTTY_DISPOSABLE_TEST -ne '1'){throw 'Run only in a disposable Windows VM/hosted agent with SUPERPUTTY_DISPOSABLE_TEST=1.'}
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
