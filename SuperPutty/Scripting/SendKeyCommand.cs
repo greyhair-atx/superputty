@@ -41,10 +41,6 @@ namespace SuperPuTTY.Scripting
             }
         }
 
-        private const int HAVESHIFT = 0;
-        private const int HAVECTRL = 1;
-        private const int HAVEALT = 2;
-
         private static KeywordVk[] keywords = new KeywordVk[]
         {
             new KeywordVk("ENTER", (int)Keys.Return),
@@ -98,137 +94,43 @@ namespace SuperPuTTY.Scripting
             new KeywordVk("^",           (int)(Keys.D6 | Keys.Shift))
         };
                 
-        /// <summary>Parse Keyboard keys from a string</summary>
-        /// <param name="arg">The Keyword to parse</param>
-        /// <returns>A CommandData object with keystrokes, or null if no matching keyword found</returns>
+        /// <summary>Parse one key, optional modifiers, and an optional named-key repeat count.</summary>
         internal static CommandData SendKeyHandler(string arg)
-        {            
-            int key = ParseKeys(arg);
-
-            if (key > 0)
-                return new CommandData(new KeyEventArgs((Keys)key));
-            else
-                return null;
-
-        }
-
-        private static int ParseKeys(String keys)
         {
-            int i = 0;
-
-            int[] haveKeys = new int[] { 0, 0, 0 }; // shift, ctrl, alt
-
-            int keysLen = keys.Length;
-
-            while (i < keysLen)
+            if (string.IsNullOrWhiteSpace(arg)) throw new ArgumentException("SENDKEY requires a key.");
+            int index = 0;
+            Keys modifiers = Keys.None;
+            while (index < arg.Length && (arg[index] == '^' || arg[index] == '+' || arg[index] == '%'))
             {
-                int repeat = 1;
-                char ch = keys[i];
-                int vk = 0;
-
-                switch (ch)
-                {
-                    case '}':
-                        throw new ArgumentException("Detected '}' before any '{' was found.");
-                    case '{':
-                        int j = i + 1;
-
-                        // There's a unique class of strings of the form "{} n}" where 
-                        // n is an integer - in this case we want to send n copies of the '}' character. 
-                        // Here we test for the possibility of this class of problems, and skip the
-                        // first '}' in the string if necessary. 
-                        //
-                        if (j + 1 < keysLen && keys[j] == '}')
-                        {
-                            // Scan for the final '}' character
-                            int final = j + 1;
-                            while (final < keysLen && keys[final] != '}')
-                            {
-                                final++;
-                            }
-                            if (final < keysLen)
-                            {
-                                // Found the special case, so skip the first '}' in the string. 
-                                // The remainder of the code will attempt to find the repeat count.
-                                j++;
-                            }
-                        }
-
-                        // okay, we're in a {<keyword>...} situation.  look for the keyword 
-                        // 
-                        while (j < keysLen && keys[j] != '}'
-                               && !Char.IsWhiteSpace(keys[j]))
-                        {
-                            j++;
-                        }
-
-                        if (j >= keysLen)
-                        {
-                            throw new ArgumentException();
-                        }
-
-                        // okay, have our KEYWORD.  verify it's one we know about
-                        // 
-                        string keyName = keys.Substring(i + 1, j - (i + 1));
-                        // see if we have a space, which would mean a repeat count.
-                        // 
-                        if (Char.IsWhiteSpace(keys[j]))
-                        {
-                            int digit;
-                            while (j < keysLen && Char.IsWhiteSpace(keys[j]))
-                            {
-                                j++;
-                            }
-
-                            if (j >= keysLen)
-                            {
-                                throw new ArgumentException();
-                            }
-
-                            if (Char.IsDigit(keys[j]))
-                            {
-                                digit = j;
-                                while (j < keysLen && Char.IsDigit(keys[j]))
-                                {
-                                    j++;
-                                }
-                                repeat = Int32.Parse(keys.Substring(digit, j - digit), CultureInfo.InvariantCulture);
-                            }
-                        }
-
-                        if (j >= keysLen)
-                        {
-                            throw new ArgumentException();
-                        }
-                        if (keys[j] != '}')
-                        {
-                            throw new ArgumentException();
-                        }
-
-                        vk = MatchKeyword(keyName);
-                        break;
-                    case '+':
-                        haveKeys[HAVESHIFT] = (int)Keys.Shift;
-                        i++;
-                        continue;
-                    case '^':
-                        haveKeys[HAVECTRL] = (int)Keys.Control;
-                        i++;
-                        continue;
-
-                    case '%':
-                        haveKeys[HAVEALT] = (int)Keys.Alt;
-                        i++;
-                        continue;
-                                             
-                    default:                                                                        
-                        vk = (int)Char.ToUpperInvariant(keys[i]);
-                        break;
-                }
-
-                return vk | haveKeys[HAVESHIFT] | haveKeys[HAVECTRL] | haveKeys[HAVEALT];
+                Keys modifier = arg[index] == '^' ? Keys.Control : arg[index] == '+' ? Keys.Shift : Keys.Alt;
+                if ((modifiers & modifier) != 0) throw new ArgumentException("Duplicate key modifier.");
+                modifiers |= modifier;
+                index++;
             }
-            return -1;
+            string keyText = arg.Substring(index);
+            int repeat = 1;
+            int key;
+            if (keyText.StartsWith("{"))
+            {
+                if (!keyText.EndsWith("}")) throw new ArgumentException("Unclosed named key.");
+                string[] parts = keyText.Substring(1, keyText.Length - 2)
+                    .Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 1 || parts.Length > 2) throw new ArgumentException("Invalid named key.");
+                key = MatchKeyword(parts[0]);
+                if (key < 0) throw new ArgumentException("Unknown named key.");
+                if (parts.Length == 2 && (!int.TryParse(parts[1], NumberStyles.None,
+                    CultureInfo.InvariantCulture, out repeat) || repeat < 1 || repeat > 10000))
+                    throw new ArgumentException("Key repeat count must be between 1 and 10000.");
+            }
+            else
+            {
+                // Literal text belongs in SENDCHAR. Restrict bare key names to letters/digits.
+                if (keyText.Length != 1 || !((keyText[0] >= 'a' && keyText[0] <= 'z')
+                    || (keyText[0] >= 'A' && keyText[0] <= 'Z') || (keyText[0] >= '0' && keyText[0] <= '9')))
+                    throw new ArgumentException("SENDKEY expects one letter, digit, or named key; use SENDCHAR for text.");
+                key = char.ToUpperInvariant(keyText[0]);
+            }
+            return new CommandData(new KeyEventArgs((Keys)key | modifiers), repeat);
         }
 
         /// <summary>given a string, match the keyword to a key.</summary>

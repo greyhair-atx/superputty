@@ -112,8 +112,8 @@ namespace SuperPuttyUnitTests
         }
 
         [TestCase(Keys.Enter)]
-        [TestCase(Keys.Alt | Keys.X)]
-        [TestCase(Keys.Control | Keys.Shift | Keys.Alt | Keys.Left)]
+        [TestCase(Keys.Left)]
+        [TestCase(Keys.F1)]
         public void ScriptedKeysReachWindowWithBalancedPressesAndReleases(Keys keys)
         {
             using (var window = new KeyWindow())
@@ -144,6 +144,134 @@ namespace SuperPuttyUnitTests
                 }
                 Assert.IsTrue(primaryDown && primaryUp);
                 Assert.IsEmpty(pressed);
+            }
+        }
+
+        [TestCase("^c", "\u0003")]
+        [TestCase("+c", "C")]
+        [TestCase("^+c", "\u0003")]
+        [TestCase("%x", "\u001bx")]
+        [TestCase("%+x", "\u001bX")]
+        [TestCase("{+}", "+")]
+        [TestCase("{%}", "%")]
+        [TestCase("{^}", "^")]
+        public void ModifiedCharacterKeysDeliverTerminalCharacters(string expression, string expected)
+        {
+            using (var window = new KeyWindow())
+            {
+                Commands.SendKeyHandler(expression).SendToTerminal(window.Handle);
+                Assert.IsTrue(window.Messages.TrueForAll(message => message.Msg == NativeMethods.WM_CHAR));
+                Assert.AreEqual(expected, new string(window.Messages.ConvertAll(m => (char)m.WParam.ToInt32()).ToArray()));
+            }
+        }
+
+        [TestCase("^{LEFT}")]
+        [TestCase("+{F1}")]
+        [TestCase("%{TAB}")]
+        public void UnsupportedModifiedSpecialKeysFailWithoutSendingAnything(string expression)
+        {
+            using (var window = new KeyWindow())
+            {
+                Assert.Throws<NotSupportedException>(() => Commands.SendKeyHandler(expression).SendToTerminal(window.Handle));
+                Assert.IsEmpty(window.Messages);
+            }
+        }
+
+        [TestCase("")]
+        [TestCase("^")]
+        [TestCase("^^c")]
+        [TestCase("abc")]
+        [TestCase("{NO_SUCH_KEY}")]
+        [TestCase("{ENTER 0}")]
+        [TestCase("{ENTER -1}")]
+        [TestCase("{ENTER 10001}")]
+        [TestCase("{ENTER 99999999999999999}")]
+        [TestCase("{ENTER 3}x")]
+        [TestCase("{ENTER 3} {TAB}")]
+        [TestCase("{ENTER 3")]
+        public void InvalidKeyExpressionsAreReported(string expression)
+        {
+            Assert.Throws<ArgumentException>(() => Commands.SendKeyHandler(expression));
+        }
+
+        [Test]
+        public void RepeatedNamedKeysProduceAllPressesAndReleases()
+        {
+            using (var window = new KeyWindow())
+            {
+                Commands.SendKeyHandler("{ENTER 3}").SendToTerminal(window.Handle);
+                Assert.AreEqual(6, window.Messages.Count);
+                for (int i = 0; i < 6; i++)
+                {
+                    Assert.AreEqual(i % 2 == 0 ? NativeMethods.WM_KEYDOWN : NativeMethods.WM_KEYUP, window.Messages[i].Msg);
+                    Assert.AreEqual((int)Keys.Enter, window.Messages[i].WParam.ToInt32());
+                }
+            }
+        }
+
+        [Test]
+        public void KeysCannotBeOvertakenByFollowingTextAcrossThreads()
+        {
+            using (var window = new KeyWindow())
+            {
+                int errorLine = 0;
+                var worker = SPSL.CreateExecutionThread(new ExecuteScriptEventArgs { Handle = window.Handle },
+                    new[] { "SENDKEY {ENTER}", "SENDCHAR x" }, line => errorLine = line);
+                worker.Start();
+                // Let the sender queue input while the receiving window is busy.
+                Thread.Sleep(25);
+                var elapsed = System.Diagnostics.Stopwatch.StartNew();
+                while (worker.IsAlive && elapsed.ElapsedMilliseconds < 2000)
+                {
+                    NativeMessage native;
+                    while (PeekMessage(out native, window.Handle, 0, 0, 1)) DispatchMessage(ref native);
+                    Thread.Sleep(1);
+                }
+                Assert.IsTrue(worker.Join(1000));
+                NativeMessage remaining;
+                while (PeekMessage(out remaining, window.Handle, 0, 0, 1)) DispatchMessage(ref remaining);
+                Assert.AreEqual(0, errorLine);
+                CollectionAssert.AreEqual(new[] { NativeMethods.WM_KEYDOWN, NativeMethods.WM_KEYUP, NativeMethods.WM_CHAR },
+                    window.Messages.ConvertAll(m => m.Msg));
+                Assert.AreEqual((int)'x', window.Messages[2].WParam.ToInt32());
+            }
+        }
+
+        [Test]
+        public void InitiallyEmptySelectionAllowsSessionCommands()
+        {
+            int errorLine = 0;
+            var worker = SPSL.CreateExecutionThread(new ExecuteScriptEventArgs { Targets = new SPSL.ScriptTarget[0] },
+                new[] { "OPENSESSION missing-review-test-session", "SLEEP 1", "UNSUPPORTED" }, line => errorLine = line);
+            worker.Start();
+            Assert.IsTrue(worker.Join(2000));
+            Assert.AreEqual(3, errorLine, "An empty initial selection must not cancel OPENSESSION or SLEEP.");
+        }
+
+        [TestCase("PWDPROMPT password")]
+        [TestCase("SENDLINE test")]
+        public void InitiallyEmptySelectionReportsInputWithoutATarget(string command)
+        {
+            int errorLine = 0;
+            var worker = SPSL.CreateExecutionThread(new ExecuteScriptEventArgs { Targets = new SPSL.ScriptTarget[0] },
+                new[] { command }, line => errorLine = line);
+            worker.Start();
+            Assert.IsTrue(worker.Join(2000));
+            Assert.AreEqual(1, errorLine);
+        }
+
+        [Test]
+        public void InvalidKeyStopsScriptBeforeFollowingCommands()
+        {
+            using (var window = new KeyWindow())
+            {
+                int errorLine = 0;
+                var worker = SPSL.CreateExecutionThread(new ExecuteScriptEventArgs { Handle = window.Handle },
+                    new[] { "SENDKEY {NO_SUCH_KEY}", "SLEEP 60000" }, line => errorLine = line);
+                worker.Start();
+                Assert.IsTrue(worker.Join(2000));
+                Assert.AreEqual(1, errorLine);
+                Assert.IsEmpty(window.Messages);
             }
         }
 

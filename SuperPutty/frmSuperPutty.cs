@@ -1667,6 +1667,11 @@ namespace SuperPutty
                             {
                                 command.SendToTerminal(handle);
                             }
+                            catch (NotSupportedException)
+                            {
+                                SuperPuTTY.ReportStatus("This key combination is not supported for background terminal input.");
+                                continue;
+                            }
                             catch (InvalidOperationException)
                             {
                                 SuperPuTTY.ReportStatus("Unable to send input: the terminal is unavailable or not responding.");

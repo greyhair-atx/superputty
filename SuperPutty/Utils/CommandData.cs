@@ -34,6 +34,7 @@ namespace SuperPutty.Utils
         public KeyEventArgs KeyData { get; private set; }
 
         public TimeSpan Delay { get; private set; }
+        public int RepeatCount { get; private set; } = 1;
 
         /// <summary>Construct a new <seealso cref="CommandData"/> object, specifying a command to send</summary>
         /// <param name="command">A string containing the command to send</param>
@@ -44,8 +45,12 @@ namespace SuperPutty.Utils
 
         /// <summary>Construct a new <seealso cref="CommandData"/> object, specifying keyboard keystrokes to send</summary>
         /// <param name="keys">A <seealso cref="KeyEventArgs"/> object containing the keyboard keystrokes</param>
-        public CommandData(KeyEventArgs keys)
+        public CommandData(KeyEventArgs keys) : this(keys, 1) { }
+
+        public CommandData(KeyEventArgs keys, int repeatCount)
         {
+            if (repeatCount < 1 || repeatCount > 10000) throw new ArgumentOutOfRangeException(nameof(repeatCount));
+            RepeatCount = repeatCount;
             this.KeyData = keys;
         }
 
@@ -79,56 +84,80 @@ namespace SuperPutty.Utils
 
         internal void SendToTerminalChecked(IntPtr handle, Func<bool> isAlive)
         {
-            // Keep keyboard messages targeted to this window, without changing global keyboard state.
-            Action<int, int, int> post = (message, key, flags) =>
+            Action<int, int, int> send = (message, key, flags) =>
             {
                 if (!isAlive()) return;
-                if (!NativeMethods.PostMessage(handle, (uint)message, new IntPtr(key), new IntPtr(flags)))
-                    throw new InvalidOperationException("Unable to queue terminal input.");
+                UIntPtr result;
+                // All input is acknowledged before sending the next message. Never mix queued
+                // keystrokes with synchronous characters, which can overtake queued input.
+                if (NativeMethods.SendMessageTimeout(handle, (uint)message, new IntPtr(key),
+                    new IntPtr(flags), 0x23, 250, out result) == IntPtr.Zero && isAlive())
+                    throw new InvalidOperationException("Terminal did not accept input in time.");
             };
             if (!string.IsNullOrEmpty(Command))
-            {
                 foreach (char c in Command)
                 {
                     if (!isAlive()) return;
-                    // Bound synchronous text delivery so hung terminals cannot strand a script.
-                    UIntPtr result;
-                    if (NativeMethods.SendMessageTimeout(handle, NativeMethods.WM_CHAR, new IntPtr(c),
-                        IntPtr.Zero, 0x23, 250, out result) == IntPtr.Zero)
-                    {
-                        if (!isAlive()) return;
-                        throw new InvalidOperationException("Terminal did not accept input in time.");
-                    }
+                    send(NativeMethods.WM_CHAR, c, 0);
                 }
-            }
-            if (KeyData != null) SendKeys(KeyData, post);
+            if (KeyData != null)
+                for (int repeat = 0; repeat < RepeatCount; repeat++)
+                {
+                    if (!isAlive()) return;
+                    SendKeys(KeyData, send);
+                }
             if (Delay > TimeSpan.Zero) global::SuperPuTTY.Scripting.SPSL.Wait((int)Delay.TotalMilliseconds);
         }
 
-        internal static void SendKeys(KeyEventArgs keys, Action<int, int, int> post)
+        internal static void SendKeys(KeyEventArgs keys, Action<int, int, int> send)
         {
-            Action<Keys, bool, bool> send = (key, up, alt) =>
+            int character;
+            if (TryGetTerminalCharacter(keys, out character))
             {
-                int scan = (int)NativeMethods.MapVirtualKey((uint)key, 0);
-                int flags = 1 | (scan << 16);
-                if (key == Keys.Insert || key == Keys.Delete || key == Keys.Home || key == Keys.End
-                    || key == Keys.Prior || key == Keys.Next || key == Keys.Left || key == Keys.Right
-                    || key == Keys.Up || key == Keys.Down || key == Keys.Divide || key == Keys.NumLock)
-                    flags |= 1 << 24;
-                if (alt) flags |= 1 << 29;
-                if (up) flags |= unchecked((int)0xc0000000);
-                bool system = alt || key == Keys.Menu || key == Keys.F10;
-                post(system ? (up ? NativeMethods.WM_SYSKEYUP : NativeMethods.WM_SYSKEYDOWN)
-                    : (up ? NativeMethods.WM_KEYUP : NativeMethods.WM_KEYDOWN), (int)key, flags);
-            };
-            if (keys.Control) send(Keys.ControlKey, false, false);
-            if (keys.Shift) send(Keys.ShiftKey, false, false);
-            if (keys.Alt) send(Keys.Menu, false, false);
-            send(keys.KeyCode, false, keys.Alt);
-            send(keys.KeyCode, true, keys.Alt);
-            if (keys.Alt) send(Keys.Menu, true, true);
-            if (keys.Shift) send(Keys.ShiftKey, true, false);
-            if (keys.Control) send(Keys.ControlKey, true, false);
+                // Terminal Alt characters use the conventional ESC prefix. No global input,
+                // keyboard-state manipulation, or focus changes are required.
+                if (keys.Alt) send(NativeMethods.WM_CHAR, 27, 0);
+                send(NativeMethods.WM_CHAR, character, 0);
+                return;
+            }
+            if (keys.Modifiers != Keys.None)
+                throw new NotSupportedException("This modified special key cannot be sent reliably to a background terminal.");
+
+            int scan = (int)NativeMethods.MapVirtualKey((uint)keys.KeyCode, 0);
+            int flags = 1 | (scan << 16);
+            Keys key = keys.KeyCode;
+            if (key == Keys.Insert || key == Keys.Delete || key == Keys.Home || key == Keys.End
+                || key == Keys.Prior || key == Keys.Next || key == Keys.Left || key == Keys.Right
+                || key == Keys.Up || key == Keys.Down || key == Keys.Divide || key == Keys.NumLock)
+                flags |= 1 << 24;
+            bool system = key == Keys.F10;
+            send(system ? NativeMethods.WM_SYSKEYDOWN : NativeMethods.WM_KEYDOWN, (int)key, flags);
+            send(system ? NativeMethods.WM_SYSKEYUP : NativeMethods.WM_KEYUP, (int)key, flags | unchecked((int)0xc0000000));
+        }
+
+        private static bool TryGetTerminalCharacter(KeyEventArgs keys, out int character)
+        {
+            character = 0;
+            Keys key = keys.KeyCode;
+            if (key >= Keys.A && key <= Keys.Z)
+            {
+                character = keys.Control ? (int)key - (int)Keys.A + 1
+                    : (keys.Shift ? 'A' : 'a') + (int)key - (int)Keys.A;
+                return true;
+            }
+            if (keys.Control) return false;
+            if (key >= Keys.D0 && key <= Keys.D9)
+            {
+                character = keys.Shift ? ")!@#$%^&*("[(int)key - (int)Keys.D0] : '0' + (int)key - (int)Keys.D0;
+                return true;
+            }
+            // These named character keys have no layout-dependent virtual-key translation.
+            if (!keys.Shift && (key == Keys.Add || key == Keys.Subtract || key == Keys.Multiply || key == Keys.Divide))
+            {
+                character = key == Keys.Add ? '+' : key == Keys.Subtract ? '-' : key == Keys.Multiply ? '*' : '/';
+                return true;
+            }
+            return false;
         }
 
         public override string ToString()

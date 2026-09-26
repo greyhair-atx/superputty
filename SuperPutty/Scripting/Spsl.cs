@@ -58,7 +58,7 @@ namespace SuperPuTTY.Scripting
 
         internal static void CheckCancellation()
         {
-            if (currentTargets != null && !currentTargets.Any(target => target.IsAlive))
+            if (currentTargets != null && currentTargets.Length > 0 && !currentTargets.Any(target => target.IsAlive))
                 throw new OperationCanceledException();
         }
 
@@ -128,6 +128,14 @@ namespace SuperPuTTY.Scripting
             {
                 command = line.ToUpperInvariant().TrimEnd();
             }
+
+            if (currentTargets != null && currentTargets.Length == 0
+                && (command.Equals("SENDKEY", StringComparison.OrdinalIgnoreCase)
+                    || command.Equals("SENDCHAR", StringComparison.OrdinalIgnoreCase)
+                    || command.Equals("SENDLINE", StringComparison.OrdinalIgnoreCase)
+                    || command.Equals("PROMPT", StringComparison.OrdinalIgnoreCase)
+                    || command.Equals("PWDPROMPT", StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("Select a terminal before sending script input.");
 
             // lookup command and execute action associated with it.                
             Func<String, CommandData> spslCommand = MatchCommand(command);
@@ -204,7 +212,7 @@ namespace SuperPuTTY.Scripting
                 {
                     if (!form.IsDisposed)
                         SuperPutty.SuperPuTTY.ReportStatus("Script stopped at line {0}: {1}", lineNumber,
-                            unsupported ? "command is not supported" : "command failed; check its arguments");
+                            unsupported ? "command or key combination is not supported" : "command failed; check its arguments and target session");
                 }));
             }
             catch (InvalidOperationException) { } // The application closed while reporting the error.
