@@ -10,7 +10,7 @@ SuperPuTTY Community Edition is an actively maintained, independently published 
 
 > **Independent community fork maintained by Chris Thornton.** This is a community edition, not an official upstream SuperPuTTY or PuTTY release. SuperPuTTY was created by Jim Radford and the original contributors. No upstream endorsement is implied.
 
-**Latest stable release: [1.8.1](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.1).** Download signed Windows x64 installers or the no-install ZIP, with checksums, a runtime SBOM, and completed VirusTotal reports. [Project website](https://greyhair-atx.github.io/superputty/) · [Release notes](docs/releases/1.8.1.md) · [Validation results](docs/RELEASE-1.8.1-RESULTS.md). Earlier published downloads remain unchanged.
+**1.8.1 withdrawn — SSH session regression.** Multiple SSH tabs can become unresponsive or display incorrectly. The initial SSH focus test build is also affected. Use the latest public release, **[1.8.0](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.0)**, while this is investigated.
 
 ## See the workspace
 
