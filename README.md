@@ -14,9 +14,29 @@ SuperPuTTY Community Edition is an actively maintained, independently published 
 
 ## See the workspace
 
-[![PowerShell and session navigation in SuperPuTTY](docs/images/latest-build/powershell.png)](docs/README.md)
+Actual **1.8.1** screenshots, captured September 27, 2026, covering every session in the saved test list. Remote connections use disposable VMs on the local network. Select an image for the full-size capture.
 
-This existing screenshot illustrates an earlier community build. It is not a 1.8.1 capture. [View the screenshot gallery and capture notes](docs/README.md).
+### RDP — Test_RDP
+
+[![A connected Windows desktop in the Test_RDP tab.](docs/images/1.8.1/rdp.png)](docs/images/1.8.1/rdp.png)
+
+### SSH — Test_SSH
+
+[![An authenticated SSH terminal through PuTTY in the Test_SSH tab.](docs/images/1.8.1/ssh.png)](docs/images/1.8.1/ssh.png)
+
+### VNC — Test_VNC
+
+[![A connected remote desktop through the configured VNC viewer in the Test_VNC tab.](docs/images/1.8.1/vnc.png)](docs/images/1.8.1/vnc.png)
+
+### Command Prompt — Test_WinCMD
+
+[![A local Command Prompt hosted in the Test_WinCMD tab.](docs/images/1.8.1/command-prompt.png)](docs/images/1.8.1/command-prompt.png)
+
+### PowerShell — Test_WinPS
+
+[![A local Windows PowerShell console hosted in the Test_WinPS tab.](docs/images/1.8.1/powershell.png)](docs/images/1.8.1/powershell.png)
+
+[Capture details and earlier screenshots](docs/README.md).
 
 ## What the community edition adds
 

@@ -1,4 +1,42 @@
-# Current-build screenshots
+# SuperPuTTY 1.8.1 screenshots
+
+Captured September 27, 2026, using the signed 1.8.1.0 executable from release `sp-1.8.1` (source commit `4438a02ca5596cf05597442ac829d256bec700cd`). Its SHA-256 matches the published release: `bc5605413d19215cb24e207742cfb304baf8d0df0b150432eb25db231b280fbd`.
+
+The five screenshots cover the entire saved test-session list. A separate capture profile preserves the original session configuration and layout. These are direct captures of the application window, without generated or composited UI. Remote logins use the designated `test` account on disposable local-network VMs; passwords are absent from the images. Private test addresses and local paths may be visible. The screenshots demonstrate these particular connections, not exhaustive protocol or installer validation.
+
+## RDP — Test_RDP
+
+A connected Windows desktop in the Test_RDP tab.
+
+[![A connected Windows desktop in the Test_RDP tab.](images/1.8.1/rdp.png)](images/1.8.1/rdp.png)
+
+## SSH — Test_SSH
+
+An authenticated SSH terminal through PuTTY in the Test_SSH tab.
+
+[![An authenticated SSH terminal through PuTTY in the Test_SSH tab.](images/1.8.1/ssh.png)](images/1.8.1/ssh.png)
+
+## VNC — Test_VNC
+
+A connected remote desktop through the configured VNC viewer in the Test_VNC tab.
+
+[![A connected remote desktop through the configured VNC viewer in the Test_VNC tab.](images/1.8.1/vnc.png)](images/1.8.1/vnc.png)
+
+## Command Prompt — Test_WinCMD
+
+A local Command Prompt hosted in the Test_WinCMD tab.
+
+[![A local Command Prompt hosted in the Test_WinCMD tab.](images/1.8.1/command-prompt.png)](images/1.8.1/command-prompt.png)
+
+## PowerShell — Test_WinPS
+
+A local Windows PowerShell console hosted in the Test_WinPS tab.
+
+[![A local Windows PowerShell console hosted in the Test_WinPS tab.](images/1.8.1/powershell.png)](images/1.8.1/powershell.png)
+
+---
+
+# Earlier screenshots — September 6, 2026
 
 Captured on September 6, 2026, from an x64 .NET Framework 4.8 build of commit `1d5b68d5813917213eb322f73d1794e6b256d952`, before the 1.7.5 version bump. The application displays version 1.7.4.0 while illustrating features included in **1.7.5**. These are pre-release source-build captures, not screenshots of the published release package. See the [1.7.5 release summary](releases/1.7.5.md).
 
