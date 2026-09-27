@@ -14,7 +14,7 @@ SuperPuTTY Community Edition is an actively maintained, independently published 
 
 ## See the workspace
 
-Actual **1.8.1** screenshots, captured September 27, 2026, covering every session in the saved test list. Remote connections use disposable VMs on the local network. Select an image for the full-size capture.
+Actual **1.8.1** screenshots, captured September 27, 2026, covering every session in the saved test list. Select an image for the full-size capture.
 
 ### RDP — Test_RDP
 

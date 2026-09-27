@@ -2,7 +2,7 @@
 
 Captured September 27, 2026, using the signed 1.8.1.0 executable from release `sp-1.8.1` (source commit `4438a02ca5596cf05597442ac829d256bec700cd`). Its SHA-256 matches the published release: `bc5605413d19215cb24e207742cfb304baf8d0df0b150432eb25db231b280fbd`.
 
-The five screenshots cover the entire saved test-session list. A separate capture profile preserves the original session configuration and layout. These are direct captures of the application window, without generated or composited UI. Remote logins use the designated `test` account on disposable local-network VMs; passwords are absent from the images. Private test addresses and local paths may be visible. The screenshots demonstrate these particular connections, not exhaustive protocol or installer validation.
+The five screenshots cover the entire saved test-session list. A separate capture profile preserves the original session configuration and layout. These are direct captures of the application window, without generated or composited UI. Passwords are absent from the images. Private test addresses and local paths may be visible. The screenshots demonstrate these particular connections, not exhaustive protocol or installer validation.
 
 ## RDP — Test_RDP
 
