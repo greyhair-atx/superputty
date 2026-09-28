@@ -42,14 +42,19 @@ namespace SuperPuttyUnitTests
             Assert.IsFalse(ApplicationPanel.CaptureTimedOut(ConnectionProtocol.RDP, false, 1000, 30000));
         }
 
-        [Test, Apartment(ApartmentState.STA)]
-        public void ReparentingVerifiesNativeParentAndRejectsInvalidWindows()
+        [TestCase(false), TestCase(true), Apartment(ApartmentState.STA)]
+        public void ReparentingVerifiesNativeParentAndRejectsInvalidWindows(bool preserveWindowStyle)
         {
             using (var host = new Form())
             using (var child = new Form())
             {
-                ApplicationPanel.ReparentWindow(child.Handle, host.Handle);
-                Assert.AreEqual(host.Handle, NativeMethods.GetParent(child.Handle));
+                int originalStyle = NativeMethods.GetWindowLong(child.Handle, NativeMethods.GWL_STYLE);
+                ApplicationPanel.ReparentWindow(child.Handle, host.Handle, preserveWindowStyle);
+                Assert.AreEqual(host.Handle, NativeMethods.GetAncestor(child.Handle, 1));
+                uint style = unchecked((uint)NativeMethods.GetWindowLong(child.Handle, NativeMethods.GWL_STYLE));
+                uint mask = NativeMethods.WS_CHILD | NativeMethods.WS_POPUP;
+                Assert.AreEqual(preserveWindowStyle ? unchecked((uint)originalStyle) & mask : NativeMethods.WS_CHILD,
+                    style & mask);
                 Assert.Throws<InvalidOperationException>(() => ApplicationPanel.ReparentWindow(IntPtr.Zero, host.Handle));
                 Assert.Throws<InvalidOperationException>(() => ApplicationPanel.ReparentWindow(child.Handle, IntPtr.Zero));
             }

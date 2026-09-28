@@ -1358,6 +1358,9 @@ namespace SuperPutty.Utils
         public static extern IntPtr GetParent(IntPtr hWnd);
 
         [DllImport("user32.dll")]
+        public static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
+
+        [DllImport("user32.dll")]
         public static extern uint WaitForInputIdle(IntPtr hProcess, uint dwMilliseconds);
 
         [DllImport("user32.dll")]

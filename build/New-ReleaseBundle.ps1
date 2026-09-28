@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '1.8.1',
+    [string]$Version = '1.8.2',
     [string]$Configuration = 'Release',
     [ValidateSet('test-x64','win-x64-signed')][string]$InstallerArtifactSuffix = 'test-x64',
     [switch]$RequireSignatures,

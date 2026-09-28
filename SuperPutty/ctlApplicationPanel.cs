@@ -288,7 +288,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 this.proto, ApplicationName, m_Process.ExitCode);
         }
 
-        internal static void ReparentWindow(IntPtr child, IntPtr parent)
+        internal static void ReparentWindow(IntPtr child, IntPtr parent, bool preserveWindowStyle = false)
         {
             if (!NativeMethods.IsWindow(child) || !NativeMethods.IsWindow(parent))
                 throw new InvalidOperationException("The application or host window no longer exists.");
@@ -297,7 +297,10 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             int error = Marshal.GetLastWin32Error();
             if (originalStyle == 0 && error != 0)
                 throw new Win32Exception(error);
-            int childStyle = unchecked((int)(((uint)originalStyle | NativeMethods.WS_CHILD) & ~NativeMethods.WS_POPUP));
+            // PuTTY uses top-level activation for its active-terminal state. Keep
+            // its established hosting style instead of converting it to WS_CHILD.
+            int childStyle = preserveWindowStyle ? originalStyle :
+                unchecked((int)(((uint)originalStyle | NativeMethods.WS_CHILD) & ~NativeMethods.WS_POPUP));
             NativeMethods.ClearLastError(0);
             int previousStyle = NativeMethods.SetWindowLong(child, NativeMethods.GWL_STYLE, childStyle);
             error = Marshal.GetLastWin32Error();
@@ -310,7 +313,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 error = Marshal.GetLastWin32Error();
                 if (previousParent == IntPtr.Zero && error != 0)
                     throw new Win32Exception(error, "Unable to embed the application window.");
-                if (NativeMethods.GetParent(child) != parent)
+                if (NativeMethods.GetAncestor(child, 1 /* GA_PARENT, excludes owner */) != parent)
                 {
                     NativeMethods.SetParent(child, previousParent);
                     throw new InvalidOperationException("The application window was not embedded in its host.");
@@ -336,7 +339,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             if (this.m_AppWin != IntPtr.Zero)
             {
                 // Set the application as a child of the parent form
-                ReparentWindow(m_AppWin, this.Handle);
+                ReparentWindow(m_AppWin, this.Handle, ctlPuttyPanel.SupportsPuttyRestart(this.proto));
 
                 // Show it! (must be done before we set the windows visibility parameters below
                 NativeMethods.ShowWindow(m_AppWin, NativeMethods.WindowShowStyle.Maximize);
