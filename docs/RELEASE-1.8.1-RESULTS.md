@@ -1,6 +1,6 @@
 # SuperPuTTY Community Edition 1.8.1 validation
 
-**1.8.1 withdrawn — SSH session regression.** Multiple SSH tabs can become unresponsive or display incorrectly. The initial SSH focus test build is also affected. Use the latest public release, **[1.8.0](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.0)**, while this is investigated.
+**1.8.1 withdrawn — SSH session regression.** Multiple SSH tabs can become unresponsive or display incorrectly. The initial SSH focus test build is also affected. The fix is available in **[1.8.2](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.2)**.
 
 Withdrawn from public downloads on September 27, 2026. The validation results below are historical and did not detect this multi-session interaction regression.
 
