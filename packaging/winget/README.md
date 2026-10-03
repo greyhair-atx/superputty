@@ -1,4 +1,4 @@
-# WinGet staging — not submitted
+# WinGet submission
 
 `ChrisThornton.SuperPuTTYCommunityEdition/1.8.0/` contains a multi-file WinGet manifest generated from the actual signed MSI bundle. Both `Scope: user` and `Scope: machine` are explicitly represented under separate x64 installers. MSI ProductCodes and AppsAndFeatures UpgradeCodes are read from the finished packages, never guessed from the edition name. Publisher is Chris Thornton; certificate identity is Christopher Thornton.
 
@@ -14,6 +14,8 @@ The package was submitted to `microsoft/winget-pkgs` as [pull request #434081](h
 For the authorized Windows 11 workstation VM, `build/Invoke-WinGetScopeReview.ps1` runs a prepared stage from Administrator PowerShell. It creates a temporary standard account for current-user installation and runs the all-users test elevated. `build/Test-WinGetScopes.ps1` installs the published 1.8.0 packages through WinGet, checks registration, executable hash/signature/branding, installed license, shortcut and settings preservation, then uninstalls through WinGet using the unique ProductCode. Scope is verified independently through Windows Installer AssignmentType. The controller restores the previous local-manifest setting and historical shortcut registry marker, checks the host file baseline, and removes the temporary account/profile after success. On failure it retains the account and logs for investigation. These tests are specific to the immutable 1.8.0 release identities.
 
 After reviewing a pre-installation WinGet launch failure, `-RetryFailedBootstrap` archives the previous results and removes the verified, unloaded temporary profile/account before starting again. It permits only the reviewed launch failure or the exact local-manifest-disabled error before MSI execution, and refuses retries if machine testing began or the recorded cleanup/preservation checks failed. Other failures require separate investigation.
+
+The October 1, 2026 review of PR #434081 requested removing `AppsAndFeaturesEntries.DisplayVersion` because it equals `PackageVersion`. Both installer entries and the manifest generator omit this redundant field. Submit this correction by pushing to the existing `new-package/superputty-ce-1.8.0` branch; the open PR updates automatically. No new PR or rebuilt installer is needed for this metadata correction.
 
 ## Windows Sandbox test plan
 

@@ -21,7 +21,6 @@ Installers:
   AppsAndFeaturesEntries:
   - DisplayName: SuperPuTTY Community Edition
     Publisher: Chris Thornton
-    DisplayVersion: 1.8.0
     ProductCode: '{7093D12F-0585-4E0C-A625-D2BB3867C54F}'
     UpgradeCode: '{3E4059D9-E5A5-48DE-B787-FC88268C1B95}'
     InstallerType: wix
@@ -33,7 +32,6 @@ Installers:
   AppsAndFeaturesEntries:
   - DisplayName: SuperPuTTY Community Edition
     Publisher: Chris Thornton
-    DisplayVersion: 1.8.0
     ProductCode: '{C1A2912D-A780-4AE3-92C3-89A2366C3608}'
     UpgradeCode: '{98CB966B-60D4-46C3-AADA-1990464696B8}'
     InstallerType: wix

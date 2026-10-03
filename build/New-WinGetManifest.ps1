@@ -14,7 +14,7 @@ foreach($package in $build.packages){
  $file=Join-Path $ReleaseDirectory $package.name
  if((Get-FileHash $file).Hash -ne $package.sha256 -or (Get-AuthenticodeSignature $file).Status -ne 'Valid'){throw 'Package bytes/signature differ from the verified release.'}
  $scope=if($package.scope -eq 'PerUser'){'user'}else{'machine'}
- $lines+=@('- Architecture: x64',"  Scope: $scope","  InstallerUrl: https://github.com/greyhair-atx/superputty/releases/download/sp-$Version/$($package.name)","  InstallerSha256: $($package.sha256)","  ProductCode: '$($package.productCode)'",'  AppsAndFeaturesEntries:','  - DisplayName: SuperPuTTY Community Edition','    Publisher: Chris Thornton',"    DisplayVersion: $Version","    ProductCode: '$($package.productCode)'","    UpgradeCode: '$($package.upgradeCode)'",'    InstallerType: wix')
+ $lines+=@('- Architecture: x64',"  Scope: $scope","  InstallerUrl: https://github.com/greyhair-atx/superputty/releases/download/sp-$Version/$($package.name)","  InstallerSha256: $($package.sha256)","  ProductCode: '$($package.productCode)'",'  AppsAndFeaturesEntries:','  - DisplayName: SuperPuTTY Community Edition','    Publisher: Chris Thornton',"    ProductCode: '$($package.productCode)'","    UpgradeCode: '$($package.upgradeCode)'",'    InstallerType: wix')
 }
 $lines+=@('ManifestType: installer',"ManifestVersion: $schema")
 $lines|Set-Content (Join-Path $ManifestDirectory "$id.installer.yaml") -Encoding utf8
