@@ -93,6 +93,9 @@ namespace SuperPutty.Data
         }
         internal string OldSessionId { get; set; }
 
+        // Only used by temporary diagnostic sessions; never serialized to saved sessions.
+        internal string ConsoleCommand { get; set; }
+
         private string _OldName;
         [XmlIgnore]
         [Browsable(false)]

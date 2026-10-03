@@ -23,13 +23,16 @@ using log4net;
 using System.ComponentModel;
 using SuperPutty.Data;
 using SuperPutty.Gui;
+using System.Threading;
 
 namespace SuperPutty.Scp
 {
     #region LocalBrowserPresenter
     /// <summary>Class that contains data and methods for displaying local or remote directories</summary>
-    public class BrowserPresenter : IBrowserPresenter
+    public class BrowserPresenter : IBrowserPresenter, IDisposable
     {
+        private readonly CancellationTokenSource cancellation = new CancellationTokenSource();
+        private volatile bool disposed;
         private static readonly ILog Log = LogManager.GetLogger(typeof(BrowserPresenter));
 
         /// <summary>Raised when login and password information is required to authenticate against a ssh server serving files via scp</summary>
@@ -69,6 +72,7 @@ namespace SuperPutty.Scp
         /// <param name="e">The <seealso cref="ListChangedEventArgs"/> items containing the type of change detected and the index of the item</param>
         private void FileTransfers_ListChanged(object sender, ListChangedEventArgs e)
         {
+            if (disposed || CurrentPath == null) return;
             if (e.ListChangedType == ListChangedType.ItemChanged)
             {
                 BindingList<FileTransferViewItem> list = (BindingList<FileTransferViewItem>)sender;
@@ -87,6 +91,7 @@ namespace SuperPutty.Scp
 
         private void BackgroundWorker_ProgressChanged(object sender, ProgressChangedEventArgs e)
         {
+            if (disposed) return;
             this.ViewModel.Status = (string) e.UserState;
         }
 
@@ -95,7 +100,11 @@ namespace SuperPutty.Scp
             BrowserFileInfo targetPath = (BrowserFileInfo)e.Argument;
             this.BackgroundWorker.ReportProgress(5, "Requesting files for " + targetPath.Path);
             
-            ListDirectoryResult result = this.Model.ListDirectory(this.Session, targetPath);
+            cancellation.Token.ThrowIfCancellationRequested();
+            ICancellableBrowserModel cancellableModel = this.Model as ICancellableBrowserModel;
+            ListDirectoryResult result = cancellableModel == null
+                ? this.Model.ListDirectory(this.Session, targetPath)
+                : cancellableModel.ListDirectory(this.Session, targetPath, cancellation.Token);
             
             this.BackgroundWorker.ReportProgress(80, "Remote call complete: " + result.StatusCode);
             e.Result = result;
@@ -103,6 +112,11 @@ namespace SuperPutty.Scp
 
         private void BackgroundWorker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
         {
+            if (disposed)
+            {
+                ReleaseWorker();
+                return;
+            }
             if (e.Error != null)
             {
                 string msg = string.Format("System error while loading directory: {0}", e.Error.Message);
@@ -122,7 +136,7 @@ namespace SuperPutty.Scp
                             Password = this.Session.Password 
                         };
                         this.OnAuthRequest(authEvent);
-                        if (authEvent.Handled)
+                        if (!disposed && authEvent.Handled)
                         {
                             // retry listing
                             this.Session.Username = authEvent.UserName;
@@ -154,7 +168,8 @@ namespace SuperPutty.Scp
                         break;
                 }
             }
-            this.ViewModel.BrowserState = BrowserState.Ready;
+            if (!disposed)
+                this.ViewModel.BrowserState = this.BackgroundWorker.IsBusy ? BrowserState.Working : BrowserState.Ready;
         }
 
         #endregion
@@ -163,6 +178,7 @@ namespace SuperPutty.Scp
         /// <param name="dir">The BrowserFileInfo object containing the path to the directory to load</param>
         public void LoadDirectory(BrowserFileInfo dir)
         {
+            if (disposed) return;
             if (this.BackgroundWorker.IsBusy)
             {
                 this.ViewModel.Status = "Busy loading directory";
@@ -195,23 +211,45 @@ namespace SuperPutty.Scp
         /// <returns>true if the file can be transfered</returns>
         public bool CanTransferFile(BrowserFileInfo source, BrowserFileInfo target)
         {
-            return this.FileTransferPresenter.CanTransferFile(source, target);
+            return !disposed && this.FileTransferPresenter.CanTransferFile(source, target);
         }
 
         /// <summary>Transfer a file between two locations</summary>
         /// <param name="fileTransferReqeust">The request data containing files to transfer</param>
         public void TransferFiles(FileTransferRequest fileTransferReqeust)
         {
+            if (disposed) return;
             this.FileTransferPresenter.TransferFiles(fileTransferReqeust);
         }
 
 
         protected void OnAuthRequest(AuthEventArgs evt)
         {
-            if (this.AuthRequest != null)
+            if (!disposed && this.AuthRequest != null)
             {
                 this.AuthRequest(this, evt);
             }
+        }
+
+        public void Dispose()
+        {
+            if (disposed) return;
+            disposed = true;
+            this.FileTransferPresenter.ViewModel.FileTransfers.ListChanged -= FileTransfers_ListChanged;
+            AuthRequest = null;
+            cancellation.Cancel();
+            // Keep the worker and token alive until an in-flight operation completes.
+            if (!BackgroundWorker.IsBusy)
+                ReleaseWorker();
+        }
+
+        private void ReleaseWorker()
+        {
+            BackgroundWorker.DoWork -= BackgroundWorker_DoWork;
+            BackgroundWorker.ProgressChanged -= BackgroundWorker_ProgressChanged;
+            BackgroundWorker.RunWorkerCompleted -= BackgroundWorker_RunWorkerCompleted;
+            BackgroundWorker.Dispose();
+            cancellation.Dispose();
         }
 
         IBrowserModel Model { get; set; }

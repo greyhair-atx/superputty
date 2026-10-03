@@ -414,15 +414,16 @@ namespace SuperPutty
 
         private void fileToolStripMenuItem_DropDownOpening(object sender, EventArgs e)
         {
+            SessionData activeSession = GetDocumentSession(this.DockPanel.ActiveDocument as ToolWindowDocument);
             this.saveCurrentSessionToolStripMenuItem.Enabled =
-                GetDocumentSession(this.DockPanel.ActiveDocument as ToolWindowDocument) != null;
+                activeSession != null && String.IsNullOrEmpty(activeSession.ConsoleCommand);
         }
 
         private void saveCurrentSessionToolStripMenuItem_Click(object sender, EventArgs e)
         {
             ToolWindowDocument activeDocument = this.DockPanel.ActiveDocument as ToolWindowDocument;
             SessionData activeSession = GetDocumentSession(activeDocument);
-            if (activeDocument == null || activeSession == null)
+            if (activeDocument == null || activeSession == null || !String.IsNullOrEmpty(activeSession.ConsoleCommand))
                 return;
 
             bool isSavedSession = Object.ReferenceEquals(

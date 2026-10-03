@@ -60,6 +60,11 @@ namespace SuperPutty.Scp
     {
         ListDirectoryResult ListDirectory(SessionData session, BrowserFileInfo path);
     }
+
+    public interface ICancellableBrowserModel : IBrowserModel
+    {
+        ListDirectoryResult ListDirectory(SessionData session, BrowserFileInfo path, CancellationToken cancellationToken);
+    }
     #endregion
 
     #region PscpResult

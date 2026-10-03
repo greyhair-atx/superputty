@@ -1,10 +1,11 @@
 ﻿using log4net;
 using SuperPutty.Data;
 using System.IO;
+using System.Threading;
 
 namespace SuperPutty.Scp
 {
-    public class RemoteBrowserModel : IBrowserModel
+    public class RemoteBrowserModel : ICancellableBrowserModel
     {
         private static readonly ILog Log = LogManager.GetLogger(typeof(RemoteBrowserModel));
 
@@ -21,6 +22,12 @@ namespace SuperPutty.Scp
         /// <returns></returns>
         public ListDirectoryResult ListDirectory(SessionData session, BrowserFileInfo path)
         {
+            return ListDirectory(session, path, CancellationToken.None);
+        }
+
+        public ListDirectoryResult ListDirectory(SessionData session, BrowserFileInfo path, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             ListDirectoryResult result;
 
             if (session == null || session.Username == null)
@@ -42,7 +49,7 @@ namespace SuperPutty.Scp
                 }
 
                 PscpClient client = new PscpClient(this.Options, session);
-                result = client.ListDirectory(path);
+                result = client.ListDirectory(path, cancellationToken);
             }
 
             return result;

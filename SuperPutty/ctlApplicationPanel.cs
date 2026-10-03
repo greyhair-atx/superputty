@@ -604,10 +604,9 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
         private void UpdateTitle()
         {
-            int length = NativeMethods.SendMessage(m_AppWin, NativeMethods.WM_GETTEXTLENGTH, 0, 0) + 1;
-            StringBuilder sb = new StringBuilder(length + 1);
-            NativeMethods.SendMessage(m_AppWin, NativeMethods.WM_GETTEXT, sb.Capacity, sb);
-            string controlText = sb.ToString();
+            string controlText;
+            if (!TryReadWindowTitle(m_AppWin, out controlText) || !(this.Parent is ctlPuttyPanel))
+                return;
             string parentText = ((ctlPuttyPanel)this.Parent).TextOverride;
 
             switch ((SuperPutty.frmSuperPutty.TabTextBehavior)Enum.Parse(typeof(frmSuperPutty.TabTextBehavior), SuperPuTTY.Settings.TabTextBehavior))
@@ -854,6 +853,26 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 try { return m_Process != null && !m_Process.HasExited; }
                 catch (InvalidOperationException) { return false; }
             }
+        }
+
+        internal static bool TryReadWindowTitle(IntPtr window, out string title)
+        {
+            title = null;
+            if (window == IntPtr.Zero || !NativeMethods.IsWindow(window))
+                return false;
+            // Bound both calls, including when the target thread keeps pumping messages.
+            const uint flags = 0x0002 | 0x0020; // SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT
+            UIntPtr result;
+            if (NativeMethods.SendMessageTimeout(window, NativeMethods.WM_GETTEXTLENGTH,
+                IntPtr.Zero, IntPtr.Zero, flags, 100, out result) == IntPtr.Zero)
+                return false;
+            int capacity = (int)Math.Min(result.ToUInt64(), 32767UL) + 1;
+            StringBuilder text = new StringBuilder(capacity);
+            if (NativeMethods.SendMessageTimeout(window, NativeMethods.WM_GETTEXT,
+                new IntPtr(capacity), text, flags, 100, out result) == IntPtr.Zero)
+                return false;
+            title = text.ToString();
+            return true;
         }
 
         #endregion    

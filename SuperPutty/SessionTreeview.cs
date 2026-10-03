@@ -480,6 +480,19 @@ namespace SuperPutty
             }
         }
 
+        private void pingToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (!WCMDStartInfo.CanPing(this.SelectedSession))
+                return;
+
+            SessionData session = WCMDStartInfo.CreatePingSession(this.SelectedSession,
+                sender == this.pingContinuouslyToolStripMenuItem);
+            if (sender == this.pingExternallyToolStripMenuItem)
+                new PuttyStartInfo(session).StartStandalone();
+            else
+                SuperPuTTY.OpenSession(new SessionDataStartInfo { Session = session });
+        }
+
         private void connectInNewSuperPuTTYToolStripMenuItem_Click(object sender, EventArgs e)
         {
             TreeNode node = this.treeView1.SelectedNode;
@@ -630,6 +643,15 @@ namespace SuperPutty
         {
             SessionData selectedSession = this.SelectedSession;
             bool isScpSession = selectedSession != null && selectedSession.Proto == ConnectionProtocol.SCP;
+
+            bool canPing = WCMDStartInfo.CanPing(selectedSession);
+            string pingLabel = "Ping" + (canPing ? " " + selectedSession.Host.Trim() : "");
+            this.pingToolStripMenuItem.Text = pingLabel;
+            this.pingContinuouslyToolStripMenuItem.Text = pingLabel + " continuously";
+            this.pingExternallyToolStripMenuItem.Text = pingLabel + " externally";
+            this.pingToolStripMenuItem.Enabled = canPing;
+            this.pingContinuouslyToolStripMenuItem.Enabled = canPing;
+            this.pingExternallyToolStripMenuItem.Enabled = canPing;
 
             // disable file transfers if pscp isn't configured.
             fileBrowserToolStripMenuItem.Enabled = SuperPuTTY.IsScpEnabled;

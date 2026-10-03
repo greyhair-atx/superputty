@@ -42,6 +42,10 @@
             this.connectExternalToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.connectInNewSuperPuTTYToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripSeparator2 = new System.Windows.Forms.ToolStripSeparator();
+            this.pingToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.pingContinuouslyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.pingExternallyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.pingToolStripSeparator = new System.Windows.Forms.ToolStripSeparator();
             this.fileBrowserToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.contextMenuStripFolder = new System.Windows.Forms.ContextMenuStrip(this.components);
             this.newSessionToolStripMenuItem1 = new System.Windows.Forms.ToolStripMenuItem();
@@ -110,6 +114,10 @@
             this.connectExternalToolStripMenuItem,
             this.connectInNewSuperPuTTYToolStripMenuItem,
             this.toolStripSeparator2,
+            this.pingToolStripMenuItem,
+            this.pingContinuouslyToolStripMenuItem,
+            this.pingExternallyToolStripMenuItem,
+            this.pingToolStripSeparator,
             this.fileBrowserToolStripMenuItem,
             this.winSCPToolStripMenuItem,
             this.fileZillaToolStripMenuItem});
@@ -177,6 +185,16 @@
             this.toolStripSeparator2.Name = "toolStripSeparator2";
             this.toolStripSeparator2.Size = new System.Drawing.Size(178, 6);
             // 
+            this.pingToolStripMenuItem.Name = "pingToolStripMenuItem";
+            this.pingToolStripMenuItem.Text = "Ping";
+            this.pingToolStripMenuItem.Click += new System.EventHandler(this.pingToolStripMenuItem_Click);
+            this.pingContinuouslyToolStripMenuItem.Name = "pingContinuouslyToolStripMenuItem";
+            this.pingContinuouslyToolStripMenuItem.Text = "Ping continuously";
+            this.pingContinuouslyToolStripMenuItem.Click += new System.EventHandler(this.pingToolStripMenuItem_Click);
+            this.pingExternallyToolStripMenuItem.Name = "pingExternallyToolStripMenuItem";
+            this.pingExternallyToolStripMenuItem.Text = "Ping externally";
+            this.pingExternallyToolStripMenuItem.Click += new System.EventHandler(this.pingToolStripMenuItem_Click);
+            this.pingToolStripSeparator.Name = "pingToolStripSeparator";
             // fileBrowserToolStripMenuItem
             // 
             this.fileBrowserToolStripMenuItem.Name = "fileBrowserToolStripMenuItem";
@@ -375,6 +393,10 @@
         private System.Windows.Forms.ToolStripMenuItem settingsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem deleteToolStripMenuItem;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator1;
+        private System.Windows.Forms.ToolStripMenuItem pingToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem pingContinuouslyToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem pingExternallyToolStripMenuItem;
+        private System.Windows.Forms.ToolStripSeparator pingToolStripSeparator;
         private System.Windows.Forms.ToolStripMenuItem fileBrowserToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem connectToolStripMenuItem;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator2;

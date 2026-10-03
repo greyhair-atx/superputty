@@ -18,8 +18,9 @@ namespace SuperPutty.Scp
     #endregion
 
     #region FileTransferPresenter
-    public class FileTransferPresenter : IFileTransferPresenter
+    public class FileTransferPresenter : IFileTransferPresenter, IDisposable
     {
+        private volatile bool disposed;
         private static readonly ILog Log = LogManager.GetLogger(typeof(FileTransferPresenter));
 
         private IDictionary<int, FileTransfer> fileTranfers = new Dictionary<int, FileTransfer>();
@@ -32,6 +33,7 @@ namespace SuperPutty.Scp
 
         public bool CanTransferFile(BrowserFileInfo source, BrowserFileInfo target)
         {
+            if (disposed) return false;
             //    Source        Target   Result
             // 1) WindowsFile   Local    if not the same, File.Copy
             // 2) Local         Local    File.Copy
@@ -66,6 +68,7 @@ namespace SuperPutty.Scp
 
         public void TransferFiles(FileTransferRequest request)
         {
+            if (disposed) return;
             // Expand requests, if needed
             List<FileTransfer> transfers = new List<FileTransfer>();
             if (request.TargetFile.Source == SourceType.Local)
@@ -110,6 +113,7 @@ namespace SuperPutty.Scp
 
         void transfer_Update(object sender, EventArgs e)
         {
+            if (disposed) return;
             FileTransfer transfer = (FileTransfer)sender;
             if (this.ViewModel.Context != null)
             {
@@ -123,6 +127,7 @@ namespace SuperPutty.Scp
 
         void ProcessTransferUpdate(FileTransfer transfer)
         {
+            if (disposed) return;
 
             int idx = this.ViewModel.FindIndexById(transfer.Id);
             if (idx == -1)
@@ -204,6 +209,7 @@ namespace SuperPutty.Scp
 
         FileTransfer GetById(int id)
         {
+            if (disposed) return null;
             FileTransfer transfer;
             if (!this.fileTranfers.TryGetValue(id, out transfer))
             {
@@ -213,6 +219,19 @@ namespace SuperPutty.Scp
         }
 
         public FileTransferViewModel ViewModel { get; private set; }
+
+        public void Dispose()
+        {
+            if (disposed) return;
+            disposed = true;
+            foreach (FileTransfer transfer in fileTranfers.Values)
+            {
+                transfer.Update -= transfer_Update;
+                if (FileTransfer.CanCancel(transfer.TransferStatus))
+                    transfer.Cancel();
+            }
+            fileTranfers.Clear();
+        }
         public PscpOptions Options { get; private set; }
 
     } 

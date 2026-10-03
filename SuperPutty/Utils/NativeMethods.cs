@@ -1164,6 +1164,10 @@ namespace SuperPutty.Utils
         internal static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint message, IntPtr wParam,
             IntPtr lParam, uint flags, uint timeout, out UIntPtr result);
 
+        [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", CharSet = CharSet.Unicode, SetLastError = true)]
+        internal static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint message, IntPtr wParam,
+            StringBuilder lParam, uint flags, uint timeout, out UIntPtr result);
+
         [DllImport("user32.dll")]
         public static extern int SendMessage(IntPtr hWnd, uint Msg, long wParam, long lParam);
 

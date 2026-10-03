@@ -25,6 +25,15 @@ namespace SuperPutty.Scp
         private static readonly ILog Log = LogManager.GetLogger(typeof(BrowserView));
 
         bool initialized = false;
+        private PropertyChangedEventHandler modelPropertyChanged;
+
+        private void DetachPresenter()
+        {
+            if (Presenter == null) return;
+            Presenter.AuthRequest -= Presenter_AuthRequest;
+            Presenter.ViewModel.Files.ListChanged -= Files_ListChanged;
+            Presenter.ViewModel.PropertyChanged -= modelPropertyChanged;
+        }
         public BrowserView(IBrowserPresenter presenter, BrowserFileInfo startingDir) : this()
         {
             Initialize(presenter, startingDir);
@@ -53,6 +62,7 @@ namespace SuperPutty.Scp
 
         void Presenter_AuthRequest(object sender, AuthEventArgs e)
         {
+            if (IsDisposed || Disposing) return;
             // present login
             using (dlgLogin login = new dlgLogin(e.UserName))
             {
@@ -83,11 +93,13 @@ namespace SuperPutty.Scp
             // Ugh, ListView not bindable, do it manually
             this.PopulateListView(model.Files);
             model.Files.ListChanged += Files_ListChanged;
-            model.PropertyChanged += (s, e) => EnableDisableControls(model.BrowserState);
+            modelPropertyChanged = (s, e) => EnableDisableControls(model.BrowserState);
+            model.PropertyChanged += modelPropertyChanged;
         }
 
         void EnableDisableControls(BrowserState state)
         {
+            if (IsDisposed || Disposing) return;
             bool enabled = state == BrowserState.Ready;
             this.tsBtnRefresh.Enabled = enabled;
             this.listViewFiles.Enabled = enabled;
@@ -95,6 +107,7 @@ namespace SuperPutty.Scp
 
         void PopulateListView(BindingList<BrowserFileInfo> files)
         {
+            if (IsDisposed || Disposing) return;
             this.listViewFiles.BeginUpdate();
             this.listViewFiles.Items.Clear();
             this.listViewFiles.ListViewItemSorter = null;

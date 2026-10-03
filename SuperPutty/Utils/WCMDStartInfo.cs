@@ -42,10 +42,39 @@ namespace SuperPutty.Utils
             this.session = session;
             this.Args = CommandLineOptions.QuoteArgument(
                 PuttyStartInfo.GetConsoleClientExecutable(ConnectionProtocol.WINCMD)) + " /d /q";
+            if (!String.IsNullOrEmpty(session.ConsoleCommand))
+            {
+                this.Args += " /v:off /k " + session.ConsoleCommand;
+            }
             this.StartingDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         }
 
         public string Args { get; set; }
+
+        internal static bool CanPing(SessionData session)
+        {
+            // Restrict shell input to hostnames and IP literals, including IPv6 scope IDs.
+            return session != null && session.Proto != ConnectionProtocol.Serial &&
+                !String.IsNullOrWhiteSpace(session.Host) &&
+                Regex.IsMatch(session.Host.Trim(), @"\A[a-zA-Z0-9:][a-zA-Z0-9._:%-]*\z") &&
+                session.Host.Trim().IndexOf('%') == session.Host.Trim().LastIndexOf('%');
+        }
+
+        internal static SessionData CreatePingSession(SessionData source, bool continuous)
+        {
+            if (!CanPing(source))
+                throw new ArgumentException("The session must have a valid hostname or IP address.", "source");
+
+            string host = source.Host.Trim();
+            return new SessionData
+            {
+                SessionName = "Ping " + host + (continuous ? " continuously" : ""),
+                Host = host,
+                Proto = ConnectionProtocol.WINCMD,
+                // Windows ping skips reverse DNS by default. -d is not a supported option.
+                ConsoleCommand = "ping.exe " + (continuous ? "-t " : "") + host
+            };
+        }
         public string StartingDir { get; set; }
 
     }

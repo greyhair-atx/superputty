@@ -102,6 +102,12 @@ namespace SuperPutty.Scp
 
         public ListDirectoryResult ListDirectory(BrowserFileInfo path)
         {
+            return ListDirectory(path, CancellationToken.None);
+        }
+
+        public ListDirectoryResult ListDirectory(BrowserFileInfo path, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             lock (this)
             {
                 //return this.DoListDirectory(path);
@@ -138,7 +144,7 @@ namespace SuperPutty.Scp
                                     }
                                 }
                             }
-                        });
+                        }, cancellationToken);
                 }
 
                 return result;
