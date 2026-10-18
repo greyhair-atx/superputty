@@ -16,6 +16,7 @@ namespace SuperPutty.Gui
         public QuickSelector()
         {
             InitializeComponent();
+            SuperPutty.Gui.ThemeManager.Apply(this);
         }
 
         void DoClose()

@@ -107,6 +107,10 @@ namespace SuperPutty
 
             if (this.DesignMode) return;
 
+            // apply Light/Dark theme before any dock content is created
+            ThemeManager.ApplyToDockPanel(this.DockPanel);
+            ThemeManager.Apply(this);
+
             // setup connection bar
             this.tbTxtBoxPassword.TextBox.PasswordChar = '*';
             this.RefreshConnectionToolbarData();
@@ -1261,6 +1265,13 @@ namespace SuperPutty
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
                 ApplySettings();
+
+                // the dock panel theme can only change while no panes are open, so apply it on next start
+                if (ThemeManager.Resolve(SuperPuTTY.Settings.Theme) != ThemeManager.IsDark)
+                {
+                    MessageBox.Show(this, "Restart SuperPuTTY for the theme change to take effect.", "Theme Changed",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
             }
 
             SuperPuTTY.ReportStatus("Ready");

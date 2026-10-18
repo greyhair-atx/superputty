@@ -19,6 +19,7 @@ namespace SuperPutty
         public AboutBox1()
         {
             InitializeComponent();
+            SuperPutty.Gui.ThemeManager.Apply(this);
             this.Text = String.Format("About {0}", AssemblyTitle);
             this.labelProductName.Text = AssemblyTitle + " " + Assembly.GetExecutingAssembly().GetName().Version.ToString(3);
             this.labelVersion.Text = "Based on the original SuperPuTTY by Jim Radford";

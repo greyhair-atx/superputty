@@ -47,6 +47,7 @@ namespace SuperPutty
         {
             Session = session;
             InitializeComponent();
+            SuperPutty.Gui.ThemeManager.Apply(this);
 
             // get putty saved settings from the registry to populate
             // the dropdown

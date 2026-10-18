@@ -44,6 +44,7 @@ namespace SuperPutty
         public dlgScriptEditor()
         {
             InitializeComponent();
+            SuperPutty.Gui.ThemeManager.Apply(this);
             this.ActiveControl = textBoxSript;         
         }
 

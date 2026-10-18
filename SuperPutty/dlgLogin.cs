@@ -41,6 +41,7 @@ namespace SuperPutty
         {
             this.Username = WindowsIdentity.GetCurrent().Name.Split('\\')[1];
             InitializeComponent();
+            SuperPutty.Gui.ThemeManager.Apply(this);
 
             if (!String.IsNullOrEmpty(userName))
                 this.Username = userName;

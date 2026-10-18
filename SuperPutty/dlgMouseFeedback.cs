@@ -7,6 +7,7 @@ namespace SuperPutty
         public dlgMouseFeedback()
         {
             InitializeComponent();
+            SuperPutty.Gui.ThemeManager.Apply(this);
         }
 
         private void dlgMouseFeedback_MouseMove(object sender, MouseEventArgs e)

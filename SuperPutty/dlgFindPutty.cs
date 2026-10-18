@@ -51,6 +51,8 @@ namespace SuperPutty
 
             FixDpiScalingIssues();
 
+            ThemeManager.Apply(this);
+
             string puttyExe = SuperPuTTY.Settings.PuttyExe;
             string pscpExe = SuperPuTTY.Settings.PscpExe;
 
@@ -169,6 +171,10 @@ namespace SuperPutty
                 this.comboSearchMode.Items.Add(name);
             }
             this.comboSearchMode.SelectedItem = SuperPuTTY.Settings.SessionsSearchMode;
+
+            // themes
+            this.comboTheme.Items.AddRange(ThemeManager.ThemeNames);
+            this.comboTheme.SelectedItem = ThemeManager.Normalize(SuperPuTTY.Settings.Theme);
 
             // default layouts
             InitLayouts();
@@ -386,6 +392,7 @@ namespace SuperPutty
                 SuperPuTTY.Settings.SessionsSearchMode = (string) this.comboSearchMode.SelectedItem;
                 SuperPuTTY.Settings.QuickSelectorCaseSensitiveSearch = this.checkQuickSelectorCaseSensitiveSearch.Checked;
                 SuperPuTTY.Settings.ShowDocumentIcons = this.checkShowDocumentIcons.Checked;
+                SuperPuTTY.Settings.Theme = (string) this.comboTheme.SelectedItem;
                 SuperPuTTY.Settings.DockingRestrictFloatingWindows = this.checkRestrictFloatingWindows.Checked;
                 SuperPuTTY.Settings.SessionsShowSearch = this.checkSessionsShowSearch.Checked;
                 SuperPuTTY.Settings.FilterSessionsOnChange = this.checkFilterWhileTyping.Checked;
