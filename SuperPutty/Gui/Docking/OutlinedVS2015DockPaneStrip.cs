@@ -1045,12 +1045,22 @@ namespace SuperPutty.Gui.Docking
             if (toScreen)
                 rect = RectangleToScreen(rect);
 
-            using (GraphicsPath path = CreateDocumentTabPath(rect,
+            using (GraphicsPath path = CreateStyledDocumentTabPath(rect,
                 DockPane.DockPanel.DocumentTabStripLocation == DocumentTabStripLocation.Bottom))
             {
                 GraphicsPath.AddPath(path, false);
             }
             return GraphicsPath;
+        }
+
+        private GraphicsPath CreateStyledDocumentTabPath(Rectangle rect, bool bottomTabs)
+        {
+            if (!(DockPane.DockPanel.Theme is DarkModernTheme))
+                return CreateDocumentTabPath(rect, bottomTabs);
+            var path = new GraphicsPath();
+            if (rect.Width > 1 && rect.Height > 1)
+                path.AddRectangle(new Rectangle(rect.X, rect.Y, rect.Width - 1, rect.Height - 1));
+            return path;
         }
 
         internal static GraphicsPath CreateDocumentTabPath(Rectangle rect, bool bottomTabs)
@@ -1266,11 +1276,13 @@ namespace SuperPutty.Gui.Docking
                 : tab.Content == DockPane.MouseOverTab
                     ? OutlinedVS2015LightTheme.HoveredTabOutline
                     : OutlinedVS2015LightTheme.InactiveTabOutline;
+            bool modern = DockPane.DockPanel.Theme is DarkModernTheme;
+            if (modern) outline = DarkModernTheme.Border;
 
             bool bottomTabs = DockPane.DockPanel.DocumentTabStripLocation == DocumentTabStripLocation.Bottom;
             SmoothingMode previousSmoothingMode = g.SmoothingMode;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            using (GraphicsPath tabPath = CreateDocumentTabPath(rectTab, bottomTabs))
+            using (GraphicsPath tabPath = CreateStyledDocumentTabPath(rectTab, bottomTabs))
             {
                 if (tabPath.PointCount > 0)
                 {
@@ -1285,6 +1297,15 @@ namespace SuperPutty.Gui.Docking
                 }
             }
             g.SmoothingMode = previousSmoothingMode;
+
+            if (modern && DockPane.ActiveContent == tab.Content)
+            {
+                Color accent = DockPane.IsActiveDocumentPane ? DarkModernTheme.Accent : DarkModernTheme.Border;
+                int thickness = Math.Max(2, (int)Math.Round(2.0 * g.DpiY / 96.0));
+                using (var brush = new SolidBrush(accent))
+                    g.FillRectangle(brush, rectTab.Left, bottomTabs ? rectTab.Bottom - thickness : rectTab.Top,
+                        rectTab.Width, thickness);
+            }
 
             TextRenderer.DrawText(g, tab.Content.DockHandler.TabText, TextFont, rectText, text, DocumentTextFormat);
             if (image != null)

@@ -52,6 +52,8 @@ try{
   Pump 300
  }
  foreach($index in @(0,1,2,0,2,1,0)){
+  # SendKeys targets the desktop foreground window, not a background GUI thread's focus.
+  $form.TopMost=$true;$form.Activate();[void][LiveNative]::SetForegroundWindow($form.Handle);Pump 100
   $p=$panels[$index];[void][SuperPutty.ctlPuttyPanel].GetMethod('Show',[Type[]]@()).Invoke($p,@());Pump 250
   $h=([SuperPutty.ctlPuttyPanel].GetProperty('AppPanel').GetValue($p,$null)).AppWindowHandle;$g=[LiveNative]::State($h)
   $style=[LiveNative]::GetWindowLong($h,-16)
@@ -63,6 +65,8 @@ try{
    $rect=New-Object LiveNative+Rect;[LiveNative]::GetWindowRect($h,[ref]$rect)|Out-Null
    if($rect.l -ne $origin.X -or $rect.t -ne $origin.Y -or ($rect.r-$rect.l) -ne $panel.Width -or ($rect.b-$rect.t) -ne $panel.Height){throw 'Embedded window extends beyond its panel'}
    $marker="focus-test-$index"
+   $foreground=[LiveNative]::GetForegroundWindow()
+   if($foreground -ne $form.Handle -and $foreground -ne $h){throw 'Cannot establish test-window foreground; typed-input test is inconclusive'}
    [Windows.Forms.SendKeys]::SendWait($marker+'{ENTER}');Pump 300
    $stream=$clients[$index].GetStream();$received=''
    $end=[DateTime]::UtcNow.AddSeconds(2)

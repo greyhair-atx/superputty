@@ -107,13 +107,17 @@ namespace SuperPutty
 
             if (this.DesignMode) return;
 
+            // apply Light/Dark theme before any dock content is created
+            ThemeManager.ApplyToDockPanel(this.DockPanel);
+            ThemeManager.Apply(this);
+
             // setup connection bar
             this.tbTxtBoxPassword.TextBox.PasswordChar = '*';
             this.RefreshConnectionToolbarData();
             this.tbComboProtocol.SelectedIndexChanged += this.tbComboProtocol_SelectedIndexChanged;
 
             // version in status bar
-            this.toolStripStatusLabelVersion.Text = SuperPuTTY.Version;
+            this.toolStripStatusLabelVersion.Text = SuperPuTTY.DisplayVersion;
 
             // tool windows
             this.sessions = new SingletonToolWindowHelper<SessionTreeview>("Sessions", this.DockPanel, null, x => new SessionTreeview(x.DockPanel));
@@ -1261,6 +1265,13 @@ namespace SuperPutty
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
                 ApplySettings();
+
+                // the dock panel theme can only change while no panes are open, so apply it on next start
+                if (ThemeManager.RequiresRestart(SuperPuTTY.Settings.Theme))
+                {
+                    MessageBox.Show(this, "Restart SuperPuTTY for the theme change to take effect.", "Theme Changed",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
             }
 
             SuperPuTTY.ReportStatus("Ready");

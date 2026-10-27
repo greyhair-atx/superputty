@@ -875,13 +875,19 @@ namespace SuperPutty
         /// <param name="isEnableStopImage">enable special stop image</param>
         public static ImageList LoadImageList(string theme, bool isEnableStopImage)
         {
-            ImageList imgIcons = new ImageList();
-            
+            // 32-bit keeps the alpha channel of the png icons so they blend with any background
+            ImageList imgIcons = new ImageList { ColorDepth = ColorDepth.Depth32Bit };
+
+            // icons without alpha have a white box background that looks wrong on the dark theme
+            Func<Image, Image> prepare = img => SuperPutty.Gui.ThemeManager.IsDark
+                ? SuperPutty.Gui.ThemeManager.WithTransparentBackground(img)
+                : img;
+
             if (isEnableStopImage)
-                imgIcons.Images.Add("stop", Resources.stop);
+                imgIcons.Images.Add("stop", prepare(Resources.stop));
             // Load the 2 standard icons in case no icons exist in icons directory, these will be used.
-            imgIcons.Images.Add(SessionTreeview.ImageKeyFolder, Resources.folder);
-            imgIcons.Images.Add(SessionTreeview.ImageKeySession, Resources.computer);
+            imgIcons.Images.Add(SessionTreeview.ImageKeyFolder, prepare(Resources.folder));
+            imgIcons.Images.Add(SessionTreeview.ImageKeySession, prepare(Resources.computer));
 
             try
             {
@@ -897,7 +903,7 @@ namespace SuperPutty
                         if (Regex.IsMatch(fi.Extension, @"\.(bmp|jpg|jpeg|png)", RegexOptions.IgnoreCase))
                         {
                             Image img = Image.FromFile(fi.FullName);
-                            imgIcons.Images.Add(Path.GetFileNameWithoutExtension(fi.Name), img);
+                            imgIcons.Images.Add(Path.GetFileNameWithoutExtension(fi.Name), prepare(img));
                         }
                     }
                     Log.InfoFormat($"Loaded {imgIcons.Images.Count} icons from theme directory.  dir={themeFolder}");
@@ -974,6 +980,14 @@ namespace SuperPutty
 
         /// <summary>Returns a string containing the current version of SuperPuTTY</summary>
         public static string Version { get { return Assembly.GetExecutingAssembly().GetName().Version.ToString(); } }
+        public static string DisplayVersion
+        {
+            get
+            {
+                var info = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>();
+                return info != null ? info.InformationalVersion : Version;
+            }
+        }
 
         internal static Settings Settings { get { return Settings.Default; } }
         public static frmSuperPutty MainForm { get; set; }        

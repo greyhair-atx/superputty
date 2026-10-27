@@ -11,6 +11,7 @@ namespace SuperPutty.Gui
         public KeyboardShortcutEditor()
         {
             InitializeComponent();
+            SuperPutty.Gui.ThemeManager.Apply(this);
             this.KeyboardShortcut = new KeyboardShortcut();
         }
 

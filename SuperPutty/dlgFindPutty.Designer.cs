@@ -116,6 +116,8 @@ namespace SuperPutty
             this.groupBox2 = new System.Windows.Forms.GroupBox();
             this.groupBox1 = new System.Windows.Forms.GroupBox();
             this.comboSearchMode = new System.Windows.Forms.ComboBox();
+            this.comboTheme = new System.Windows.Forms.ComboBox();
+            this.labelTheme = new System.Windows.Forms.Label();
             this.btnFont = new System.Windows.Forms.Button();
             this.label11 = new System.Windows.Forms.Label();
             this.tabPageShortcuts = new System.Windows.Forms.TabPage();
@@ -971,6 +973,8 @@ namespace SuperPutty
             // 
             this.groupBox3.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
+            this.groupBox3.Controls.Add(this.comboTheme);
+            this.groupBox3.Controls.Add(this.labelTheme);
             this.groupBox3.Controls.Add(this.checkShowDocumentIcons);
             this.groupBox3.Controls.Add(this.label15);
             this.groupBox3.Controls.Add(this.checkQuickSelectorCaseSensitiveSearch);
@@ -980,11 +984,30 @@ namespace SuperPutty
             this.groupBox3.Controls.Add(this.checkMinimizeToTray);
             this.groupBox3.Location = new System.Drawing.Point(367, 211);
             this.groupBox3.Name = "groupBox3";
-            this.groupBox3.Size = new System.Drawing.Size(243, 157);
+            this.groupBox3.Size = new System.Drawing.Size(243, 185);
             this.groupBox3.TabIndex = 40;
             this.groupBox3.TabStop = false;
             this.groupBox3.Text = "Misc";
-            // 
+            //
+            // labelTheme
+            //
+            this.labelTheme.AutoSize = true;
+            this.labelTheme.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.labelTheme.Location = new System.Drawing.Point(10, 150);
+            this.labelTheme.Name = "labelTheme";
+            this.labelTheme.Size = new System.Drawing.Size(44, 15);
+            this.labelTheme.TabIndex = 42;
+            this.labelTheme.Text = "Theme:";
+            //
+            // comboTheme
+            //
+            this.comboTheme.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.comboTheme.FormattingEnabled = true;
+            this.comboTheme.Location = new System.Drawing.Point(71, 147);
+            this.comboTheme.Name = "comboTheme";
+            this.comboTheme.Size = new System.Drawing.Size(120, 21);
+            this.comboTheme.TabIndex = 41;
+            //
             // checkShowDocumentIcons
             // 
             this.checkShowDocumentIcons.AutoSize = true;
@@ -1279,7 +1302,7 @@ namespace SuperPutty
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.CancelButton = this.buttonCancel;
-            this.ClientSize = new System.Drawing.Size(634, 438);
+            this.ClientSize = new System.Drawing.Size(634, 466);
             this.Controls.Add(this.tabControl);
             this.Controls.Add(this.panelBottom);
             this.Font = new System.Drawing.Font("Segoe UI", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
@@ -1398,6 +1421,8 @@ namespace SuperPutty
         private System.Windows.Forms.CheckBox checkEnableKeyboardShortcuts;
         private System.Windows.Forms.CheckBox checkEnableControlTabSwitching;
         private System.Windows.Forms.ComboBox comboSearchMode;
+        private System.Windows.Forms.ComboBox comboTheme;
+        private System.Windows.Forms.Label labelTheme;
         private System.Windows.Forms.Label label14;
         private System.Windows.Forms.Label label15;
         private System.Windows.Forms.CheckBox checkQuickSelectorCaseSensitiveSearch;

@@ -19,8 +19,9 @@ namespace SuperPutty
         public AboutBox1()
         {
             InitializeComponent();
+            SuperPutty.Gui.ThemeManager.Apply(this);
             this.Text = String.Format("About {0}", AssemblyTitle);
-            this.labelProductName.Text = AssemblyTitle + " " + Assembly.GetExecutingAssembly().GetName().Version.ToString(3);
+            this.labelProductName.Text = AssemblyTitle + " " + SuperPuTTY.DisplayVersion;
             this.labelVersion.Text = "Based on the original SuperPuTTY by Jim Radford";
             this.labelCopyright.Text = OriginalReleaseAttribution;
             this.linkLabelCompany.Text = OriginalAuthorUrl;
@@ -36,7 +37,7 @@ namespace SuperPutty
                 "Copyright (c) 2026 Chris Thornton (community modifications)." + Environment.NewLine +
                 "Original project: https://github.com/jimradford/superputty";
 
-            textBoxSupportText.AppendText(SuperPuTTY.DisplayName + " Version: " + SuperPuTTY.Version + Environment.NewLine);
+            textBoxSupportText.AppendText(SuperPuTTY.DisplayName + " Version: " + SuperPuTTY.DisplayVersion + Environment.NewLine);
             Assembly[] asms = AppDomain.CurrentDomain.GetAssemblies();
             foreach(var a in asms)
             {                

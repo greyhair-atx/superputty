@@ -1,12 +1,14 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '1.8.2',
+    [string]$Version = '1.8.3-rc.1',
+    [string]$InstallerProductVersion,
     [string]$Configuration = 'Release',
     [ValidateSet('test-x64','win-x64-signed')][string]$InstallerArtifactSuffix = 'test-x64',
     [switch]$RequireSignatures,
     [string]$OutputDirectory
 )
 $ErrorActionPreference = 'Stop'
+if (-not $InstallerProductVersion) { $InstallerProductVersion = $Version -replace '-.*$', '' }
 $repo = Split-Path -Parent $PSScriptRoot
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $repo "artifacts/release-$Version/$InstallerArtifactSuffix" }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -29,13 +31,13 @@ $packages = @()
 foreach ($scope in @('PerUser','PerMachine')) {
     $scopeName = if ($scope -eq 'PerUser') { 'current-user' } else { 'all-users' }
     $name = "$prefix-$scopeName-$InstallerArtifactSuffix.msi"
-    & "$PSScriptRoot/Verify-ReleaseArtifacts.ps1" -Configuration $Configuration -ExpectedVersion "$Version.0" -InstallerScope $scope -MsiName $name
+    & "$PSScriptRoot/Verify-ReleaseArtifacts.ps1" -Configuration $Configuration -ExpectedVersion "$InstallerProductVersion.0" -InstallerScope $scope -MsiName $name
     $source = [IO.Path]::GetFullPath((Join-Path $repo "SuperPuttyInstaller/bin/x64/$Configuration/$name"))
     $database = $installer.GetType().InvokeMember('OpenDatabase','InvokeMethod',$null,$installer,@($source,[int]0))
     $productCode = Read-MsiValue $database 'SELECT `Value` FROM `Property` WHERE `Property`=''ProductCode'''
     $upgradeCode = Read-MsiValue $database 'SELECT `Value` FROM `Property` WHERE `Property`=''UpgradeCode'''
     $productVersion = Read-MsiValue $database 'SELECT `Value` FROM `Property` WHERE `Property`=''ProductVersion'''
-    if ($productVersion -ne $Version) { throw 'MSI version mismatch.' }
+    if ($productVersion -ne $InstallerProductVersion) { throw 'MSI version mismatch.' }
     Copy-Item -LiteralPath $source -Destination (Join-Path $output $name) -Force
     $packages += [ordered]@{name=$name;scope=$scope;productCode=$productCode;upgradeCode=$upgradeCode;sha256=(Get-FileHash $source).Hash;version=$productVersion}
 }

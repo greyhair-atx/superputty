@@ -19,6 +19,7 @@
  * THE SOFTWARE.
  */
 
+using SuperPutty.Gui;
 using WeifenLuo.WinFormsUI.Docking;
 
 namespace SuperPutty
@@ -28,7 +29,8 @@ namespace SuperPutty
         public ToolWindow()
         {
             InitializeComponent();
-            
+
+            ThemeManager.Apply(this);
         }
     }
 }

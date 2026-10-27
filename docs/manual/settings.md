@@ -13,6 +13,10 @@ New profiles reuse an existing writable Documents-based SuperPuTTY folder when a
 
 Use **Tools > Options > General** to see or change the active settings folder. The directory must be writable.
 
+## Application theme (1.8.3 preview)
+
+Under **Tools > Options > GUI > Misc > Theme**, choose Light, Dark, Dark Modern, or System. Save and restart to apply the choice. Light is the default; Dark Modern uses a VS Code inspired palette and flat document tabs. System follows the Windows app preference at startup using the original Dark style. External terminal and remote desktop colors are configured in their own applications. Dark mode was contributed by [dustinreeves](https://github.com/dustinreeves).
+
 ## Backups
 
 Close SuperPuTTY before making a manual backup. Copy at least:

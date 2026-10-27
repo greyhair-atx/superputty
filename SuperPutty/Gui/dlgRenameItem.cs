@@ -11,6 +11,7 @@ namespace SuperPutty.Gui
         public dlgRenameItem()
         {
             InitializeComponent();
+            SuperPutty.Gui.ThemeManager.Apply(this);
         }
 
         public string ItemName {

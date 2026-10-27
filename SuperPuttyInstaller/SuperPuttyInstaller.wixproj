@@ -2,10 +2,11 @@
 
   <PropertyGroup>
     <InstallerScope Condition="'$(InstallerScope)' == ''">PerMachine</InstallerScope>
-    <InstallerProductVersion Condition="'$(InstallerProductVersion)' == ''">1.8.2</InstallerProductVersion>
+    <InstallerProductVersion Condition="'$(InstallerProductVersion)' == ''">1.8.3</InstallerProductVersion>
+    <InstallerArtifactVersion Condition="'$(InstallerArtifactVersion)' == ''">1.8.3-rc.1</InstallerArtifactVersion>
     <InstallerArtifactSuffix Condition="'$(InstallerArtifactSuffix)' == ''">test-x64</InstallerArtifactSuffix>
-    <OutputName Condition="'$(InstallerScope)' == 'PerUser'">SuperPuTTY-CE-$(InstallerProductVersion)-current-user-$(InstallerArtifactSuffix)</OutputName>
-    <OutputName Condition="'$(InstallerScope)' == 'PerMachine'">SuperPuTTY-CE-$(InstallerProductVersion)-all-users-$(InstallerArtifactSuffix)</OutputName>
+    <OutputName Condition="'$(InstallerScope)' == 'PerUser'">SuperPuTTY-CE-$(InstallerArtifactVersion)-current-user-$(InstallerArtifactSuffix)</OutputName>
+    <OutputName Condition="'$(InstallerScope)' == 'PerMachine'">SuperPuTTY-CE-$(InstallerArtifactVersion)-all-users-$(InstallerArtifactSuffix)</OutputName>
     <DefineConstants>InstallerScope=$(InstallerScope);InstallerProductVersion=$(InstallerProductVersion);$(DefineConstants)</DefineConstants>
     <IntermediateOutputPath>obj\$(Platform)\$(Configuration)\$(InstallerScope)\</IntermediateOutputPath>
     <SuppressIces Condition="'$(InstallerScope)' == 'PerUser'">$(SuppressIces);ICE91</SuppressIces>

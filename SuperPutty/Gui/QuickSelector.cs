@@ -16,6 +16,7 @@ namespace SuperPutty.Gui
         public QuickSelector()
         {
             InitializeComponent();
+            SuperPutty.Gui.ThemeManager.Apply(this);
         }
 
         void DoClose()
@@ -184,7 +185,14 @@ namespace SuperPutty.Gui
                     (QuickSelectorData.ItemDataRow) ((DataRowView)this.dataGridViewData.Rows[e.RowIndex].DataBoundItem).Row;
                 if (!row.IsTextColorNull())
                 {
-                    e.CellStyle.ForeColor = (Color) row.TextColor;
+                    Color color = (Color) row.TextColor;
+                    // Session selectors supply light-theme black/blue overrides.
+                    // Keep those rows readable against the dark grid background.
+                    if (ThemeManager.IsDark && color == Color.Black)
+                        color = this.dataGridViewData.DefaultCellStyle.ForeColor;
+                    else if (ThemeManager.IsDark && color == Color.Blue)
+                        color = Color.FromArgb(86, 156, 214);
+                    e.CellStyle.ForeColor = color;
                 }
             }
         }

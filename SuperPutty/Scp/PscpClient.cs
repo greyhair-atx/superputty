@@ -879,13 +879,16 @@ namespace SuperPutty.Scp
                         if (isPossibleHit)
                         {
                             keepReading = AppendLineAndNotify(sb.ToString());
+                            sb.Clear();
                             if (++linesRead > 10)
                             {
                                 break;
                             }
-                            sb = new StringBuilder();
                         }
                     }
+
+                    if (keepReading && sb.Length > 0)
+                        keepReading = AppendLineAndNotify(sb.ToString());
 
                     // after reading 1st line, assume we have a normal read and go by line
                     string line;
@@ -967,7 +970,6 @@ namespace SuperPutty.Scp
         public class ScpLineParser
         {
             Regex regExFileLine = new Regex(@"^(?<Permissions>[cdrwx\-lSst]+)\s+(?<LinkCount>\d+)\s+(?<OwnerName>\w+|\w+\.\w+\w+|\w+\.\w+|\w+\-\w+)\s+(?<GroupName>\w+|\w+\.\w+\w+|\w+\.\w+|\w+\-\w+)\s+(?<BlockCount>\d+)\s+(?<Timestamp>(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec).{9})\s{1}(?<FileName>.*)$");            
-            Regex regExStatus = new Regex(@".*|.*|.*|.*|.*");
 
             public bool TryParseFileLine(string line, out BrowserFileInfo fileInfo)
             {
@@ -1044,30 +1046,41 @@ namespace SuperPutty.Scp
 
             public bool TryParseTransferStatus(string rawLine, out FileTransferStatus status)
             {
-                bool success = false;
                 status = new FileTransferStatus();
+                if (String.IsNullOrWhiteSpace(rawLine))
+                    return false;
+                string[] fields = rawLine.TrimEnd().Split('|');
+                if (fields.Length < 5)
+                    return false;
 
-                if (!String.IsNullOrEmpty(rawLine))
-                {
-                    string line = rawLine.TrimEnd();
-                    Match match = this.regExStatus.Match(line);
-                    if (match.Success)
-                    {
-                        string[] update = line.Split('|');
+                // Parse the trailing fields so a remote filename may contain a pipe.
+                int offset = fields.Length - 4;
+                string filename = String.Join("|", fields, 0, offset).Trim();
+                string transferred = fields[offset].Trim();
+                string rate = fields[offset + 1].Trim();
+                string percent = fields[offset + 3].Trim();
+                if (filename.Length == 0 || !transferred.EndsWith("kB", StringComparison.Ordinal) ||
+                    !rate.EndsWith("kB/s", StringComparison.Ordinal) || !percent.EndsWith("%", StringComparison.Ordinal))
+                    return false;
 
-                        status.Filename = update[0].Trim();
-                        status.BytesTransferred = int.Parse(update[1].Replace("kB", "").Trim());
-                        status.TransferRate = float.Parse(update[2].Replace("kB/s", "").Trim());
-                        status.TimeLeft = update[3].Replace("ETA:", "").Trim();
-                        status.PercentComplete = int.Parse(update[4].Replace("%", "").Trim());
-                        success = true;
-                    }
-                    else
-                    {
-                        Log.WarnFormat("Unable to parse OutputData: {0}", line);
-                    }
-                }
-                return success;
+                int bytesTransferred, percentComplete;
+                float transferRate;
+                if (!Int32.TryParse(transferred.Substring(0, transferred.Length - 2).Trim(),
+                        NumberStyles.Integer, CultureInfo.InvariantCulture, out bytesTransferred) || bytesTransferred < 0 ||
+                    !Single.TryParse(rate.Substring(0, rate.Length - 4).Trim(),
+                        NumberStyles.Float, CultureInfo.InvariantCulture, out transferRate) ||
+                    transferRate < 0 || Single.IsNaN(transferRate) || Single.IsInfinity(transferRate) ||
+                    !Int32.TryParse(percent.Substring(0, percent.Length - 1).Trim(),
+                        NumberStyles.Integer, CultureInfo.InvariantCulture, out percentComplete) ||
+                    percentComplete < 0 || percentComplete > 100)
+                    return false;
+
+                status.Filename = filename;
+                status.BytesTransferred = bytesTransferred;
+                status.TransferRate = transferRate;
+                status.TimeLeft = fields[offset + 2].Replace("ETA:", "").Trim();
+                status.PercentComplete = percentComplete;
+                return true;
             }
         }
         #endregion

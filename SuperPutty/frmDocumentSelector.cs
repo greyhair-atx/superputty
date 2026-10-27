@@ -38,6 +38,7 @@ namespace SuperPutty
         {
             this.dockPanel = dockPanel;
             InitializeComponent();
+            SuperPutty.Gui.ThemeManager.Apply(this);
             this.checkSendToVisible.Checked = SuperPuTTY.Settings.SendCommandsToVisibleOnly;
         }
 

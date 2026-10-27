@@ -33,6 +33,7 @@ namespace SuperPutty.Scp
     {
         private readonly CancellationTokenSource cancellation = new CancellationTokenSource();
         private volatile bool disposed;
+        private BrowserFileInfo lastRequestedDirectory;
         private static readonly ILog Log = LogManager.GetLogger(typeof(BrowserPresenter));
 
         /// <summary>Raised when login and password information is required to authenticate against a ssh server serving files via scp</summary>
@@ -185,9 +186,10 @@ namespace SuperPutty.Scp
             }
             else
             {
-                this.ViewModel.BrowserState = BrowserState.Working;
                 if (dir != null)
                 {
+                    lastRequestedDirectory = dir;
+                    this.ViewModel.BrowserState = BrowserState.Working;
                     Log.InfoFormat("LoadDirectory, path={0}", dir);
                     this.BackgroundWorker.RunWorkerAsync(dir);
                 }
@@ -202,7 +204,7 @@ namespace SuperPutty.Scp
         public void Refresh()
         {
             Log.DebugFormat("Refreshing current directory: '{0}'", this.CurrentPath);
-            this.LoadDirectory(this.CurrentPath);
+            this.LoadDirectory(this.CurrentPath ?? lastRequestedDirectory);
         }
 
         /// <summary>Verify a file can be transfered</summary>

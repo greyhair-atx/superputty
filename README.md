@@ -12,6 +12,8 @@ SuperPuTTY Community Edition is an actively maintained, independently published 
 
 **Latest stable release: [1.8.2](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.2).** Fixes the SSH multi-session regression; 1.8.1 remains withdrawn. Download signed Windows x64 installers or the no-install ZIP, with checksums, a runtime SBOM, and VirusTotal reports. [Release notes](docs/releases/1.8.2.md) · [Validation results](docs/RELEASE-1.8.2-RESULTS.md).
 
+**Preview: [1.8.3-rc.1](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.3-rc.1).** Adds dark mode contributed by [dustinreeves](https://github.com/dustinreeves), a VS Code inspired Dark Modern option, temporary ping tabs, and terminal/SCP reliability fixes. [Release candidate notes](docs/releases/1.8.3-rc.1.md). Version 1.8.2 remains stable.
+
 ## See the workspace
 
 Actual **1.8.1** screenshots, captured September 27, 2026, covering every session in the saved test list. Select an image for the full-size capture.
