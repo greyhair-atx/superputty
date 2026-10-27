@@ -9,6 +9,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if (-not $InstallerProductVersion) { $InstallerProductVersion = $Version -replace '-.*$', '' }
+$expectedProductVersion = if ($Version -match '-') { $Version } else { "$InstallerProductVersion.0" }
 $repo = Split-Path -Parent $PSScriptRoot
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $repo "artifacts/release-$Version/$InstallerArtifactSuffix" }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -31,7 +32,7 @@ $packages = @()
 foreach ($scope in @('PerUser','PerMachine')) {
     $scopeName = if ($scope -eq 'PerUser') { 'current-user' } else { 'all-users' }
     $name = "$prefix-$scopeName-$InstallerArtifactSuffix.msi"
-    & "$PSScriptRoot/Verify-ReleaseArtifacts.ps1" -Configuration $Configuration -ExpectedVersion "$InstallerProductVersion.0" -InstallerScope $scope -MsiName $name
+    & "$PSScriptRoot/Verify-ReleaseArtifacts.ps1" -Configuration $Configuration -ExpectedVersion "$InstallerProductVersion.0" -ExpectedProductVersion $expectedProductVersion -InstallerScope $scope -MsiName $name
     $source = [IO.Path]::GetFullPath((Join-Path $repo "SuperPuttyInstaller/bin/x64/$Configuration/$name"))
     $database = $installer.GetType().InvokeMember('OpenDatabase','InvokeMethod',$null,$installer,@($source,[int]0))
     $productCode = Read-MsiValue $database 'SELECT `Value` FROM `Property` WHERE `Property`=''ProductCode'''

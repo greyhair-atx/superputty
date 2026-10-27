@@ -3,6 +3,7 @@ param(
     [string] $Configuration = 'Release',
     [string] $Platform = 'x64',
     [string] $ExpectedVersion = '1.8.2.0',
+    [string] $ExpectedProductVersion,
     [ValidateSet('PerUser', 'PerMachine')]
     [string] $InstallerScope = 'PerMachine',
     [string] $MsiName
@@ -13,6 +14,8 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $appDirectory = Join-Path $repoRoot "bin\$Platform\$Configuration"
 $appPath = Join-Path $appDirectory 'SuperPutty.exe'
 $installerVersion = $ExpectedVersion -replace '\.0$', ''
+if (-not $ExpectedProductVersion) { $ExpectedProductVersion = $ExpectedVersion }
+$artifactVersion = if ($ExpectedProductVersion -match '-') { $ExpectedProductVersion } else { $installerVersion }
 if ([string]::IsNullOrWhiteSpace($MsiName)) {
     $scopeName = if ($InstallerScope -eq 'PerUser') { 'current-user' } else { 'all-users' }
     $MsiName = "SuperPuTTY-CE-$installerVersion-$scopeName-test-x64.msi"
@@ -65,14 +68,15 @@ Assert-Condition (Test-Path -LiteralPath $msiPath -PathType Leaf) "Missing insta
 Assert-Condition ((Get-PeMachine $appPath) -eq 0x8664) 'SuperPutty.exe is not an x64 PE image.'
 
 $version = (Get-Item -LiteralPath $appPath).VersionInfo
-Assert-Condition ($MsiName -cmatch '^SuperPuTTY-CE-[0-9.]+-(current-user|all-users)-.+\.msi$') 'The MSI filename does not use CE branding.'
+$namePattern = '^SuperPuTTY-CE-' + [regex]::Escape($artifactVersion) + '-(current-user|all-users)-.+\.msi$'
+Assert-Condition ($MsiName -cmatch $namePattern) 'The MSI filename does not use the expected CE release branding.'
 Assert-Condition ($version.FileDescription -eq 'SuperPuTTY Community Edition') 'Unexpected application file description.'
 Assert-Condition ($version.ProductName -ceq 'SuperPuTTY') 'AssemblyProduct changed the legacy settings identity.'
 Assert-Condition ($version.CompanyName -eq 'Chris Thornton') 'Unexpected application company.'
 Assert-Condition ($version.LegalCopyright -like '*2009 - 2023 Jim Radford*') 'Missing original copyright.'
 Assert-Condition ($version.LegalCopyright -like '*2026 Chris Thornton*') 'Missing community modifications copyright.'
 Assert-Condition ($version.FileVersion -eq $ExpectedVersion) "Unexpected file version: $($version.FileVersion)"
-Assert-Condition ($version.ProductVersion -eq $ExpectedVersion) "Unexpected product version: $($version.ProductVersion)"
+Assert-Condition ($version.ProductVersion -eq $ExpectedProductVersion) "Unexpected product version: $($version.ProductVersion)"
 
 $requiredDlls = @(
     'log4net.dll',
