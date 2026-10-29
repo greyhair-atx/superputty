@@ -18,7 +18,7 @@ namespace SuperPuttyUnitTests
             using (var dialog = new AboutBox1())
             {
                 Assert.AreEqual("About SuperPuTTY Community Edition", dialog.Text);
-                Assert.AreEqual("SuperPuTTY Community Edition 1.8.3-rc.1",
+                Assert.AreEqual("SuperPuTTY Community Edition " + SuperPutty.SuperPuTTY.DisplayVersion,
                     dialog.Controls.Find("labelProductName", true)[0].Text);
                 Assert.AreEqual("Based on the original SuperPuTTY by Jim Radford",
                     dialog.Controls.Find("labelVersion", true)[0].Text);
