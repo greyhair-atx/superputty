@@ -42,12 +42,44 @@ namespace SuperPutty
         private string OrigDefaultLayoutName { get; set; }
 
         private BindingList<KeyboardShortcut> Shortcuts { get; set; }
+        private CheckedListBox protocolList;
+
+        private void InitializeProtocolOptions()
+        {
+            var page = new TabPage("Protocols") { Padding = new Padding(12) };
+            var description = new Label
+            {
+                Text = "Choose the protocols shown in the connection toolbar and new session dropdowns.\r\nExisting saved sessions remain available. Keep at least one protocol checked.",
+                Dock = DockStyle.Top,
+                Height = DpiUtils.ScaleHeight(48)
+            };
+            this.protocolList = new CheckedListBox
+            {
+                Dock = DockStyle.Fill,
+                CheckOnClick = true,
+                IntegralHeight = false
+            };
+            var visible = SessionData.GetVisibleProtocols(SuperPuTTY.Settings.HiddenProtocols);
+            foreach (ConnectionProtocol protocol in SessionData.GetProtocolDisplayOrder())
+                this.protocolList.Items.Add(SessionData.GetProtocolDisplayName(protocol), visible.Contains(protocol));
+            var showAll = new Button { Text = "Show all", Dock = DockStyle.Bottom, Height = DpiUtils.ScaleHeight(28) };
+            showAll.Click += delegate
+            {
+                for (int i = 0; i < this.protocolList.Items.Count; i++)
+                    this.protocolList.SetItemChecked(i, true);
+            };
+            page.Controls.Add(this.protocolList);
+            page.Controls.Add(description);
+            page.Controls.Add(showAll);
+            this.tabControl.TabPages.Add(page);
+        }
 
         public dlgFindPutty()
         {
             this.Font = new System.Drawing.Font("Segoe UI", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
 
             InitializeComponent();
+            InitializeProtocolOptions();
 
             FixDpiScalingIssues();
 
@@ -314,6 +346,8 @@ namespace SuperPutty
         private void buttonOk_Click(object sender, EventArgs e)
         {
             List<String> errors = new List<string>();
+            if (this.protocolList.CheckedItems.Count == 0)
+                errors.Add("Select at least one protocol on the Protocols tab.");
 
             if (String.IsNullOrEmpty(textBoxFilezillaLocation.Text) || File.Exists(textBoxFilezillaLocation.Text))
             {
@@ -393,6 +427,10 @@ namespace SuperPutty
                 SuperPuTTY.Settings.QuickSelectorCaseSensitiveSearch = this.checkQuickSelectorCaseSensitiveSearch.Checked;
                 SuperPuTTY.Settings.ShowDocumentIcons = this.checkShowDocumentIcons.Checked;
                 SuperPuTTY.Settings.Theme = (string) this.comboTheme.SelectedItem;
+                var protocols = SessionData.GetProtocolDisplayOrder();
+                SuperPuTTY.Settings.HiddenProtocols = String.Join(",", protocols
+                    .Where((protocol, index) => !this.protocolList.GetItemChecked(index))
+                    .Select(protocol => protocol.ToString()));
                 SuperPuTTY.Settings.DockingRestrictFloatingWindows = this.checkRestrictFloatingWindows.Checked;
                 SuperPuTTY.Settings.SessionsShowSearch = this.checkSessionsShowSearch.Checked;
                 SuperPuTTY.Settings.FilterSessionsOnChange = this.checkFilterWhileTyping.Checked;

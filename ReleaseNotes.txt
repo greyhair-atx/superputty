@@ -1,3 +1,12 @@
+SuperPuTTY Community Edition 1.8.3
+ - Add Light, Dark, Dark Modern and System themes; thanks to dustinreeves for dark mode.
+ - Match Dark Modern toolbar/menu backgrounds and input borders.
+ - Add Tools > Options > Protocols to customize protocol dropdowns without changing saved sessions.
+ - Add Copy IP/Hostname and temporary Ping actions to the saved-session context menu.
+ - Improve terminal process capture/titles and SCP navigation, progress and cleanup.
+ - Preserve the 1.8.2 SSH multi-session activation fix.
+ - See docs/releases/1.8.3.md for packages, compatibility and validation scope.
+
 SuperPuTTY Community Edition 1.8.2
  - Fix the SSH multi-session activation and embedding regression that caused 1.8.1 to be withdrawn.
  - Preserve PuTTY's established window style while verifying embedding through the actual native parent.

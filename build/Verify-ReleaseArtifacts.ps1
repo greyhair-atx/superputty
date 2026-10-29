@@ -2,7 +2,7 @@
 param(
     [string] $Configuration = 'Release',
     [string] $Platform = 'x64',
-    [string] $ExpectedVersion = '1.8.2.0',
+    [string] $ExpectedVersion = '1.8.3.0',
     [string] $ExpectedProductVersion,
     [ValidateSet('PerUser', 'PerMachine')]
     [string] $InstallerScope = 'PerMachine',

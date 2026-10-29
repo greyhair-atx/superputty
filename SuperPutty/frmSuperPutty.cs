@@ -113,8 +113,8 @@ namespace SuperPutty
 
             // setup connection bar
             this.tbTxtBoxPassword.TextBox.PasswordChar = '*';
-            this.RefreshConnectionToolbarData();
             this.tbComboProtocol.SelectedIndexChanged += this.tbComboProtocol_SelectedIndexChanged;
+            this.RefreshConnectionToolbarData();
 
             // version in status bar
             this.toolStripStatusLabelVersion.Text = SuperPuTTY.DisplayVersion;
@@ -1265,6 +1265,7 @@ namespace SuperPutty
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
                 ApplySettings();
+                RefreshConnectionToolbarData();
 
                 // the dock panel theme can only change while no panes are open, so apply it on next start
                 if (ThemeManager.RequiresRestart(SuperPuTTY.Settings.Theme))
@@ -1513,15 +1514,22 @@ namespace SuperPutty
 
         void RefreshConnectionToolbarData()
         {
-            if (this.tbComboProtocol.Items.Count == 0)
+            string[] protocols = SessionData.GetVisibleProtocols(SuperPuTTY.Settings.HiddenProtocols)
+                .Select(protocol => protocol.ToString()).ToArray();
+            if (!this.tbComboProtocol.Items.Cast<string>().SequenceEqual(protocols))
             {
-                this.tbComboProtocol.Items.Clear();
-                foreach (ConnectionProtocol protocol in SessionData.GetProtocolDisplayOrder())
+                string previousProtocol = this.tbComboProtocol.SelectedItem as string;
+                this.tbComboProtocol.SelectedIndexChanged -= this.tbComboProtocol_SelectedIndexChanged;
+                try
                 {
-                    if (protocol != ConnectionProtocol.SSH2 && protocol != ConnectionProtocol.SSHNet)
-                        this.tbComboProtocol.Items.Add(protocol.ToString());
+                    this.tbComboProtocol.Items.Clear();
+                    this.tbComboProtocol.Items.AddRange(protocols);
+                    this.tbComboProtocol.SelectedItem = previousProtocol != null && this.tbComboProtocol.Items.Contains(previousProtocol)
+                        ? previousProtocol : protocols[0];
                 }
-                this.tbComboProtocol.SelectedItem = ConnectionProtocol.SSH.ToString();
+                finally { this.tbComboProtocol.SelectedIndexChanged += this.tbComboProtocol_SelectedIndexChanged; }
+                if (previousProtocol != this.tbComboProtocol.SelectedItem as string)
+                    this.tbComboProtocol_SelectedIndexChanged(this.tbComboProtocol, EventArgs.Empty);
             }
 
             String prevSession = (string)this.tbComboSession.SelectedItem;
@@ -1535,7 +1543,7 @@ namespace SuperPutty
 
         private void toolStripButtonClearFields_Click(object sender, EventArgs e)
         {
-            this.tbComboProtocol.SelectedItem = ConnectionProtocol.SSH.ToString();
+            this.tbComboProtocol.SelectedItem = this.tbComboProtocol.Items.Contains("SSH") ? "SSH" : this.tbComboProtocol.Items[0];
             this.tbTxtBoxHost.Clear();
             this.tbTxtBoxLogin.Clear();
             this.tbTxtBoxPassword.Clear();

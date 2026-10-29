@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$ReleaseDirectory,[string]$Version='1.8.2',[string]$SchemaFile)
+param([Parameter(Mandatory)][string]$ReleaseDirectory,[string]$Version='1.8.3',[string]$SchemaFile)
 $ErrorActionPreference='Stop'
 $prefix="SuperPuTTY-CE-$Version"
 $manifest=Get-Content (Join-Path $ReleaseDirectory "$prefix-build-manifest.json") -Raw|ConvertFrom-Json

@@ -3,7 +3,7 @@
   <PropertyGroup>
     <InstallerScope Condition="'$(InstallerScope)' == ''">PerMachine</InstallerScope>
     <InstallerProductVersion Condition="'$(InstallerProductVersion)' == ''">1.8.3</InstallerProductVersion>
-    <InstallerArtifactVersion Condition="'$(InstallerArtifactVersion)' == ''">1.8.3-rc.1</InstallerArtifactVersion>
+    <InstallerArtifactVersion Condition="'$(InstallerArtifactVersion)' == ''">1.8.3</InstallerArtifactVersion>
     <InstallerArtifactSuffix Condition="'$(InstallerArtifactSuffix)' == ''">test-x64</InstallerArtifactSuffix>
     <OutputName Condition="'$(InstallerScope)' == 'PerUser'">SuperPuTTY-CE-$(InstallerArtifactVersion)-current-user-$(InstallerArtifactSuffix)</OutputName>
     <OutputName Condition="'$(InstallerScope)' == 'PerMachine'">SuperPuTTY-CE-$(InstallerArtifactVersion)-all-users-$(InstallerArtifactSuffix)</OutputName>

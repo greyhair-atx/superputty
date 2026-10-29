@@ -87,6 +87,60 @@ try {
     $main.Dispose()
     $icons.Dispose()
     if ($Theme -eq 'Dark Modern') {
+        $toolbarPreview = New-Object Windows.Forms.Form
+        $toolbarPreview.Text = 'Dark Modern toolbar borders'
+        $toolbarPreview.Size = New-Object Drawing.Size -ArgumentList 760,140
+        $toolbarPreview.TopMost = $true
+        $toolbar = New-Object Windows.Forms.ToolStrip
+        $inputs = @()
+        foreach ($name in @('Protocol','Session','Commands','Host','Login')) {
+            if ($name -in @('Host','Login')) {
+                $item = New-Object Windows.Forms.ToolStripTextBox
+            } else {
+                $item = New-Object Windows.Forms.ToolStripComboBox
+                if ($name -ne 'Commands') { $item.DropDownStyle = 'DropDownList' }
+                $null = $item.Items.Add($name)
+                $item.SelectedIndex = 0
+            }
+            $item.Text = $name
+            $item.AutoSize = $false
+            $item.Width = 130
+            $null = $toolbar.Items.Add($item)
+            $inputs += $item.Control
+        }
+        $toolbarPreview.Controls.Add($toolbar)
+        [SuperPutty.Gui.ThemeManager]::Apply($toolbarPreview)
+        $toolbarPreview.Show()
+        [Windows.Forms.Application]::DoEvents()
+        foreach ($inputControl in $inputs) {
+            $null = $inputControl.Focus()
+            $inputControl.GetType().GetMethod('RecreateHandle',[Reflection.BindingFlags]'Instance,NonPublic').Invoke($inputControl,@()) | Out-Null
+            $toolbarPreview.Refresh()
+            [Windows.Forms.Application]::DoEvents()
+            [Threading.Thread]::Sleep(500)
+            $origin = $inputControl.Parent.PointToScreen($inputControl.Location)
+            $sample = New-Object Drawing.Bitmap -ArgumentList 1,1
+            $g = [Drawing.Graphics]::FromImage($sample)
+            $g.CopyFromScreen($origin.X,($origin.Y + 5),0,0,$sample.Size)
+            $g.Dispose()
+            if ($sample.GetPixel(0,0).ToArgb() -ne [Drawing.Color]::FromArgb(45,45,48).ToArgb()) {
+                throw "Toolbar border mismatch: $($inputControl.GetType().Name) $($sample.GetPixel(0,0))"
+            }
+            $sample.Dispose()
+        }
+        $bitmap = New-Object Drawing.Bitmap -ArgumentList $toolbarPreview.Width,$toolbarPreview.Height
+        $graphics = [Drawing.Graphics]::FromImage($bitmap)
+        $graphics.CopyFromScreen($toolbarPreview.Location,[Drawing.Point]::Empty,$toolbarPreview.Size)
+        $graphics.Dispose()
+        $backgroundPoint = $toolbar.PointToScreen((New-Object Drawing.Point -ArgumentList 700,5))
+        $backgroundPoint.Offset(-$toolbarPreview.Left, -$toolbarPreview.Top)
+        if ($bitmap.GetPixel($backgroundPoint.X,$backgroundPoint.Y).ToArgb() -ne [Drawing.Color]::FromArgb(24,24,24).ToArgb()) {
+            throw 'Toolbar background does not match the Dark Modern menu surface'
+        }
+        $bitmap.Save((Join-Path $root 'results/toolbar-modern.png'))
+        $bitmap.Dispose()
+        $toolbarPreview.Dispose()
+        'PASS matching toolbar borders after focus and handle recreation'
         $preview = New-Object Windows.Forms.Form
         $preview.Text = 'SuperPuTTY Dark Modern - docking renderer check'
         $preview.Size = New-Object Drawing.Size -ArgumentList 920,560

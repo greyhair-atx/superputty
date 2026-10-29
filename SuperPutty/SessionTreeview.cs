@@ -639,9 +639,26 @@ namespace SuperPutty
             this.removeFolderToolStripMenuItem.Enabled = isRootNode;// && this.treeView1.SelectedNode.Nodes.Count == 0;
         }
 
+        private void copyHostToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            SessionData session = this.SelectedSession;
+            if (session == null || String.IsNullOrWhiteSpace(session.Host)) return;
+            try
+            {
+                Clipboard.SetDataObject(session.Host, true, 5, 100);
+            }
+            catch (System.Runtime.InteropServices.ExternalException ex)
+            {
+                Log.Warn("Unable to copy session host to clipboard", ex);
+                MessageBox.Show(this, "The clipboard is busy. Please try copying again.",
+                    "Copy IP/Hostname", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
         private void contextMenuStripAddTreeItem_Opening(object sender, CancelEventArgs e)
         {
             SessionData selectedSession = this.SelectedSession;
+            this.copyHostToolStripMenuItem.Enabled = selectedSession != null && !String.IsNullOrWhiteSpace(selectedSession.Host);
             bool isScpSession = selectedSession != null && selectedSession.Proto == ConnectionProtocol.SCP;
 
             bool canPing = WCMDStartInfo.CanPing(selectedSession);

@@ -173,6 +173,8 @@ namespace SuperPutty.Gui
                     darkTheme.ApplyTo(probe);
                     darkRenderer = probe.Renderer;
                 }
+                if (IsModern)
+                    darkRenderer = new ModernToolbarRenderer(darkTheme.ColorPalette);
                 if (darkRenderer != null)
                 {
                     ToolStripManager.Renderer = darkRenderer;
@@ -296,9 +298,20 @@ namespace SuperPutty.Gui
             {
                 strip.RenderMode = ToolStripRenderMode.ManagerRenderMode;
                 darkTheme.ApplyTo(strip);
+                if (IsModern) strip.Renderer = darkRenderer;
                 strip.BackColor = DarkBack;
                 strip.ForeColor = DarkFore;
                 ApplyToDropDowns(strip.Items);
+                if (IsModern)
+                    foreach (ToolStripItem item in strip.Items)
+                    {
+                        ToolStripControlHost host = item as ToolStripControlHost;
+                        if (host != null && (host.Control is ComboBox || host.Control is TextBox))
+                        {
+                            ApplyToControl(host.Control);
+                            ToolbarInputBorder.Attach(host.Control);
+                        }
+                    }
                 return;
             }
 
@@ -405,10 +418,79 @@ namespace SuperPutty.Gui
             c.ForeColor = DarkFore;
         }
 
+        private sealed class ModernToolbarRenderer : VisualStudioToolStripRenderer
+        {
+            public ModernToolbarRenderer(DockPanelColorPalette palette) : base(palette) { }
+
+            protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+            {
+                if (e.ToolStrip is ToolStripDropDown)
+                    base.OnRenderToolStripBackground(e);
+                else
+                    using (var brush = new SolidBrush(DarkBack))
+                        e.Graphics.FillRectangle(brush, e.AffectedBounds);
+            }
+
+            protected override void OnRenderToolStripPanelBackground(ToolStripPanelRenderEventArgs e)
+            {
+                using (var brush = new SolidBrush(DarkBack))
+                    e.Graphics.FillRectangle(brush, e.ToolStripPanel.ClientRectangle);
+            }
+
+            protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+            {
+                if (e.ToolStrip is ToolStripDropDown) base.OnRenderToolStripBorder(e);
+            }
+        }
+
         /// <summary>
-        /// The tab strip and the frame around the pages are drawn by Windows and ignore BackColor,
-        /// so this paints dark tabs and a dark frame over them after each native paint.
+        /// Gives hosted toolbar inputs the same border despite their different native renderers.
         /// </summary>
+        private sealed class ToolbarInputBorder : NativeWindow
+        {
+            private readonly Control control;
+            private static readonly ConditionalWeakTable<Control, ToolbarInputBorder> Borders =
+                new ConditionalWeakTable<Control, ToolbarInputBorder>();
+
+            private ToolbarInputBorder(Control control)
+            {
+                this.control = control;
+                control.HandleCreated += delegate { AssignHandle(control.Handle); };
+                control.HandleDestroyed += delegate { ReleaseHandle(); };
+                if (control.IsHandleCreated) AssignHandle(control.Handle);
+            }
+
+            public static void Attach(Control control)
+            {
+                Borders.GetValue(control, c => new ToolbarInputBorder(c));
+            }
+
+            protected override void WndProc(ref Message m)
+            {
+                base.WndProc(ref m);
+                // TextBox borders are non-client; ComboBox borders are client painted.
+                // Redraw after native painting, including focus and hover transitions.
+                if (m.Msg != 0x000F && m.Msg != 0x0085 && m.Msg != 0x0007 && m.Msg != 0x0008)
+                    return;
+                IntPtr dc = GetWindowDC(Handle);
+                if (dc == IntPtr.Zero) return;
+                try
+                {
+                    using (Graphics graphics = Graphics.FromHdc(dc))
+                    using (Pen pen = new Pen(Docking.DarkModernTheme.InputBorder))
+                        graphics.DrawRectangle(pen, 0, 0, control.Width - 1, control.Height - 1);
+                }
+                finally { ReleaseDC(Handle, dc); }
+            }
+
+            [DllImport("user32.dll")]
+            private static extern IntPtr GetWindowDC(IntPtr window);
+
+            [DllImport("user32.dll")]
+            private static extern int ReleaseDC(IntPtr window, IntPtr dc);
+        }
+
+        /// <summary>Paints dark tabs and frames over the native tab control.</summary>
         private class TabPainter : NativeWindow
         {
             private const int WM_PAINT = 0x000F;

@@ -91,7 +91,7 @@ namespace SuperPutty
             else
             {
                 this.Text = "Create new session";
-                comboBoxProto.SelectedItem = "SSH";
+                comboBoxProto.SelectedItem = comboBoxProto.Items.Contains("SSH") ? "SSH" : comboBoxProto.Items[0];
                 this.buttonSave.Enabled = false;
             }
 
@@ -139,7 +139,8 @@ namespace SuperPutty
             this.protoTypesMap["Win CMD"] = ConnectionProtocol.WINCMD;
             this.protoTypesMap["PowerShell"] = ConnectionProtocol.PS;
             comboBoxProto.Sorted = false;
-            foreach (ConnectionProtocol protocol in SessionData.GetProtocolDisplayOrder())
+            foreach (ConnectionProtocol protocol in SessionData.GetVisibleProtocols(SuperPuTTY.Settings.HiddenProtocols,
+                String.IsNullOrEmpty(Session.SessionName) ? (ConnectionProtocol?)null : Session.Proto))
                 foreach (System.Collections.DictionaryEntry protoEntry in this.protoTypesMap)
                     if ((ConnectionProtocol)protoEntry.Value == protocol)
                         comboBoxProto.Items.Add(protoEntry.Key);

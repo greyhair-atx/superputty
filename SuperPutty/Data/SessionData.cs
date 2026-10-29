@@ -196,6 +196,33 @@ namespace SuperPutty.Data
                 ConnectionProtocol.Rlogin, ConnectionProtocol.Telnet };
         }
 
+        internal static ConnectionProtocol[] GetVisibleProtocols(string hiddenProtocols, ConnectionProtocol? currentProtocol = null)
+        {
+            var hidden = new HashSet<string>((hiddenProtocols ?? "").Split(','), StringComparer.OrdinalIgnoreCase);
+            var visible = new List<ConnectionProtocol>();
+            if (currentProtocol == ConnectionProtocol.SSH2 || currentProtocol == ConnectionProtocol.SSHNet)
+                currentProtocol = ConnectionProtocol.SSH;
+            foreach (ConnectionProtocol protocol in GetProtocolDisplayOrder())
+                if (!hidden.Contains(protocol.ToString()) || currentProtocol == protocol)
+                    visible.Add(protocol);
+            // Keep a usable default even if the settings file hides every protocol.
+            if (visible.Count == 0)
+                visible.Add(ConnectionProtocol.SSH);
+            return visible.ToArray();
+        }
+
+        internal static string GetProtocolDisplayName(ConnectionProtocol protocol)
+        {
+            switch (protocol)
+            {
+                case ConnectionProtocol.Cygterm: return "CygTerm";
+                case ConnectionProtocol.Mintty: return "MinTTY";
+                case ConnectionProtocol.WINCMD: return "Win CMD";
+                case ConnectionProtocol.PS: return "PowerShell";
+                default: return protocol.ToString();
+            }
+        }
+
         private ConnectionProtocol _Proto;
         [XmlAttribute]
         [DisplayName("Connection Type")]

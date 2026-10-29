@@ -35,6 +35,7 @@
             this.contextMenuStripAddTreeItem = new System.Windows.Forms.ContextMenuStrip(this.components);
             this.newSessionToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.createLikeToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.copyHostToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.settingsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.deleteToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
@@ -107,6 +108,7 @@
             this.contextMenuStripAddTreeItem.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.newSessionToolStripMenuItem,
             this.createLikeToolStripMenuItem,
+            this.copyHostToolStripMenuItem,
             this.settingsToolStripMenuItem,
             this.deleteToolStripMenuItem,
             this.toolStripSeparator1,
@@ -139,6 +141,12 @@
             this.createLikeToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.createLikeToolStripMenuItem.Text = "Copy As";
             this.createLikeToolStripMenuItem.Click += new System.EventHandler(this.CreateOrEditSessionToolStripMenuItem_Click);
+            //
+            // copyHostToolStripMenuItem
+            //
+            this.copyHostToolStripMenuItem.Name = "copyHostToolStripMenuItem";
+            this.copyHostToolStripMenuItem.Text = "Copy IP/Hostname";
+            this.copyHostToolStripMenuItem.Click += new System.EventHandler(this.copyHostToolStripMenuItem_Click);
             // 
             // settingsToolStripMenuItem
             // 
@@ -388,6 +396,7 @@
 
         private System.Windows.Forms.TreeView treeView1;
         private System.Windows.Forms.ContextMenuStrip contextMenuStripAddTreeItem;
+        private System.Windows.Forms.ToolStripMenuItem copyHostToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem newSessionToolStripMenuItem;
         private System.Windows.Forms.ImageList imageList1;
         private System.Windows.Forms.ToolStripMenuItem settingsToolStripMenuItem;

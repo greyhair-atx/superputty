@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '1.8.3-rc.1',
+    [string]$Version = '1.8.3',
     [string]$InstallerProductVersion,
     [string]$Configuration = 'Release',
     [ValidateSet('test-x64','win-x64-signed')][string]$InstallerArtifactSuffix = 'test-x64',

@@ -9,6 +9,7 @@ namespace SuperPutty.Gui.Docking
         internal static readonly Color Surface = Color.FromArgb(24, 24, 24);
         internal static readonly Color Content = Color.FromArgb(31, 31, 31);
         internal static readonly Color Border = Color.FromArgb(43, 43, 43);
+        internal static readonly Color InputBorder = Color.FromArgb(45, 45, 48);
         internal static readonly Color Foreground = Color.FromArgb(204, 204, 204);
         internal static readonly Color Muted = Color.FromArgb(157, 157, 157);
         internal static readonly Color Accent = Color.FromArgb(0, 120, 212);
