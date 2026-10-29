@@ -10,9 +10,8 @@ SuperPuTTY Community Edition is an actively maintained, independently published 
 
 > **Independent community fork maintained by Chris Thornton.** This is a community edition, not an official upstream SuperPuTTY or PuTTY release. SuperPuTTY was created by Jim Radford and the original contributors. No upstream endorsement is implied.
 
-**Latest stable release: [1.8.2](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.2).** Fixes the SSH multi-session regression; 1.8.1 remains withdrawn. Download signed Windows x64 installers or the no-install ZIP, with checksums, a runtime SBOM, and VirusTotal reports. [Release notes](docs/releases/1.8.2.md) · [Validation results](docs/RELEASE-1.8.2-RESULTS.md).
+**Latest stable release: [1.8.3](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.3).** Adds dark themes, protocol dropdown preferences, Copy IP/Hostname and temporary ping tools, plus terminal/SCP reliability fixes. Download signed Windows x64 installers or the no-install ZIP, with checksums, a runtime SBOM and validation results. Version 1.8.1 remains withdrawn. [Release notes](docs/releases/1.8.3.md) · [Validation results](docs/RELEASE-1.8.3-RESULTS.md).
 
-**Preview: [1.8.3-rc.1](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.3-rc.1).** Adds dark mode contributed by [dustinreeves](https://github.com/dustinreeves), a VS Code inspired Dark Modern option, temporary ping tabs, and terminal/SCP reliability fixes. [Release candidate notes](docs/releases/1.8.3-rc.1.md). Version 1.8.2 remains stable.
 
 ## See the workspace
 
@@ -54,7 +53,7 @@ PuTTY and other connection programs perform their respective protocol work. Supe
 
 | Requirement | Support |
 | --- | --- |
-| Operating system | Tested on Windows 11 x64. Windows 10 x64 compatibility is expected but untested for 1.8.2; use an OS edition still receiving security updates |
+| Operating system | Tested on Windows 11 x64. Windows 10 x64 compatibility is expected but untested for 1.8.3; use an OS edition still receiving security updates |
 | Architecture | x64; no x86 or native ARM64 package |
 | Runtime | .NET Framework 4.8 |
 | SSH, Telnet, serial, raw connections | Separately installed PuTTY |
@@ -62,22 +61,22 @@ PuTTY and other connection programs perform their respective protocol work. Supe
 | RDP / VNC | Windows RDP components or configured external RDP client; separately installed VNC viewer |
 | Local consoles | Windows PowerShell and Command Prompt; MinTTY when separately installed |
 
-Choose **current user** for Local AppData without elevation, or **all users** for 64-bit Program Files with administrator approval. The 1.8.2 no-install ZIP contains the same application payload; settings still follow existing profile/portable discovery rules. [Installation details and unattended commands](docs/manual/installation.md).
+Choose **current user** for Local AppData without elevation, or **all users** for 64-bit Program Files with administrator approval. The 1.8.3 no-install ZIP contains the same application payload; settings still follow existing profile/portable discovery rules. [Installation details and unattended commands](docs/manual/installation.md).
 
 **Existing users:** executable and settings names, registry paths, sessions, layouts, and command-line behavior stay compatible. Same-scope community upgrades are supported; ambiguous upstream-era 1.5 installations require manual removal. Do not share settings between running editions. [Read the upgrade guide first](docs/manual/upgrading.md).
 
 ## Verify a download
 
-Download packages and checksums from the same [community release](https://github.com/greyhair-atx/superputty/releases). For the 1.8.2 release:
+Download packages and checksums from the same [community release](https://github.com/greyhair-atx/superputty/releases). For the 1.8.3 release:
 
 ```powershell
-Get-AuthenticodeSignature .\SuperPuTTY-CE-1.8.2-current-user-win-x64-signed.msi | Format-List
-Get-FileHash .\SuperPuTTY-CE-1.8.2-current-user-win-x64-signed.msi -Algorithm SHA256
+Get-AuthenticodeSignature .\SuperPuTTY-CE-1.8.3-current-user-win-x64-signed.msi | Format-List
+Get-FileHash .\SuperPuTTY-CE-1.8.3-current-user-win-x64-signed.msi -Algorithm SHA256
 # After extracting the ZIP or installing:
 Get-AuthenticodeSignature .\SuperPutty.exe | Format-List
 ```
 
-Require signature **Status: Valid**, signer **Christopher Thornton** (the signing identity used by Chris Thornton), and a nonempty `TimeStamperCertificate`. Compare the hash with the matching line in `SuperPuTTY-CE-1.8.2-SHA256SUMS.txt`. The ZIP is not Authenticode signed: verify its checksum and the EXE inside it. Checksums detect changed downloads; signatures also verify publisher identity. [Detailed instructions](docs/manual/installation.md#verify-signatures-and-checksums).
+Require signature **Status: Valid**, signer **Christopher Thornton** (the signing identity used by Chris Thornton), and a nonempty `TimeStamperCertificate`. Compare the hash with the matching line in `SuperPuTTY-CE-1.8.3-SHA256SUMS.txt`. The ZIP is not Authenticode signed: verify its checksum and the EXE inside it. Checksums detect changed downloads; signatures also verify publisher identity. [Detailed instructions](docs/manual/installation.md#verify-signatures-and-checksums).
 
 ## Help, bugs, and security
 

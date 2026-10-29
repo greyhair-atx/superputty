@@ -1,5 +1,12 @@
 # WinGet submission
 
+## Latest submission: 1.8.3
+
+The existing [PR #434081](https://github.com/microsoft/winget-pkgs/pull/434081) now submits **1.8.3**. Its three manifests are under `ChrisThornton.SuperPuTTYCommunityEdition/1.8.3/` and were generated from the exact signed current-user and all-users MSI files published at [sp-1.8.3](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.3). Public download hashes, timestamped Authenticode signatures, MSI identities and local `winget validate --manifest` checks passed. Schema 1.28.0, version-specific PrivacyUrl and omission of redundant DisplayVersion are retained. Final 1.8.3 install/uninstall lifecycle tests were not run. Microsoft validation/review and catalog publication remain pending.
+
+The sections below retain the historical 1.8.0 validation evidence and environment-specific test setup; those lifecycle results are not a 1.8.3 pass.
+
+
 `ChrisThornton.SuperPuTTYCommunityEdition/1.8.0/` contains a multi-file WinGet manifest generated from the actual signed MSI bundle. Both `Scope: user` and `Scope: machine` are explicitly represented under separate x64 installers. MSI ProductCodes and AppsAndFeatures UpgradeCodes are read from the finished packages, never guessed from the edition name. Publisher is Chris Thornton; certificate identity is Christopher Thornton.
 
 ```powershell
