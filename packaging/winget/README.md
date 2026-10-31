@@ -8,6 +8,8 @@ The existing [PR #434081](https://github.com/microsoft/winget-pkgs/pull/434081) 
 
 Follow-up catalog testing: [catalog upgrade results](CATALOG-REVIEW-1.8.3.md). Package correlation and machine-scope uninstall-first upgrades pass. Current-user upgrades with `--scope user` fail because WinGet inventories the existing current-user MSI under machine scope; that issue remains to be resolved before claiming a complete two-scope catalog upgrade pass.
 
+The [native MSI investigation](USER-SCOPE-INVESTIGATION.md) confirms a correct per-user installation context and identifies the behavior as matching upstream WinGet issue #3011. Explicit per-user MSI properties do not fix the mismatch; no production installer rewrite is justified by the ARP hive alone.
+
 The 1.8.3 installer manifest and `build/New-WinGetManifest.ps1` now set `MinimumOSVersion: 10.0.19041.0` and `UpgradeBehavior: uninstallPrevious`, as requested in the latest PR feedback, plus `ElevationRequirement: elevationRequired` on the machine-scope entry. This sets the WinGet eligibility floor to Windows 10 build 19041; it is not evidence that earlier Windows releases were tested or that the MSI enforces the same floor. The upgrade field requests WinGet to uninstall the previous package first; that workflow has not yet passed testing. These changes are local and have not been pushed to the submission branch.
 
 Validation performed against the existing signed 1.8.3 release bundle:

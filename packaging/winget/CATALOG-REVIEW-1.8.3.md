@@ -2,6 +2,8 @@
 
 October 31, 2026. No release, public catalog or submission branch was changed.
 
+Follow-up: [native MSI registration investigation](USER-SCOPE-INVESTIGATION.md) confirms the current-user installer is user-unmanaged, with no machine-context instance. The scope mismatch matches upstream WinGet issue #3011; adding explicit per-user MSI properties does not resolve it. Automated current-user catalog upgrades remain unapproved on the tested client.
+
 ## Result
 
 Catalog correlation succeeds: WinGet recognizes the installed 1.8.0 MSI as `ChrisThornton.SuperPuTTYCommunityEdition`, including when the catalog exposes only 1.8.3. Machine-scope upgrades pass and explicitly uninstall 1.8.0 before installing 1.8.3.
@@ -26,7 +28,7 @@ Successfully installed
 
 The current-user MSI has Windows Installer AssignmentType 0, but its uninstall entry is in HKLM and WinGet inventories it as `ARP\Machine\X64\{7093D12F-0585-4E0C-A625-D2BB3867C54F}`. The earlier 1.8.3 clean-install evidence also records its user ProductCode in HKLM. WinGet's installed-package source selects the scope from the registry hive; its installer comparator requires the new installer scope to match the installed scope. Omitting `--scope user` was not tested as a workaround and must not be claimed to preserve the user installation scope.
 
-Next investigate why the current-user MSI registers there, validate its actual Windows Installer context as well as AssignmentType, and determine the migration needed for existing installations. Do not alter the real ProductCodes, invent a machine scope for the user installer, or treat package identity correlation as proof that scope selection works.
+The follow-up investigation validates the native Windows Installer context and identifies the upstream WinGet defect. Explicit uninstall by current-user ProductCode followed by an explicitly scoped user installation passed as a manual migration. Do not alter the real ProductCodes, invent a machine scope for the user installer, or treat package identity correlation as proof that automatic scope selection works.
 
 ## Test setup and limits
 

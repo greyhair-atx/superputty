@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory)][string]$StageDirectory,
     [Parameter(Mandatory)][ValidateSet('user','machine')][string]$Scope,
     [Parameter(Mandatory)][string]$WingetPath,
-    [ValidateSet('WinGet','Installer','Catalog')][string]$UpgradeMethod='WinGet',
+    [ValidateSet('WinGet','Installer','Catalog','ExplicitMigration')][string]$UpgradeMethod='WinGet',
     [string]$CatalogSource='SPCEReview',
     [ValidatePattern('^[A-Za-z0-9-]+$')][string]$ResultName
 )
@@ -79,6 +79,12 @@ try{
         $installAt=$upgradeLog.IndexOf('Starting package install...')
         $uninstallFirstObserved=$uninstallAt -ge 0 -and $installAt -gt $uninstallAt -and $upgradeLog.Contains('Successfully uninstalled')
         Assert $uninstallFirstObserved 'WinGet did not report uninstalling the previous package before installation.'
+    }elseif($UpgradeMethod -eq 'ExplicitMigration'){
+        # Use the exact ProductCode without WinGet's incorrect ARP scope
+        # filter, then explicitly select the new current-user installer.
+        Run 'uninstall-previous' @('uninstall','--product-code',$codes[0],'--exact','--silent','--disable-interactivity','--accept-source-agreements','--verbose-logs','--log',"$results/previous-uninstall-msi.log")
+        Assert ((State $codes[0]) -ne 5) 'Previous version remains before explicit migration install.'
+        Run 'install-candidate' @('install','--manifest',"$stage/manifests",'--scope',$Scope,'--silent','--disable-interactivity','--accept-package-agreements','--accept-source-agreements','--verbose-logs','--log',"$results/upgrade-msi.log")
     }elseif($UpgradeMethod -eq 'WinGet'){
         # Scope, source agreements and installer log arguments are query-only
         # for upgrade. Verify actual MSI scope after manifest matching.
