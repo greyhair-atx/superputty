@@ -398,6 +398,17 @@ namespace SuperPutty.Data
         public string LocalPath { get; set; }
 
         private string _PrivateKeyFile;
+        private bool _ScpInteractiveAuthentication;
+        [XmlAttribute]
+        [DefaultValue(false)]
+        [DisplayName("SCP Interactive Authentication")]
+        [Description("Show a PSCP console for passwords, MFA challenges and host-key confirmation. Each operation may authenticate again.")]
+        public bool ScpInteractiveAuthentication
+        {
+            get { return _ScpInteractiveAuthentication; }
+            set { UpdateField(ref _ScpInteractiveAuthentication, value, "ScpInteractiveAuthentication"); }
+        }
+
         [XmlAttribute]
         [DisplayName("Private Key File")]
         [Description("PuTTY private key (.ppk) used for SCP authentication.")]

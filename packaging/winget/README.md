@@ -2,7 +2,21 @@
 
 ## Latest submission: 1.8.3
 
-The existing [PR #434081](https://github.com/microsoft/winget-pkgs/pull/434081) now submits **1.8.3**. Its three manifests are under `ChrisThornton.SuperPuTTYCommunityEdition/1.8.3/` and were generated from the exact signed current-user and all-users MSI files published at [sp-1.8.3](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.3). Public download hashes, timestamped Authenticode signatures, MSI identities and local `winget validate --manifest` checks passed. Schema 1.28.0, version-specific PrivacyUrl and omission of redundant DisplayVersion are retained. Final 1.8.3 install/uninstall lifecycle tests were not run. Microsoft validation/review and catalog publication remain pending.
+The existing [PR #434081](https://github.com/microsoft/winget-pkgs/pull/434081) now submits **1.8.3**. Its three manifests are under `ChrisThornton.SuperPuTTYCommunityEdition/1.8.3/` and were generated from the exact signed current-user and all-users MSI files published at [sp-1.8.3](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.3). Public download hashes, timestamped Authenticode signatures, MSI identities and local `winget validate --manifest` checks passed. Schema 1.28.0, version-specific PrivacyUrl and omission of redundant DisplayVersion are retained. Both scopes have now passed clean installation/uninstallation and MSI upgrades from 1.8.0 in a disposable Windows 11 guest. WinGet uninstall-first upgrade validation remains unresolved; see the [1.8.3 review report](REVIEW-1.8.3.md). Microsoft validation/review and catalog publication remain pending.
+
+### Local correction awaiting second review (October 31, 2026)
+
+The 1.8.3 installer manifest and `build/New-WinGetManifest.ps1` now set `MinimumOSVersion: 10.0.19041.0` and `UpgradeBehavior: uninstallPrevious`, as requested in the latest PR feedback, plus `ElevationRequirement: elevationRequired` on the machine-scope entry. This sets the WinGet eligibility floor to Windows 10 build 19041; it is not evidence that earlier Windows releases were tested or that the MSI enforces the same floor. The upgrade field requests WinGet to uninstall the previous package first; that workflow has not yet passed testing. These changes are local and have not been pushed to the submission branch.
+
+Validation performed against the existing signed 1.8.3 release bundle:
+
+- `winget validate --manifest` passed for the checked-in 1.8.3 manifests.
+- The generator ran successfully under PowerShell 7 and Windows PowerShell 5.1, including its checks of both MSI hashes and Authenticode signatures. All three generated manifests matched the checked-in files after normalizing line endings, and both generated sets passed WinGet validation.
+- Schema references and `ManifestVersion` remain 1.28.0 in all three manifests. The PrivacyUrl remains pinned to `sp-1.8.3`, and redundant DisplayVersion remains omitted. Installer URLs, hashes and MSI identities are unchanged.
+
+The [1.8.3 review report](REVIEW-1.8.3.md) separates passing clean lifecycle and MSI upgrade tests from unresolved local-manifest upgrade matching and remaining launch/compatibility checks. Each upgrade test verifies removal of the old ProductCode, registration and scope of the new ProductCode, the candidate executable, and preservation of preferences, sessions and layouts through final uninstall. `build/Test-WinGetScopes.ps1` now consumes staged release metadata; `build/Test-WinGetUpgrade.ps1` explicitly distinguishes WinGet upgrade testing from MSI upgrade testing. Historical test evidence below is retained for context.
+
+After second review and lifecycle verification, push the manifests to the existing `new-package/superputty-ce-1.8.0` branch of `greyhair-atx/winget-pkgs`. Inspect validation against the new head commit: the latest deprecated-schema warning conflicts with the submitted files already using 1.28.0. Record the actual test results and request moderator re-review.
 
 The sections below retain the historical 1.8.0 validation evidence and environment-specific test setup; those lifecycle results are not a 1.8.3 pass.
 

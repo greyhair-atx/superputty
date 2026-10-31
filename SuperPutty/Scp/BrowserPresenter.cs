@@ -155,6 +155,9 @@ namespace SuperPutty.Scp
                         this.ViewModel.CurrentPath = result.Path.Path;
                         BaseViewModel.UpdateList(this.ViewModel.Files, result.Files);
                         break;
+                    case ResultStatusCode.Canceled:
+                        this.ViewModel.Status = "Canceled";
+                        break;
                     case ResultStatusCode.Error:
                         string errMsg = result.ErrorMsg != null
                             ? result.ErrorMsg 

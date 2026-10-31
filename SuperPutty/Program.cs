@@ -49,6 +49,8 @@ namespace SuperPutty
         [STAThread]
         static void Main(string[] args)
         {
+            // The isolated PSCP console host must not initialize settings, logging or single-instance routing.
+            if (Scp.InteractivePscpDialog.TryRunHost(args)) return;
             System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
 
             // send log to console

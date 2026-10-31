@@ -15,7 +15,10 @@ $results=Join-Path $stage "results/$Scope"
 New-Item -ItemType Directory -Force -Path $results|Out-Null
 $folder=if($Scope -eq 'user'){Join-Path $env:LOCALAPPDATA 'Apps/SuperPuTTY'}else{Join-Path $env:ProgramFiles 'SuperPuTTY'}
 if(Test-Path $folder){throw "Installation directory already exists: $folder"}
-$code=if($Scope -eq 'user'){'{7093D12F-0585-4E0C-A625-D2BB3867C54F}'}else{'{C1A2912D-A780-4AE3-92C3-89A2366C3608}'}
+$release=Get-Content "$stage/test-release.json" -Raw|ConvertFrom-Json
+$package=@($release.packages|Where-Object scope -EQ $Scope)
+if($package.Count -ne 1 -or $package[0].productCode -notmatch '^\{[0-9A-Fa-f-]{36}\}$' -or $release.executableSha256 -notmatch '^[0-9A-Fa-f]{64}$'){throw 'Expected exact release identities and executable hash in test-release.json.'}
+$code=$package[0].productCode
 $msi=New-Object -ComObject WindowsInstaller.Installer
 function Product-State { $msi.GetType().InvokeMember('ProductState','GetProperty',$null,$msi,@($code)) }
 function Assert([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message}}
@@ -28,9 +31,9 @@ if($Scope -eq 'user'){
     New-Item -ItemType Directory -Path "$data/layouts" -Force|Out-Null
     Copy-Item "$stage/LegacyLayout.xml" "$data/layouts/Operations.xml"
     Copy-Item "$stage/LegacyLayout.xml" "$data/AutoRestoreLayout.XML"
-    '<ArrayOfSessionData><SessionData SessionId="Lab/Compatibility" SessionName="Compatibility" Host="example.invalid" Port="22" Proto="SSH" /></ArrayOfSessionData>'|Set-Content "$data/Sessions.XML"
+    '<ArrayOfSessionData><SessionData SessionId="Lab/Compatibility" SessionName="Compatibility" Host="example.invalid" Port="22" Proto="SSH" Username="" PuttySession="Default Settings" /></ArrayOfSessionData>'|Set-Content "$data/Sessions.XML"
     $escaped=[Security.SecurityElement]::Escape($data)
-    "<Settings><SettingsFolder>$escaped</SettingsFolder><CheckForUpdates>false</CheckForUpdates></Settings>"|Set-Content $settings
+    "<Settings><SettingsFolder>$escaped</SettingsFolder><AutoUpdateCheck>false</AutoUpdateCheck></Settings>"|Set-Content $settings
     $baseline=@(Get-ChildItem $data -Recurse -File|ForEach-Object {[pscustomobject]@{path=$_.FullName;hash=(Get-FileHash $_.FullName).Hash}})
     $baseline+=[pscustomobject]@{path=$settings;hash=(Get-FileHash $settings).Hash}
 }else{foreach($entry in (Get-Content "$stage/host-baseline.json" -Raw|ConvertFrom-Json)){$baseline+=$entry}}
@@ -59,7 +62,8 @@ try{
     [pscustomobject]@{productCode=$code;requestedScope=$Scope;assignmentType=$assignment}|ConvertTo-Json|Set-Content "$results/msi-scope.json"
     $exe=Join-Path $folder 'SuperPutty.exe'
     Assert (Test-Path $exe) 'Expected executable is missing.'
-    Assert ((Get-FileHash $exe).Hash -eq '29A7B0D634B0ABABC5D95A925CE55FA56B5865BAFEDDDCE67AFB1D2AE68D3969') 'Installed executable differs from published release.'
+    Assert ((Get-FileHash $exe).Hash -eq $release.executableSha256) 'Installed executable differs from published release.'
+    Assert ((Get-Item $exe).VersionInfo.FileVersion -eq "$($release.version).0") 'Installed executable version differs from test release.'
     Assert ((Get-AuthenticodeSignature $exe).Status -eq 'Valid') 'Executable signature invalid.'
     Assert ((Get-Item $exe).VersionInfo.FileDescription -eq 'SuperPuTTY Community Edition') 'File description branding differs.'
     Assert (Test-Path "$folder/License.txt") 'MIT license missing.'

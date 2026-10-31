@@ -29,6 +29,7 @@ namespace SuperPutty.Scp
     public class PscpClient
     {
         private static readonly ILog Log = LogManager.GetLogger(typeof(PscpClient));
+        private static readonly SemaphoreSlim InteractiveOperations = new SemaphoreSlim(1, 1);
 
         #region Putty string constants
         /*
@@ -113,7 +114,7 @@ namespace SuperPutty.Scp
                 //return this.DoListDirectory(path);
                 ListDirectoryResult result = new ListDirectoryResult(path);
                 using (PscpPasswordPipe passwordPipe = PscpPasswordPipe.Create(
-                    this.Session.Password,
+                    this.Session.ScpInteractiveAuthentication ? null : this.Session.Password,
                     SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg))
                 {
                     String ArgsPscp = ToArgs(
@@ -191,7 +192,8 @@ namespace SuperPutty.Scp
             StringBuilder sb = new StringBuilder();
             // PSCP runs without an interactive console. Batch mode lets key/Pageant and
             // supplied-password authentication proceed but prevents hidden prompts.
-            sb.Append("-ls -batch ");
+            sb.Append(session.ScpInteractiveAuthentication ? "-ls " : "-ls -batch ");
+            if (session.ScpInteractiveAuthentication) { password = null; passwordFile = null; }
 
             if (!String.IsNullOrEmpty(session.PuttySession))
             {
@@ -216,7 +218,9 @@ namespace SuperPutty.Scp
 
             if (!String.IsNullOrEmpty(session.ExtraArgs))
             {
-                string safeExtraArgs = CommandLineOptions.RemoveSensitiveArguments(session.ExtraArgs);
+                string safeExtraArgs = session.ScpInteractiveAuthentication
+                    ? InteractivePscpDialog.SanitizeExtraArguments(session.ExtraArgs)
+                    : CommandLineOptions.RemoveSensitiveArguments(session.ExtraArgs);
                 if (!String.IsNullOrEmpty(safeExtraArgs))
                     sb.AppendFormat(" {0} ", safeExtraArgs);
             }
@@ -260,7 +264,7 @@ namespace SuperPutty.Scp
                 FileTransferResult result = new FileTransferResult();
 
                 using (PscpPasswordPipe passwordPipe = PscpPasswordPipe.Create(
-                    this.Session.Password,
+                    this.Session.ScpInteractiveAuthentication ? null : this.Session.Password,
                     SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg))
                 {
                     string passwordPipePath = passwordPipe == null ? null : passwordPipe.PipePath;
@@ -299,7 +303,8 @@ namespace SuperPutty.Scp
         {
             StringBuilder sb = new StringBuilder();
 
-            sb.Append("-r -agent -batch ");  // default arguments
+            sb.Append(session.ScpInteractiveAuthentication ? "-r -agent " : "-r -agent -batch ");
+            if (session.ScpInteractiveAuthentication) { password = null; passwordFile = null; }
             if (!String.IsNullOrEmpty(session.PuttySession))
             {
                 sb.Append("-load ").Append(CommandLineOptions.QuoteArgument(session.PuttySession)).Append(" ");
@@ -322,7 +327,9 @@ namespace SuperPutty.Scp
             }
             if (!String.IsNullOrEmpty(session.ExtraArgs))
             {
-                string safeExtraArgs = CommandLineOptions.RemoveSensitiveArguments(session.ExtraArgs);
+                string safeExtraArgs = session.ScpInteractiveAuthentication
+                    ? InteractivePscpDialog.SanitizeExtraArguments(session.ExtraArgs)
+                    : CommandLineOptions.RemoveSensitiveArguments(session.ExtraArgs);
                 if (!String.IsNullOrEmpty(safeExtraArgs))
                     sb.AppendFormat(" {0} ", safeExtraArgs);
             }
@@ -392,6 +399,11 @@ namespace SuperPutty.Scp
             else
             {
 
+                if (this.Session.ScpInteractiveAuthentication)
+                {
+                    RunInteractivePscp(result, args, inlineOutHandler, successOutHandler, cancellationToken);
+                    return;
+                }
                 Process proc = NewProcess(this.Options.PscpLocation, args);
                 Timer timeoutTimer = null;
                 AsyncStreamReader outReader = null;
@@ -612,6 +624,63 @@ namespace SuperPutty.Scp
         #endregion
 
         #region Utility
+
+        private void RunInteractivePscp(PscpResult result, string args, Func<string, bool> outputHandler,
+            Action<string[]> successHandler, CancellationToken cancellationToken)
+        {
+            var owner = SuperPuTTY.MainForm;
+            if (owner == null || owner.IsDisposed || !owner.IsHandleCreated)
+            {
+                result.SetError("Interactive SCP authentication requires the SuperPuTTY application window.", null);
+                return;
+            }
+            bool acquired = false;
+            try
+            {
+                // Serialize prompts so different browser/transfer workers cannot stack MFA dialogs.
+                // A direct UI-thread caller must never wait on a dialog that needs that same thread.
+                if (owner.InvokeRequired)
+                {
+                    InteractiveOperations.Wait(cancellationToken);
+                    acquired = true;
+                }
+                else
+                {
+                    acquired = InteractiveOperations.Wait(0);
+                    if (!acquired)
+                    {
+                        result.SetError("Another interactive SCP operation is active. Complete or cancel it first.", null);
+                        return;
+                    }
+                }
+                Func<InteractivePscpResult> run = () =>
+                {
+                    using (var dialog = new InteractivePscpDialog(this.Options.PscpLocation, args,
+                        Math.Max(this.Options.TimeoutMs, 300000), cancellationToken, outputHandler)
+                        { Text = "SCP authentication and transfer — " + this.Session.Host })
+                    {
+                        if (!cancellationToken.IsCancellationRequested) dialog.ShowDialog(owner);
+                        return dialog.Result;
+                    }
+                };
+                var interactive = owner.InvokeRequired ? (InteractivePscpResult)owner.Invoke(run) : run();
+                if (interactive.Cancelled || cancellationToken.IsCancellationRequested)
+                    result.StatusCode = ResultStatusCode.Canceled;
+                else if (interactive.ExitCode != 0)
+                    result.SetError(interactive.Error ?? "PSCP failed. See the interactive console for details.", null);
+                else if (successHandler != null)
+                    successHandler(interactive.Output.ToArray());
+            }
+            catch (OperationCanceledException)
+            {
+                result.StatusCode = ResultStatusCode.Canceled;
+            }
+            catch (InvalidOperationException)
+            {
+                result.SetError("The application window closed during interactive SCP authentication.", null);
+            }
+            finally { if (acquired) InteractiveOperations.Release(); }
+        }
 
         /// <summary>
         ///  Create a process for running pscp

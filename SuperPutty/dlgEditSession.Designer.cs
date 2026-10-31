@@ -57,6 +57,7 @@ namespace SuperPutty
             this.openFileDialog1 = new System.Windows.Forms.OpenFileDialog();
             this.buttonClearSPSLFile = new System.Windows.Forms.Button();
             this.checkBoxIgnoreRdpCertificateErrors = new System.Windows.Forms.CheckBox();
+            this.checkBoxScpInteractiveAuthentication = new System.Windows.Forms.CheckBox();
             this.groupBoxFileTransferOptions = new System.Windows.Forms.GroupBox();
             this.textBoxRemotePathSesion = new System.Windows.Forms.TextBox();
             this.lbRemotePath = new System.Windows.Forms.Label();
@@ -472,6 +473,14 @@ namespace SuperPutty
             this.ClientSize = new System.Drawing.Size(490, 558);
             this.Controls.Add(this.groupBoxFileTransferOptions);
             this.Controls.Add(this.checkBoxIgnoreRdpCertificateErrors);
+            this.checkBoxScpInteractiveAuthentication.AutoSize = true;
+            this.checkBoxScpInteractiveAuthentication.Location = new System.Drawing.Point(150, 345);
+            this.checkBoxScpInteractiveAuthentication.Name = "checkBoxScpInteractiveAuthentication";
+            this.checkBoxScpInteractiveAuthentication.Text = "Interactive SCP authentication (MFA)";
+            this.checkBoxScpInteractiveAuthentication.TabIndex = 8;
+            this.toolTip.SetToolTip(this.checkBoxScpInteractiveAuthentication,
+                "Enter passwords and verification codes in a PSCP console. Each file operation may prompt again.");
+            this.Controls.Add(this.checkBoxScpInteractiveAuthentication);
             this.Controls.Add(this.groupBox2);
             this.Controls.Add(this.buttonCancel);
             this.Controls.Add(this.buttonClearSPSLFile);
@@ -535,6 +544,7 @@ namespace SuperPutty
         private System.Windows.Forms.OpenFileDialog openFileDialog1;
         private System.Windows.Forms.Button buttonClearSPSLFile;
         private System.Windows.Forms.CheckBox checkBoxIgnoreRdpCertificateErrors;
+        private System.Windows.Forms.CheckBox checkBoxScpInteractiveAuthentication;
         private System.Windows.Forms.GroupBox groupBoxFileTransferOptions;
         private System.Windows.Forms.TextBox textBoxRemotePathSesion;
         private System.Windows.Forms.Label lbRemotePath;

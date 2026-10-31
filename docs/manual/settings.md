@@ -19,6 +19,12 @@ Under **Tools > Options > Protocols**, check the protocols you want in the conne
 
 Hidden protocols still work for saved sessions. When editing an existing session, its current protocol remains available so it is not changed accidentally.
 
+## SCP interactive authentication (unreleased)
+
+Edit a saved SCP or SSH session and enable **Interactive SCP authentication (MFA)**. SCP directory listings and transfers then open an embedded PSCP console. Enter the password, verification code, recovery code or other server-requested response directly in that console. PSCP handles hidden input and host-key confirmation. Stored passwords and password-file arguments are not supplied in this mode.
+
+Use **Cancel** to stop the operation and its console processes. Operations time out after five minutes without output/progress (or a longer configured PSCP timeout). Each directory listing or transfer starts a new connection and may require MFA again. The existing batch authentication mode remains the default. Authentication responses are not captured in SuperPuTTY logs. Enabling this option does not change terminal SSH authentication.
+
 ## Application theme (1.8.3)
 
 Under **Tools > Options > GUI > Misc > Theme**, choose Light, Dark, Dark Modern, or System. Save and restart to apply the choice. Light is the default; Dark Modern uses a VS Code inspired palette and flat document tabs. System follows the Windows app preference at startup using the original Dark style. External terminal and remote desktop colors are configured in their own applications. Dark mode was contributed by [dustinreeves](https://github.com/dustinreeves).

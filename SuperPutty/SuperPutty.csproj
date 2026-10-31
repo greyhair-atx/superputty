@@ -124,6 +124,7 @@
     </Compile>
     <Compile Include="Gui\ListViewExtensions.cs" />
     <Compile Include="Gui\ThemeManager.cs" />
+    <Compile Include="Scp\InteractivePscpDialog.cs" />
     <Compile Include="Gui\Docking\DarkModernTheme.cs" />
     <Compile Include="Gui\QuickSelector.cs">
       <SubType>Form</SubType>

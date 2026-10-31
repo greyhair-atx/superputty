@@ -64,6 +64,7 @@ namespace SuperPutty
                 this.textBoxUsername.Text = Session.Username;
                 this.textBoxSPSLScriptFile.Text = Session.SPSLFileName;
                 this.checkBoxIgnoreRdpCertificateErrors.Checked = Session.IgnoreRdpCertificateErrors;
+                this.checkBoxScpInteractiveAuthentication.Checked = Session.ScpInteractiveAuthentication;
                 this.textBoxRemotePathSesion.Text = Session.RemotePath;
                 this.textBoxLocalPathSesion.Text = Session.LocalPath;
                 this.textBoxPrivateKeyFile.Text = Session.PrivateKeyFile;
@@ -170,6 +171,7 @@ namespace SuperPutty
             Session.ImageKey     = buttonImageSelect.ImageKey;
             Session.SPSLFileName = textBoxSPSLScriptFile.Text.Trim();
             Session.IgnoreRdpCertificateErrors = checkBoxIgnoreRdpCertificateErrors.Checked;
+            Session.ScpInteractiveAuthentication = checkBoxScpInteractiveAuthentication.Checked;
             Session.RemotePath = textBoxRemotePathSesion.Text.Trim();
             Session.LocalPath = textBoxLocalPathSesion.Text.Trim();
             Session.PrivateKeyFile = textBoxPrivateKeyFile.Text.Trim();
@@ -231,6 +233,7 @@ namespace SuperPutty
             this.labelPrivateKeyFile.Visible = supportsScp;
             this.textBoxPrivateKeyFile.Visible = supportsScp;
             this.buttonBrowsePrivateKey.Visible = supportsScp;
+            this.checkBoxScpInteractiveAuthentication.Visible = supportsScp;
         }
 
         public static int GetDefaultPort(ConnectionProtocol protocol)
