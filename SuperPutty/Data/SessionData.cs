@@ -922,7 +922,7 @@ namespace SuperPutty.Data
             StringBuilder builder = new StringBuilder();
             builder.Append(this.Proto.ToString().ToLower());
             builder.Append("://");
-            builder.Append(this.Username.Length > 0 ? this.Username + "@": "");
+            builder.Append(!string.IsNullOrEmpty(this.Username) ? this.Username + "@": "");
             builder.Append(this.Host);
             builder.Append(":");
             builder.Append(this.Port);
