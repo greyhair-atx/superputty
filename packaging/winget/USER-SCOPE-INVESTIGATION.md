@@ -37,6 +37,23 @@ Issue #3011 describes this behavior and includes a report against WinGet 1.29.38
 - The explicit migration from 1.8.0 to 1.8.3 passed end to end in the standard account: uninstall by the old current-user ProductCode without a scope filter, then install the reviewed candidate with `--scope user`. Candidate scope/hash/signature/version, preservation of both existing settings files, and final uninstall all passed. This is a tested manual migration path, not an automatic catalog upgrade pass.
 - Provide the repro and MSI-context evidence to the WinGet submission reviewers, referencing #3011, before claiming full two-scope upgrade support. No external comment has been posted by this investigation.
 
+## Automatic upgrade without a scope filter
+
+A further test used the same interactive standard account, WinGet 1.29.380, the exact published 1.8.0 current-user MSI, and the review REST source exposing only 1.8.3. The command was `winget upgrade --id ChrisThornton.SuperPuTTYCommunityEdition --exact --source SPCEReview --silent --disable-interactivity --accept-package-agreements --accept-source-agreements --verbose-logs` (with an additional MSI log path). It omitted `--scope` and supplied no installer-scope override.
+
+The result does not preserve current-user scope:
+
+1. WinGet correlated the package and downloaded `SuperPuTTY-CE-1.8.3-all-users-win-x64-signed.msi`.
+2. It successfully uninstalled the existing 1.8.0 current-user package before starting the new installation.
+3. The machine installer displayed an administrator credential prompt despite the noninteractive command options. The test canceled that prompt without supplying administrator credentials. WinGet then reported MSI error 1625 and exited with `-1978334961`.
+4. After the failed upgrade, neither old nor new user/machine ProductCodes were installed, and neither executable path existed. Both existing settings files retained their original SHA-256 hashes.
+
+The observed installer choice and removal of the old user package rule out omitting `--scope user` as a safe workaround. The final installation error followed deliberate cancellation of the elevation prompt; it is not independent evidence of a new package policy defect. No claim is made about a completed machine installation after providing administrator credentials, since that was not tested.
+
+The runner now supports `-UpgradeMethod CatalogUnscoped` and captures both scopes' product states and executable paths before cleanup, including on failure. Evidence from this run is retained locally under `artifacts/automatic-user-upgrade/guest/`, including the raw summary, operation logs, client diagnostics, catalog requests, post-upgrade state and final cleanup verification. The raw summary's `uninstallFirstObserved` is null because the failed command threw before that field was populated; the operation log directly records the successful uninstall. The runner now records this field in its failure path as well.
+
+Temporary source/local-manifest policies, HTTPS bindings, certificate trust and scheduled tasks were removed. Final checks confirmed no test installations remained and both settings files were unchanged. The standard review account remains signed in. Automatic current-user catalog upgrades remain unapproved; the separately tested explicit migration remains the available workaround.
+
 ## Reproduction
 
 `build/Test-PerUserMsiRegistration.ps1` requires the authorized disposable guest, `SUPERPUTTY_DISPOSABLE_TEST=1`, and the dedicated standard account's interactive session. Place the exact published signed current-user MSI in a new stage directory and run the script with `-StageDirectory <directory>`. Use a separate stage with `-ExplicitPerUserProperties` for the second case. The script checks the published hash and signature, captures native 32-/64-bit HKCU/HKLM ARP views, checks the current user's MSI contexts, uninstalls only its owned ProductCode, and checks preference/session/layout hashes afterward.

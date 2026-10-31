@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory)][string]$StageDirectory,
     [Parameter(Mandatory)][ValidateSet('user','machine')][string]$Scope,
     [Parameter(Mandatory)][string]$WingetPath,
-    [ValidateSet('WinGet','Installer','Catalog','ExplicitMigration')][string]$UpgradeMethod='WinGet',
+    [ValidateSet('WinGet','Installer','Catalog','CatalogUnscoped','ExplicitMigration')][string]$UpgradeMethod='WinGet',
     [string]$CatalogSource='SPCEReview',
     [ValidatePattern('^[A-Za-z0-9-]+$')][string]$ResultName
 )
@@ -67,11 +67,13 @@ try{
         if(Test-Path $path){Get-ItemProperty $path|Select-Object PSPath,DisplayName,DisplayVersion,Publisher}
     })
     [pscustomobject]@{productCode=$codes[0];assignmentType=$assignment;requestedScope=$Scope;registrations=$registrations}|ConvertTo-Json -Depth 5|Set-Content "$results/previous-registration.json"
-    if($UpgradeMethod -eq 'Catalog'){
+    if($UpgradeMethod -in @('Catalog','CatalogUnscoped')){
         $id='ChrisThornton.SuperPuTTYCommunityEdition'
         Run 'catalog-list' @('list','--id',$id,'--exact','--source',$CatalogSource,'--disable-interactivity','--accept-source-agreements','--verbose-logs')
         Assert ((Get-Content "$results/catalog-list.log" -Raw) -match [regex]::Escape($id)) 'Catalog did not correlate the installed package identity.'
-        Run 'catalog-upgrade' @('upgrade','--id',$id,'--exact','--source',$CatalogSource,'--scope',$Scope,'--silent','--disable-interactivity','--accept-package-agreements','--accept-source-agreements','--verbose-logs','--log',"$results/upgrade-msi.log")
+        $upgradeArguments=@('upgrade','--id',$id,'--exact','--source',$CatalogSource,'--silent','--disable-interactivity','--accept-package-agreements','--accept-source-agreements','--verbose-logs','--log',"$results/upgrade-msi.log")
+        if($UpgradeMethod -eq 'Catalog'){$upgradeArguments+=@('--scope',$Scope)}
+        Run 'catalog-upgrade' $upgradeArguments
         # The disposable review guest uses English WinGet output. Verify the
         # client's two separate operations, rather than relying on MSI removal.
         $upgradeLog=Get-Content "$results/catalog-upgrade.log" -Raw
@@ -106,6 +108,21 @@ try{
     Assert (-not (Test-Path $exe)) 'Executable remains after uninstall.'
     $success=$true
 }finally{
+    if($UpgradeMethod -in @('Catalog','CatalogUnscoped') -and (Test-Path "$results/catalog-upgrade.log")){
+        $upgradeLog=Get-Content "$results/catalog-upgrade.log" -Raw
+        $uninstallAt=$upgradeLog.IndexOf('Starting package uninstall...')
+        $installAt=$upgradeLog.IndexOf('Starting package install...')
+        $uninstallFirstObserved=$uninstallAt -ge 0 -and $installAt -gt $uninstallAt -and $upgradeLog.Contains('Successfully uninstalled')
+    }
+    # Capture both scopes before cleanup, including a wrong-scope selection or
+    # an uninstall followed by a failed install in the unscoped scenario.
+    $observed=@(foreach($package in @($release.previous.packages)+@($release.packages)){
+        $state=State $package.productCode
+        $assignment=$null
+        if($state -eq 5){$assignment=$msi.GetType().InvokeMember('ProductInfo','GetProperty',$null,$msi,@($package.productCode,'AssignmentType'))}
+        [pscustomobject]@{scope=$package.scope;productCode=$package.productCode;state=$state;assignmentType=$assignment}
+    })
+    [pscustomobject]@{products=$observed;userExecutablePresent=(Test-Path (Join-Path $env:LOCALAPPDATA 'Apps/SuperPuTTY/SuperPutty.exe'));machineExecutablePresent=(Test-Path (Join-Path $env:ProgramFiles 'SuperPuTTY/SuperPutty.exe'))}|ConvertTo-Json -Depth 5|Set-Content "$results/post-upgrade-state.json"
     $diagnostics=Join-Path $env:LOCALAPPDATA 'Packages/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe/LocalState/DiagOutputDir'
     if(Test-Path $diagnostics){
         New-Item -ItemType Directory "$results/winget-diagnostics" -Force|Out-Null

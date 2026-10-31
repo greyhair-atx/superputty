@@ -16,6 +16,7 @@ Current-user upgrades with `--scope user` fail because WinGet inventories the in
 | 1.8.0 and 1.8.3 | user | Passed: installed 1.8.0, available 1.8.3, correct package ID | Failed before upgrade: `--scope user` finds no installed package; cleanup succeeded and two settings files were preserved |
 | 1.8.3 only | machine | Passed without publishing the old ProductCodes in catalog search metadata | Passed: explicit uninstall then install, expected MSI assignment/hash/signature/version, four settings files preserved, final uninstall passed |
 | 1.8.3 only | user | Passed: installed 1.8.0, available 1.8.3, correct package ID | Failed before upgrade with the same scope mismatch; cleanup succeeded and two settings files were preserved |
+| 1.8.3 only | No filter; starting from a current-user installation | Passed | Selected the all-users MSI, removed the old user version, then requested administrator credentials. The test canceled the prompt; installation failed with MSI 1625, leaving neither version installed. Both settings files were preserved. |
 
 The successful machine upgrade logs contain, in order:
 
@@ -26,7 +27,7 @@ Starting package install...
 Successfully installed
 ```
 
-The current-user MSI has Windows Installer AssignmentType 0, but its uninstall entry is in HKLM and WinGet inventories it as `ARP\Machine\X64\{7093D12F-0585-4E0C-A625-D2BB3867C54F}`. The earlier 1.8.3 clean-install evidence also records its user ProductCode in HKLM. WinGet's installed-package source selects the scope from the registry hive; its installer comparator requires the new installer scope to match the installed scope. Omitting `--scope user` was not tested as a workaround and must not be claimed to preserve the user installation scope.
+The current-user MSI has Windows Installer AssignmentType 0, but its uninstall entry is in HKLM and WinGet inventories it as `ARP\Machine\X64\{7093D12F-0585-4E0C-A625-D2BB3867C54F}`. The earlier 1.8.3 clean-install evidence also records its user ProductCode in HKLM. WinGet's installed-package source selects the scope from the registry hive; its installer comparator requires the new installer scope to match the installed scope. A follow-up test without `--scope user` selected the machine installer and removed the existing user installation before an elevation prompt. Omitting the filter is therefore not a safe scope-preserving workaround; see the [detailed automatic upgrade result](USER-SCOPE-INVESTIGATION.md#automatic-upgrade-without-a-scope-filter).
 
 The follow-up investigation validates the native Windows Installer context and identifies the upstream WinGet defect. Explicit uninstall by current-user ProductCode followed by an explicitly scoped user installation passed as a manual migration. Do not alter the real ProductCodes, invent a machine scope for the user installer, or treat package identity correlation as proof that automatic scope selection works.
 
