@@ -2,6 +2,8 @@
 
 Review date: October 31, 2026. Changes remain local and unpushed.
 
+Follow-up: the [catalog upgrade review](CATALOG-REVIEW-1.8.3.md) resolves the package identity question. Machine-scope catalog upgrades pass, including uninstall-first behavior. Current-user catalog upgrades expose a separate installed-scope mismatch and remain unsuccessful. The local-manifest failures below are retained as historical evidence.
+
 ## Proposed manifest changes
 
 - `MinimumOSVersion: 10.0.19041.0`.

@@ -3,7 +3,9 @@ param(
     [Parameter(Mandatory)][string]$StageDirectory,
     [Parameter(Mandatory)][ValidateSet('user','machine')][string]$Scope,
     [Parameter(Mandatory)][string]$WingetPath,
-    [ValidateSet('WinGet','Installer')][string]$UpgradeMethod='WinGet'
+    [ValidateSet('WinGet','Installer','Catalog')][string]$UpgradeMethod='WinGet',
+    [string]$CatalogSource='SPCEReview',
+    [ValidatePattern('^[A-Za-z0-9-]+$')][string]$ResultName
 )
 $ErrorActionPreference='Stop'
 if($env:SUPERPUTTY_DISPOSABLE_TEST -ne '1'){throw 'Requires an authorized disposable Windows VM.'}
@@ -18,7 +20,8 @@ $previous=@($release.previous.packages|Where-Object scope -EQ $Scope)
 if($candidate.Count -ne 1 -or $previous.Count -ne 1){throw 'Expected one previous and candidate package per scope.'}
 $codes=@($previous[0].productCode,$candidate[0].productCode)
 if(@($codes|Where-Object {$_ -notmatch '^\{[0-9A-Fa-f-]{36}\}$'}).Count -or $codes[0] -eq $codes[1]){throw 'Expected distinct valid MSI ProductCodes.'}
-$results=Join-Path $stage "results/upgrade-$Scope"
+if(-not $ResultName){$ResultName="upgrade-$Scope"}
+$results=Join-Path $stage "results/$ResultName"
 if(Test-Path $results){throw 'Upgrade results already exist; review before preparing another run.'}
 New-Item -ItemType Directory -Path $results|Out-Null
 $folder=if($Scope -eq 'user'){Join-Path $env:LOCALAPPDATA 'Apps/SuperPuTTY'}else{Join-Path $env:ProgramFiles 'SuperPuTTY'}
@@ -53,12 +56,30 @@ function Run([string]$Name,[string[]]$Arguments){
     Assert-Settings
 }
 $success=$false
+$uninstallFirstObserved=$null
 try{
     Run 'install-previous' @('install','--manifest',"$stage/previous-manifests",'--scope',$Scope,'--silent','--disable-interactivity','--accept-package-agreements','--accept-source-agreements','--verbose-logs','--log',"$results/previous-msi.log")
     Assert ((State $codes[0]) -eq 5) 'Previous version not registered.'
     $assignment=$msi.GetType().InvokeMember('ProductInfo','GetProperty',$null,$msi,@($codes[0],'AssignmentType'))
     Assert ([string]$assignment -eq $(if($Scope -eq 'user'){'0'}else{'1'})) 'Previous install has wrong scope.'
-    if($UpgradeMethod -eq 'WinGet'){
+    $registrations=@(foreach($hive in @('HKCU:','HKLM:')){
+        $path="$hive\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($codes[0])"
+        if(Test-Path $path){Get-ItemProperty $path|Select-Object PSPath,DisplayName,DisplayVersion,Publisher}
+    })
+    [pscustomobject]@{productCode=$codes[0];assignmentType=$assignment;requestedScope=$Scope;registrations=$registrations}|ConvertTo-Json -Depth 5|Set-Content "$results/previous-registration.json"
+    if($UpgradeMethod -eq 'Catalog'){
+        $id='ChrisThornton.SuperPuTTYCommunityEdition'
+        Run 'catalog-list' @('list','--id',$id,'--exact','--source',$CatalogSource,'--disable-interactivity','--accept-source-agreements','--verbose-logs')
+        Assert ((Get-Content "$results/catalog-list.log" -Raw) -match [regex]::Escape($id)) 'Catalog did not correlate the installed package identity.'
+        Run 'catalog-upgrade' @('upgrade','--id',$id,'--exact','--source',$CatalogSource,'--scope',$Scope,'--silent','--disable-interactivity','--accept-package-agreements','--accept-source-agreements','--verbose-logs','--log',"$results/upgrade-msi.log")
+        # The disposable review guest uses English WinGet output. Verify the
+        # client's two separate operations, rather than relying on MSI removal.
+        $upgradeLog=Get-Content "$results/catalog-upgrade.log" -Raw
+        $uninstallAt=$upgradeLog.IndexOf('Starting package uninstall...')
+        $installAt=$upgradeLog.IndexOf('Starting package install...')
+        $uninstallFirstObserved=$uninstallAt -ge 0 -and $installAt -gt $uninstallAt -and $upgradeLog.Contains('Successfully uninstalled')
+        Assert $uninstallFirstObserved 'WinGet did not report uninstalling the previous package before installation.'
+    }elseif($UpgradeMethod -eq 'WinGet'){
         # Scope, source agreements and installer log arguments are query-only
         # for upgrade. Verify actual MSI scope after manifest matching.
         Run 'upgrade' @('upgrade','--manifest',"$stage/manifests",'--silent','--disable-interactivity','--accept-package-agreements','--verbose-logs')
@@ -91,5 +112,5 @@ try{
     $cleaned=@($codes|Where-Object {(State $_) -eq 5}).Count -eq 0
     $preserved=$true
     try{Assert-Settings}catch{$preserved=$false}
-    [pscustomobject]@{success=($success -and $cleaned -and $preserved);scope=$Scope;upgradeMethod=$UpgradeMethod;previousVersion=$release.previous.version;version=$release.version;identity=$identity.Name;elevated=$elevated;cleanupSucceeded=$cleaned;settingsPreserved=$preserved;settingsFilesChecked=@($baseline).Count;completedUtc=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json|Set-Content "$results/summary.json"
+    [pscustomobject]@{success=($success -and $cleaned -and $preserved);scope=$Scope;upgradeMethod=$UpgradeMethod;uninstallFirstObserved=$uninstallFirstObserved;previousVersion=$release.previous.version;version=$release.version;identity=$identity.Name;elevated=$elevated;cleanupSucceeded=$cleaned;settingsPreserved=$preserved;settingsFilesChecked=@($baseline).Count;completedUtc=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json|Set-Content "$results/summary.json"
 }
