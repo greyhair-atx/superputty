@@ -12,6 +12,8 @@ The [native MSI investigation](USER-SCOPE-INVESTIGATION.md) confirms a correct p
 
 The selected path is to pursue the upstream WinGet correction while retaining the tested [explicit current-user migration](CURRENT-USER-MIGRATION.md). The [upstream follow-up text](UPSTREAM-SCOPE-REPORT.md) includes native MSI evidence, the destructive wrong-scope selection seen without a scope filter, and acceptance cases for a corrected client. Follow progress on [WinGet issue #3011](https://github.com/microsoft/winget-cli/issues/3011). Keep the two existing MSI families and their real scope/identities; do not redesign the installer or relax scope matching as a workaround. Automatic current-user upgrades remain unapproved.
 
+The [candidate client implementation and validation](WINGET-CLIENT-SCOPE-FIX.md) tracks the separate WinGet correction, regression coverage and disposable-VM checks. An experimental client pass does not establish that released WinGet versions have been corrected.
+
 The 1.8.3 installer manifest and `build/New-WinGetManifest.ps1` now set `MinimumOSVersion: 10.0.19041.0` and `UpgradeBehavior: uninstallPrevious`, as requested in the latest PR feedback, plus `ElevationRequirement: elevationRequired` on the machine-scope entry. This sets the WinGet eligibility floor to Windows 10 build 19041; it is not evidence that earlier Windows releases were tested or that the MSI enforces the same floor. The upgrade field requests WinGet to uninstall the previous package first; machine-scope catalog tests pass, but current-user catalog upgrades do not. These manifest corrections have not been pushed to the submission branch.
 
 Validation performed against the existing signed 1.8.3 release bundle:
@@ -61,3 +63,8 @@ Regenerate and revalidate these files after **any** rebuild or signing change. C
 The reviewed ProductCode-discovery failure can be retried with `-RetryCleanedUninstallFailure` only when the exact recorded operation sequence, successful MSI cleanup, settings preservation, and restored policy checks match. Failed-run evidence is archived before creating a new temporary account.
 
 `-RetryCleanedRegistrationFailure` supports the reviewed HKCU-probe failure only when the successful installation, exact diagnostic error, successful cleanup, and preservation records match. Both PowerShell 5.1 and 7 retry-guard checks passed.
+## November 1 upgrade follow-up
+
+The submission branch now includes the reviewed minimum OS, uninstall-first ordering and machine elevation metadata. [Submission status](https://github.com/microsoft/winget-pkgs/pull/434081#issuecomment-6560568359) records both the validation results and the unresolved current-user limitation. Automatic upgrades of existing current-user MSIs remain unapproved; retain the [explicit migration procedure](CURRENT-USER-MIGRATION.md).
+
+The [WinGet scope correction](WINGET-CLIENT-SCOPE-FIX.md) is published on a contributor review branch. The [Inno Setup prototype](../inno/README.md) passed direct recovery/migration tests and all six private-catalog user/machine upgrade scenarios in the disposable VM and remains separate from this public MSI submission. Neither work constitutes a released-client or signed-installer replacement.

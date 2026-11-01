@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory)][string]$StageDirectory,
     [Parameter(Mandatory)][ValidateSet('user','machine')][string]$Scope,
     [Parameter(Mandatory)][string]$WingetPath,
-    [ValidateSet('WinGet','Installer','Catalog','CatalogUnscoped','ExplicitMigration')][string]$UpgradeMethod='WinGet',
+    [ValidateSet('WinGet','Installer','Catalog','CatalogUnscoped','CatalogIncompatible','ExplicitMigration')][string]$UpgradeMethod='WinGet',
     [string]$CatalogSource='SPCEReview',
     [ValidatePattern('^[A-Za-z0-9-]+$')][string]$ResultName
 )
@@ -27,8 +27,36 @@ New-Item -ItemType Directory -Path $results|Out-Null
 $folder=if($Scope -eq 'user'){Join-Path $env:LOCALAPPDATA 'Apps/SuperPuTTY'}else{Join-Path $env:ProgramFiles 'SuperPuTTY'}
 if(Test-Path $folder){throw 'Installation folder must initially be absent.'}
 $msi=New-Object -ComObject WindowsInstaller.Installer
+if(-not ('UpgradeMsiContextInspector' -as [type])){
+Add-Type @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class UpgradeMsiContextInspector {
+ [DllImport("msi.dll", CharSet=CharSet.Unicode)]
+ private static extern uint MsiEnumProductsEx(string product,string userSid,uint contexts,uint index,StringBuilder code,out uint context,IntPtr sid,IntPtr sidLength);
+ public static uint[] Find(string product) {
+  var contexts=new List<uint>();
+  for(uint index=0;;index++) {
+   uint context;var code=new StringBuilder(39);
+   uint result=MsiEnumProductsEx(product,null,7,index,code,out context,IntPtr.Zero,IntPtr.Zero);
+   if(result==259) return contexts.ToArray();
+   if(result!=0) throw new System.ComponentModel.Win32Exception((int)result);
+   contexts.Add(context);
+  }
+ }
+}
+'@
+}
 function State([string]$Code){$msi.GetType().InvokeMember('ProductState','GetProperty',$null,$msi,@($Code))}
 function Assert([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message}}
+function Assert-NativeContext([string]$Code,[string]$Name){
+    $contexts=@([UpgradeMsiContextInspector]::Find($Code))
+    [pscustomobject]@{productCode=$Code;contexts=$contexts;requestedScope=$Scope}|ConvertTo-Json -Depth 4|Set-Content "$results/$Name-context.json"
+    $expected=if($Scope -eq 'user'){2}else{4}
+    Assert ($contexts.Count -eq 1 -and $contexts[0] -eq $expected) 'Unexpected native Windows Installer context.'
+}
 foreach($code in $codes){Assert ((State $code) -ne 5) "Product already installed: $code"}
 $preferences=Join-Path $env:USERPROFILE 'SuperPuTTY.settings'
 if(-not (Test-Path $preferences)){
@@ -47,33 +75,48 @@ $baseline=@(Get-Item $preferences; Get-ChildItem $settingsFolder -Recurse -File)
 $baseline|ConvertTo-Json|Set-Content "$results/settings-baseline.json"
 function Assert-Settings{foreach($entry in $baseline){Assert ((Test-Path $entry.path) -and (Get-FileHash $entry.path).Hash -eq $entry.hash) "Settings changed: $($entry.path)"}}
 $operations=[Collections.Generic.List[object]]::new()
-function Run([string]$Name,[string[]]$Arguments){
+function Run([string]$Name,[string[]]$Arguments,[bool]$ExpectFailure=$false){
     & $WingetPath @Arguments *> "$results/$Name.log"
     $exit=$LASTEXITCODE
     $operations.Add([pscustomobject]@{name=$Name;exitCode=$exit;arguments=$Arguments})
     $operations|ConvertTo-Json -Depth 5|Set-Content "$results/operations.json"
-    Assert ($exit -eq 0) "WinGet $Name failed ($exit); see $results/$Name.log"
+    Assert $(if($ExpectFailure){$exit -ne 0}else{$exit -eq 0}) "Unexpected WinGet $Name exit ($exit); see $results/$Name.log"
     Assert-Settings
 }
 $success=$false
 $uninstallFirstObserved=$null
+$previousRetainedBeforeCleanup=$null
 try{
     Run 'install-previous' @('install','--manifest',"$stage/previous-manifests",'--scope',$Scope,'--silent','--disable-interactivity','--accept-package-agreements','--accept-source-agreements','--verbose-logs','--log',"$results/previous-msi.log")
     Assert ((State $codes[0]) -eq 5) 'Previous version not registered.'
     $assignment=$msi.GetType().InvokeMember('ProductInfo','GetProperty',$null,$msi,@($codes[0],'AssignmentType'))
     Assert ([string]$assignment -eq $(if($Scope -eq 'user'){'0'}else{'1'})) 'Previous install has wrong scope.'
+    Assert-NativeContext $codes[0] 'previous'
     $registrations=@(foreach($hive in @('HKCU:','HKLM:')){
         $path="$hive\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($codes[0])"
         if(Test-Path $path){Get-ItemProperty $path|Select-Object PSPath,DisplayName,DisplayVersion,Publisher}
     })
     [pscustomobject]@{productCode=$codes[0];assignmentType=$assignment;requestedScope=$Scope;registrations=$registrations}|ConvertTo-Json -Depth 5|Set-Content "$results/previous-registration.json"
-    if($UpgradeMethod -in @('Catalog','CatalogUnscoped')){
+    if($UpgradeMethod -in @('Catalog','CatalogUnscoped','CatalogIncompatible')){
         $id='ChrisThornton.SuperPuTTYCommunityEdition'
         Run 'catalog-list' @('list','--id',$id,'--exact','--source',$CatalogSource,'--disable-interactivity','--accept-source-agreements','--verbose-logs')
         Assert ((Get-Content "$results/catalog-list.log" -Raw) -match [regex]::Escape($id)) 'Catalog did not correlate the installed package identity.'
         $upgradeArguments=@('upgrade','--id',$id,'--exact','--source',$CatalogSource,'--silent','--disable-interactivity','--accept-package-agreements','--accept-source-agreements','--verbose-logs','--log',"$results/upgrade-msi.log")
         if($UpgradeMethod -eq 'Catalog'){$upgradeArguments+=@('--scope',$Scope)}
-        Run 'catalog-upgrade' $upgradeArguments
+        $previousExeHash=(Get-FileHash (Join-Path $folder 'SuperPutty.exe')).Hash
+        Run 'catalog-upgrade' $upgradeArguments ($UpgradeMethod -eq 'CatalogIncompatible')
+        if($UpgradeMethod -eq 'CatalogIncompatible'){
+            $upgradeLog=Get-Content "$results/catalog-upgrade.log" -Raw
+            Assert ($upgradeLog -match 'No applicable (upgrade|update) found|No applicable installers found') 'Failure was not an incompatible-installer rejection.'
+            Assert (-not $upgradeLog.Contains('Starting package uninstall...')) 'Incompatible upgrade started uninstalling the old package.'
+            Assert ((State $codes[0]) -eq 5) 'Incompatible upgrade removed the previous version.'
+            foreach($package in $release.packages){Assert ((State $package.productCode) -ne 5) 'Incompatible upgrade installed a candidate.'}
+            Assert ((Get-FileHash (Join-Path $folder 'SuperPutty.exe')).Hash -eq $previousExeHash) 'Incompatible upgrade changed the old executable.'
+            Assert-NativeContext $codes[0] 'retained-previous'
+            $previousRetainedBeforeCleanup=$true
+            $success=$true
+            return
+        }
         # The disposable review guest uses English WinGet output. Verify the
         # client's two separate operations, rather than relying on MSI removal.
         $upgradeLog=Get-Content "$results/catalog-upgrade.log" -Raw
@@ -99,6 +142,7 @@ try{
     Assert ((State $codes[1]) -eq 5) 'Candidate ProductCode missing after upgrade.'
     $assignment=$msi.GetType().InvokeMember('ProductInfo','GetProperty',$null,$msi,@($codes[1],'AssignmentType'))
     Assert ([string]$assignment -eq $(if($Scope -eq 'user'){'0'}else{'1'})) 'Upgraded install has wrong scope.'
+    Assert-NativeContext $codes[1] 'candidate'
     $exe=Join-Path $folder 'SuperPutty.exe'
     Assert ((Get-FileHash $exe).Hash -eq $release.executableSha256) 'Upgraded executable hash mismatch.'
     Assert ((Get-AuthenticodeSignature $exe).Status -eq 'Valid') 'Upgraded executable signature invalid.'
@@ -108,7 +152,7 @@ try{
     Assert (-not (Test-Path $exe)) 'Executable remains after uninstall.'
     $success=$true
 }finally{
-    if($UpgradeMethod -in @('Catalog','CatalogUnscoped') -and (Test-Path "$results/catalog-upgrade.log")){
+    if($UpgradeMethod -in @('Catalog','CatalogUnscoped','CatalogIncompatible') -and (Test-Path "$results/catalog-upgrade.log")){
         $upgradeLog=Get-Content "$results/catalog-upgrade.log" -Raw
         $uninstallAt=$upgradeLog.IndexOf('Starting package uninstall...')
         $installAt=$upgradeLog.IndexOf('Starting package install...')
@@ -128,6 +172,11 @@ try{
         New-Item -ItemType Directory "$results/winget-diagnostics" -Force|Out-Null
         Get-ChildItem $diagnostics -File|Copy-Item -Destination "$results/winget-diagnostics"
     }
+    $unpackagedDiagnostics=Join-Path $env:TEMP 'WinGet/defaultState'
+    if(Test-Path $unpackagedDiagnostics){
+        New-Item -ItemType Directory "$results/winget-unpackaged-diagnostics" -Force|Out-Null
+        Get-ChildItem $unpackagedDiagnostics -File -Filter '*.log'|Copy-Item -Destination "$results/winget-unpackaged-diagnostics"
+    }
     foreach($code in $codes){if((State $code) -eq 5){
         $process=Start-Process msiexec.exe -ArgumentList @('/x',$code,'/qn','/norestart','/l*v',"`"$results/cleanup-$($code.Trim('{}')).log`"") -WindowStyle Hidden -PassThru
         if(-not $process.WaitForExit(180000)){throw 'Cleanup timed out; inspect guest before retrying.'}
@@ -135,5 +184,5 @@ try{
     $cleaned=@($codes|Where-Object {(State $_) -eq 5}).Count -eq 0
     $preserved=$true
     try{Assert-Settings}catch{$preserved=$false}
-    [pscustomobject]@{success=($success -and $cleaned -and $preserved);scope=$Scope;upgradeMethod=$UpgradeMethod;uninstallFirstObserved=$uninstallFirstObserved;previousVersion=$release.previous.version;version=$release.version;identity=$identity.Name;elevated=$elevated;cleanupSucceeded=$cleaned;settingsPreserved=$preserved;settingsFilesChecked=@($baseline).Count;completedUtc=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json|Set-Content "$results/summary.json"
+    [pscustomobject]@{success=($success -and $cleaned -and $preserved);scope=$Scope;upgradeMethod=$UpgradeMethod;uninstallFirstObserved=$uninstallFirstObserved;previousRetainedBeforeCleanup=$previousRetainedBeforeCleanup;previousVersion=$release.previous.version;version=$release.version;identity=$identity.Name;elevated=$elevated;cleanupSucceeded=$cleaned;settingsPreserved=$preserved;settingsFilesChecked=@($baseline).Count;completedUtc=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json|Set-Content "$results/summary.json"
 }

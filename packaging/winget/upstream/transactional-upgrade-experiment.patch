@@ -1,0 +1,55 @@
+diff --git a/SuperPuttyInstaller/Product.wxs b/SuperPuttyInstaller/Product.wxs
+index e6382b1..0a1b2da 100644
+--- a/SuperPuttyInstaller/Product.wxs
++++ b/SuperPuttyInstaller/Product.wxs
+@@ -48,7 +48,11 @@
+     <Property Id="ARPURLINFOABOUT" Value="https://github.com/greyhair-atx/superputty"/>
+     <Property Id="ARPNOREPAIR" Value="1"/>
+ 
+-    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
++    <!-- Keep removal inside the MSI transaction so a failed replacement can
++         restore the previous installation. WinGet must let MSI perform the
++         upgrade rather than uninstalling the old package in a separate step. -->
++    <MajorUpgrade Schedule="afterInstallInitialize"
++                  DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+     <!-- The historical UpgradeCode was shared with upstream. Bridge only the known
+          community MSI versions; MSI ignores the fourth version field, so the
+          1.5.0.1 community build cannot be distinguished from upstream 1.5.0.0.
+@@ -67,6 +71,8 @@
+             Message="Back up your settings and uninstall the existing SuperPuTTY 1.5 or earlier installation before installing SuperPuTTY Community Edition. These packages share legacy settings and cannot safely coexist." />
+     <Launch Condition="Installed OR NOT UNKNOWNLEGACYFOUND"
+             Message="An unrecognized newer SuperPuTTY package is installed. Remove it manually before installing SuperPuTTY Community Edition." />
++    <Launch Condition="Installed OR NOT (WIX_UPGRADE_DETECTED OR LEGACYCOMMUNITYFOUND) OR NOT RollbackDisabled"
++            Message="Upgrading SuperPuTTY requires Windows Installer rollback to be enabled. Enable rollback or use a reviewed manual migration before upgrading." />
+     <Property Id="ARPCOMMENTS" Value="SuperPuTTY Community Edition - community-maintained fork of Jim Radford's SuperPuTTY." />
+     <MediaTemplate EmbedCab="yes" />
+     
+diff --git a/build/New-WinGetManifest.ps1 b/build/New-WinGetManifest.ps1
+index 20304f1..5407850 100644
+--- a/build/New-WinGetManifest.ps1
++++ b/build/New-WinGetManifest.ps1
+@@ -1,5 +1,5 @@
+ [CmdletBinding()]
+-param([string]$Version='1.8.3',[string]$ReleaseDirectory,[string]$ManifestDirectory)
++param([string]$Version='1.8.3',[string]$ReleaseDirectory,[string]$ManifestDirectory,[ValidateSet('uninstallPrevious','install')][string]$UpgradeBehavior='uninstallPrevious')
+ $ErrorActionPreference='Stop'
+ $repo=Split-Path -Parent $PSScriptRoot
+ if(-not $ReleaseDirectory){$ReleaseDirectory=Join-Path $repo "artifacts/release-$Version/win-x64-signed"}
+@@ -9,10 +9,16 @@ if(-not $build.signaturesRequired -or $build.version -ne $Version -or $build.pac
+ $id='ChrisThornton.SuperPuTTYCommunityEdition'
+ $schema='1.28.0'
+ New-Item -ItemType Directory -Force -Path $ManifestDirectory|Out-Null
+-$lines=@("# yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.$schema.schema.json","PackageIdentifier: $id","PackageVersion: $Version",'InstallerType: wix','InstallerLocale: en-US','MinimumOSVersion: 10.0.19041.0','InstallModes:','- interactive','- silent','- silentWithProgress','InstallerSwitches:','  Silent: /qn /norestart','  SilentWithProgress: /passive /norestart','UpgradeBehavior: uninstallPrevious','Installers:')
++$lines=@("# yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.$schema.schema.json","PackageIdentifier: $id","PackageVersion: $Version",'InstallerType: wix','InstallerLocale: en-US','MinimumOSVersion: 10.0.19041.0','InstallModes:','- interactive','- silent','- silentWithProgress','InstallerSwitches:','  Silent: /qn /norestart','  SilentWithProgress: /passive /norestart',"UpgradeBehavior: $UpgradeBehavior",'Installers:')
+ foreach($package in $build.packages){
+  $file=Join-Path $ReleaseDirectory $package.name
+  if((Get-FileHash $file).Hash -ne $package.sha256 -or (Get-AuthenticodeSignature $file).Status -ne 'Valid'){throw 'Package bytes/signature differ from the verified release.'}
++ if($UpgradeBehavior -eq 'install'){
++  # Use framework PowerShell for the Windows Installer COM automation API.
++  $frameworkPowerShell=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
++  $proof=& $frameworkPowerShell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot/Test-MsiTransactionalUpgrade.ps1" -Path $file 2>&1
++  if($LASTEXITCODE -ne 0){throw "Transactional upgrade validation failed: $proof"}
++ }
+  $scope=if($package.scope -eq 'PerUser'){'user'}else{'machine'}
+  $lines+=@('- Architecture: x64',"  Scope: $scope")
+  if($scope -eq 'machine'){$lines+='  ElevationRequirement: elevationRequired'}

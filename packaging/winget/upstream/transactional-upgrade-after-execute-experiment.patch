@@ -1,0 +1,25 @@
+diff --git a/SuperPuttyInstaller/Product.wxs b/SuperPuttyInstaller/Product.wxs
+index e6382b1..1515ac0 100644
+--- a/SuperPuttyInstaller/Product.wxs
++++ b/SuperPuttyInstaller/Product.wxs
+@@ -48,7 +48,10 @@
+     <Property Id="ARPURLINFOABOUT" Value="https://github.com/greyhair-atx/superputty"/>
+     <Property Id="ARPNOREPAIR" Value="1"/>
+ 
+-    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
++    <!-- Install the replacement before removing the old product, within the
++         same transaction. Component identities must remain stable across releases. -->
++    <MajorUpgrade Schedule="afterInstallExecute"
++                  DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+     <!-- The historical UpgradeCode was shared with upstream. Bridge only the known
+          community MSI versions; MSI ignores the fourth version field, so the
+          1.5.0.1 community build cannot be distinguished from upstream 1.5.0.0.
+@@ -68,6 +71,8 @@
+     <Launch Condition="Installed OR NOT UNKNOWNLEGACYFOUND"
+             Message="An unrecognized newer SuperPuTTY package is installed. Remove it manually before installing SuperPuTTY Community Edition." />
+     <Property Id="ARPCOMMENTS" Value="SuperPuTTY Community Edition - community-maintained fork of Jim Radford's SuperPuTTY." />
++    <Launch Condition="Installed OR NOT (WIX_UPGRADE_DETECTED OR LEGACYCOMMUNITYFOUND) OR NOT RollbackDisabled"
++            Message="Upgrading SuperPuTTY requires Windows Installer rollback to be enabled. Enable rollback or use a reviewed manual migration before upgrading." />
+     <MediaTemplate EmbedCab="yes" />
+     
+     <Feature Id="ProductFeature" Title="SuperPuTTY Community Edition" Level="1">

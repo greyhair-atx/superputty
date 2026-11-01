@@ -68,6 +68,8 @@
     <Launch Condition="Installed OR NOT UNKNOWNLEGACYFOUND"
             Message="An unrecognized newer SuperPuTTY package is installed. Remove it manually before installing SuperPuTTY Community Edition." />
     <Property Id="ARPCOMMENTS" Value="SuperPuTTY Community Edition - community-maintained fork of Jim Radford's SuperPuTTY." />
+    <Launch Condition="Installed OR NOT (WIX_UPGRADE_DETECTED OR LEGACYCOMMUNITYFOUND) OR NOT RollbackDisabled"
+            Message="Upgrading SuperPuTTY requires Windows Installer rollback to be enabled. Enable rollback or use a reviewed manual migration before upgrading." />
     <MediaTemplate EmbedCab="yes" />
     
     <Feature Id="ProductFeature" Title="SuperPuTTY Community Edition" Level="1">

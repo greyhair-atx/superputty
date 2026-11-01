@@ -1,0 +1,451 @@
+diff --git a/.github/actions/spelling/expect.txt b/.github/actions/spelling/expect.txt
+index 42fb16f..94a6e22 100644
+--- a/.github/actions/spelling/expect.txt
++++ b/.github/actions/spelling/expect.txt
+@@ -179,6 +179,11 @@ ewgs
+ execustom
+ EXEHASH
+ experimentalfeatures
++MSIINSTALLCONTEXT
++MSIs
++msiscope
++USERMANAGED
++USERUNMANAGED
+ XPRESS
+ fdw
+ fdwgp
+diff --git a/doc/release-notes/1.31/3011-msi-installation-scope.md b/doc/release-notes/1.31/3011-msi-installation-scope.md
+new file mode 100644
+index 0000000..f16d5bd
+--- /dev/null
++++ b/doc/release-notes/1.31/3011-msi-installation-scope.md
+@@ -0,0 +1,5 @@
++## Bug Fixes
++
++### Minor Bug Fixes
++
++* Resolve MSI installation scope using Windows Installer context so that current-user installations registered in HKLM remain eligible for user-scoped upgrades instead of selecting a machine installer. MSI entries with unavailable or ambiguous context are excluded rather than guessing their scope. See https://github.com/microsoft/winget-cli/issues/3011.
+diff --git a/src/AppInstallerCLITests/PredefinedInstalledSource.cpp b/src/AppInstallerCLITests/PredefinedInstalledSource.cpp
+index 4939f99..7a0a817 100644
+--- a/src/AppInstallerCLITests/PredefinedInstalledSource.cpp
++++ b/src/AppInstallerCLITests/PredefinedInstalledSource.cpp
+@@ -2,6 +2,7 @@
+ // Licensed under the MIT License.
+ #include "pch.h"
+ #include "TestCommon.h"
++#include "TestHooks.h"
+ #include <ISource.h>
+ #include <AppInstallerRuntime.h>
+ #include <AppInstallerStrings.h>
+@@ -392,6 +393,160 @@ TEST_CASE("ARPHelper_PopulateIndexFromKey_Two", "[arphelper][list]")
+     VerifyEntryAgainstIndex(index, result.Matches[0].first, entry2);
+ }
+ 
++TEST_CASE("ARPHelper_MSIScopes_Contexts", "[arphelper][msiscope]")
++{
++    using namespace AppInstaller::Repository::Microsoft;
++    auto reset = wil::scope_exit([] { SetEnumMSIProductsOverride({}); });
++    const std::wstring userCode = L"{00000000-0000-0000-0000-00000000000a}";
++    const std::wstring machineCode = L"{00000000-0000-0000-0000-00000000000B}";
++    const std::wstring ambiguousCode = L"{00000000-0000-0000-0000-00000000000C}";
++    const std::vector<std::pair<std::wstring, MSIINSTALLCONTEXT>> registrations{
++        { userCode, MSIINSTALLCONTEXT_USERMANAGED },
++        { L"{00000000-0000-0000-0000-00000000000A}", MSIINSTALLCONTEXT_USERUNMANAGED },
++        { machineCode, MSIINSTALLCONTEXT_MACHINE },
++        { ambiguousCode, MSIINSTALLCONTEXT_MACHINE },
++        { ambiguousCode, MSIINSTALLCONTEXT_USERUNMANAGED },
++        { ambiguousCode, MSIINSTALLCONTEXT_MACHINE },
++    };
++    SetEnumMSIProductsOverride([&](LPCWSTR product, LPCWSTR sid, DWORD contexts, DWORD index, LPWSTR code, MSIINSTALLCONTEXT* context, LPWSTR, LPDWORD) -> UINT
++        {
++            REQUIRE(product == nullptr);
++            REQUIRE(sid == nullptr); // Do not enumerate registrations belonging to other users.
++            REQUIRE(contexts == MSIINSTALLCONTEXT_ALL);
++            if (index == registrations.size()) { return ERROR_NO_MORE_ITEMS; }
++            REQUIRE(index < registrations.size());
++            wcscpy_s(code, 39, registrations[index].first.c_str());
++            *context = registrations[index].second;
++            return ERROR_SUCCESS;
++        });
++
++    auto scopes = ARPHelper::GetMSIScopes();
++    REQUIRE(scopes.size() == 3);
++    REQUIRE(scopes.at(ToLower(ConvertToUTF8(userCode))) == ScopeEnum::User);
++    REQUIRE(scopes.at(ToLower(ConvertToUTF8(machineCode))) == ScopeEnum::Machine);
++    REQUIRE(scopes.at(ToLower(ConvertToUTF8(ambiguousCode))) == ScopeEnum::Unknown);
++}
++
++TEST_CASE("ARPHelper_MSIScopes_EnumerationFailure", "[arphelper][msiscope]")
++{
++    using namespace AppInstaller::Repository::Microsoft;
++    auto reset = wil::scope_exit([] { SetEnumMSIProductsOverride({}); });
++    SetEnumMSIProductsOverride([](LPCWSTR, LPCWSTR, DWORD, DWORD index, LPWSTR code, MSIINSTALLCONTEXT* context, LPWSTR, LPDWORD) -> UINT
++        {
++            if (index == 0)
++            {
++                wcscpy_s(code, 39, L"{00000000-0000-0000-0000-000000000001}");
++                *context = MSIINSTALLCONTEXT_MACHINE;
++                return ERROR_SUCCESS;
++            }
++            return ERROR_ACCESS_DENIED;
++        });
++    // Do not use a partial snapshot to infer an unambiguous scope.
++    REQUIRE(ARPHelper::GetMSIScopes().empty());
++}
++
++TEST_CASE("ARPHelper_MSIScopes_SidBufferRetry", "[arphelper][msiscope]")
++{
++    using namespace AppInstaller::Repository::Microsoft;
++    auto reset = wil::scope_exit([] { SetEnumMSIProductsOverride({}); });
++    size_t calls = 0;
++    SetEnumMSIProductsOverride([&](LPCWSTR, LPCWSTR, DWORD, DWORD index, LPWSTR code, MSIINSTALLCONTEXT* context, LPWSTR, LPDWORD sidSize) -> UINT
++        {
++            ++calls;
++            if (index == 1) { return ERROR_NO_MORE_ITEMS; }
++            REQUIRE(index == 0);
++            if (calls == 1)
++            {
++                *sidSize = 300;
++                return ERROR_MORE_DATA;
++            }
++            REQUIRE(*sidSize == 301);
++            wcscpy_s(code, 39, L"{00000000-0000-0000-0000-000000000001}");
++            *context = MSIINSTALLCONTEXT_USERUNMANAGED;
++            return ERROR_SUCCESS;
++        });
++    REQUIRE(ARPHelper::GetMSIScopes().size() == 1);
++    REQUIRE(calls == 3);
++}
++
++TEST_CASE("ARPHelper_MSIScopes_InventoryAndFiltering", "[arphelper][msiscope]")
++{
++    auto root = RegCreateVolatileTestRoot();
++    Registry::Key key(root.get());
++    ARPHelper helper;
++    ARPEntry user("{00000000-0000-0000-0000-00000000000A}", "User MSI", "1.0");
++    ARPEntry machine("{00000000-0000-0000-0000-00000000000B}", "Machine MSI", "1.0");
++    ARPEntry ambiguous("{00000000-0000-0000-0000-00000000000C}", "Ambiguous MSI", "1.0");
++    ARPEntry missing("{00000000-0000-0000-0000-00000000000D}", "Other user or unavailable MSI", "1.0");
++    for (auto entry : { user, machine, ambiguous, missing })
++    {
++        entry.WindowsInstaller = true;
++        AddARPEntryToKey(root.get(), helper, entry);
++    }
++    AddARPEntryToKey(root.get(), helper, ARPEntry{ "NonMsi", "Machine EXE", "1.0" });
++    ARPHelper::MSIScopeMap scopes{
++        { ToLower(user.EntryName), ScopeEnum::User },
++        { ToLower(machine.EntryName), ScopeEnum::Machine },
++        { ToLower(ambiguous.EntryName), ScopeEnum::Unknown },
++    };
++
++    auto filter = ScopeEnum::Unknown;
++    size_t expected = 3;
++    SECTION("Unfiltered") {}
++    SECTION("User filter includes user MSI from machine ARP") { filter = ScopeEnum::User; expected = 1; }
++    SECTION("Machine filter excludes user MSI") { filter = ScopeEnum::Machine; expected = 2; }
++    SECTION("Failed enumeration excludes MSIs but retains EXEs") { scopes.clear(); expected = 1; }
++
++    auto index = CreateMemoryIndex();
++    helper.PopulateIndexFromKey(index, key, ScopeToString(ScopeEnum::Machine), "X64", {}, &scopes, filter);
++    auto results = index.Search({});
++    REQUIRE(results.Matches.size() == expected);
++    for (const auto& match : results.Matches)
++    {
++        auto name = index.GetPropertyByPrimaryId(match.first, PackageVersionProperty::Name);
++        auto metadata = index.GetMetadataByManifestId(match.first);
++        auto scope = Find(metadata, PackageVersionMetadata::InstalledScope);
++        REQUIRE(scope != metadata.end());
++        REQUIRE(scope->second == ScopeToString(name == user.DisplayName ? ScopeEnum::User : ScopeEnum::Machine));
++        REQUIRE(name != ambiguous.DisplayName);
++        REQUIRE(name != missing.DisplayName);
++    }
++}
++
++TEST_CASE("PredefinedInstalledSource_UserFilterScansMachineARPForUserMSI", "[installed][msiscope]")
++{
++    using namespace AppInstaller::Repository::Microsoft;
++    auto root = RegCreateVolatileTestRoot();
++    ARPHelper helper;
++    ARPEntry entry("{00000000-0000-0000-0000-000000000001}", "User MSI in machine ARP", "1.0");
++    entry.WindowsInstaller = true;
++    AddARPEntryToKey(root.get(), helper, entry);
++    auto reset = wil::scope_exit([] { SetGetARPKeyOverride({}); SetEnumMSIProductsOverride({}); });
++    SetGetARPKeyOverride([&](ScopeEnum scope, Architecture arch)
++        {
++            return scope == ScopeEnum::Machine && arch == GetSystemArchitecture() ? Registry::Key{ root.get() } : Registry::Key{};
++        });
++    SetEnumMSIProductsOverride([](LPCWSTR, LPCWSTR, DWORD, DWORD index, LPWSTR code, MSIINSTALLCONTEXT* context, LPWSTR, LPDWORD) -> UINT
++        {
++            if (index != 0) { return ERROR_NO_MORE_ITEMS; }
++            wcscpy_s(code, 39, L"{00000000-0000-0000-0000-000000000001}");
++            *context = MSIINSTALLCONTEXT_USERUNMANAGED;
++            return ERROR_SUCCESS;
++        });
++    SearchRequest request;
++    request.Inclusions.emplace_back(PackageMatchField::ProductCode, MatchType::Exact, entry.EntryName);
++    SECTION("User filter")
++    {
++        auto source = CreatePredefinedInstalledSource(Factory::Filter::User);
++        REQUIRE(source->Search(request).Matches.size() == 1);
++    }
++    SECTION("Machine filter")
++    {
++        auto source = CreatePredefinedInstalledSource(Factory::Filter::Machine);
++        REQUIRE(source->Search(request).Matches.empty());
++    }
++}
++
+ TEST_CASE("PredefinedInstalledSource_Create", "[installed][list]")
+ {
+     auto source = CreatePredefinedInstalledSource();
+diff --git a/src/AppInstallerCLITests/TestHooks.h b/src/AppInstallerCLITests/TestHooks.h
+index 87415be..d2a49df 100644
+--- a/src/AppInstallerCLITests/TestHooks.h
++++ b/src/AppInstallerCLITests/TestHooks.h
+@@ -1,6 +1,7 @@
+ // Copyright (c) Microsoft Corporation.
+ // Licensed under the MIT License.
+ #pragma once
++#include <msi.h>
+ #include "TestSettings.h"
+ 
+ #include <SourceFactory.h>
+@@ -53,6 +54,9 @@ namespace AppInstaller
+         using GetARPKeyFunc = std::function<Registry::Key(Manifest::ScopeEnum, Utility::Architecture)>;
+         void SetGetARPKeyOverride(GetARPKeyFunc value);
+ 
++        using EnumMSIProductsFunc = std::function<UINT(LPCWSTR, LPCWSTR, DWORD, DWORD, LPWSTR, MSIINSTALLCONTEXT*, LPWSTR, LPDWORD)>;
++        void SetEnumMSIProductsOverride(EnumMSIProductsFunc value);
++
+         using GetFontRegistryRootFunc = std::function<Registry::Key(Manifest::ScopeEnum)>;
+         void TestHook_SetGetFontRegistryRootFunc(GetFontRegistryRootFunc value);
+     }
+diff --git a/src/AppInstallerRepositoryCore/Microsoft/ARPHelper.cpp b/src/AppInstallerRepositoryCore/Microsoft/ARPHelper.cpp
+index 0d436f5..a9c5dcc 100644
+--- a/src/AppInstallerRepositoryCore/Microsoft/ARPHelper.cpp
++++ b/src/AppInstallerRepositoryCore/Microsoft/ARPHelper.cpp
+@@ -116,6 +116,14 @@ namespace AppInstaller::Repository::Microsoft
+     }
+ 
+ #ifndef AICLI_DISABLE_TEST_HOOKS
++    using EnumMSIProductsFunc = std::function<UINT(LPCWSTR, LPCWSTR, DWORD, DWORD, LPWSTR, MSIINSTALLCONTEXT*, LPWSTR, LPDWORD)>;
++    static EnumMSIProductsFunc s_EnumMSIProducts_Override;
++
++    void SetEnumMSIProductsOverride(EnumMSIProductsFunc value)
++    {
++        s_EnumMSIProducts_Override = std::move(value);
++    }
++
+     using GetARPKeyFunc = std::function<Registry::Key(Manifest::ScopeEnum, Utility::Architecture)>;
+     static GetARPKeyFunc s_GetARPKey_Override;
+ 
+@@ -125,6 +133,61 @@ namespace AppInstaller::Repository::Microsoft
+     }
+ #endif
+ 
++    ARPHelper::MSIScopeMap ARPHelper::GetMSIScopes()
++    {
++        MSIScopeMap result;
++#ifndef AICLI_DISABLE_TEST_HOOKS
++        auto enumerate = s_EnumMSIProducts_Override ? s_EnumMSIProducts_Override : EnumMSIProductsFunc{ MsiEnumProductsExW };
++#else
++        auto enumerate = MsiEnumProductsExW;
++#endif
++        for (DWORD index = 0; ; ++index)
++        {
++            wchar_t productCode[39]{};
++            MSIINSTALLCONTEXT context = MSIINSTALLCONTEXT_NONE;
++            std::vector<wchar_t> sid(256);
++            UINT error;
++            do
++            {
++                DWORD sidSize = static_cast<DWORD>(sid.size());
++                // A null SID limits user registrations to the caller. Never enumerate
++                // S-1-1-0 (all users), even when the client happens to be elevated.
++                error = enumerate(nullptr, nullptr, MSIINSTALLCONTEXT_ALL, index, productCode, &context, sid.data(), &sidSize);
++                if (error == ERROR_MORE_DATA)
++                {
++                    sid.resize(static_cast<size_t>(sidSize) + 1);
++                }
++            } while (error == ERROR_MORE_DATA);
++
++            if (error == ERROR_NO_MORE_ITEMS)
++            {
++                return result;
++            }
++            if (error != ERROR_SUCCESS)
++            {
++                AICLI_LOG(Repo, Warning, << "MSI context enumeration failed: " << error << "; ignoring MSI inventory rather than guessing scope");
++                return {};
++            }
++
++            auto scope = Manifest::ScopeEnum::Unknown;
++            if (context == MSIINSTALLCONTEXT_MACHINE)
++            {
++                scope = Manifest::ScopeEnum::Machine;
++            }
++            else if (context == MSIINSTALLCONTEXT_USERMANAGED || context == MSIINSTALLCONTEXT_USERUNMANAGED)
++            {
++                scope = Manifest::ScopeEnum::User;
++            }
++
++            auto [entry, inserted] = result.emplace(Utility::ToLower(Utility::ConvertToUTF8(productCode)), scope);
++            if (!inserted && entry->second != scope)
++            {
++                entry->second = Manifest::ScopeEnum::Unknown;
++            }
++        }
++    }
++
++
+     Registry::Key ARPHelper::GetARPKey(Manifest::ScopeEnum scope, Utility::Architecture architecture) const
+     {
+ #ifndef AICLI_DISABLE_TEST_HOOKS
+@@ -368,9 +431,13 @@ namespace AppInstaller::Repository::Microsoft
+         }
+     }
+ 
+-    void ARPHelper::PopulateIndexFromARP(SQLiteIndex& index, Manifest::ScopeEnum scope) const
++    void ARPHelper::PopulateIndexFromARP(SQLiteIndex& index, Manifest::ScopeEnum scope, Manifest::ScopeEnum scopeFilter) const
+     {
+         auto upgradeCodes = GetUpgradeCodes();
++        if (!m_msiScopes)
++        {
++            m_msiScopes = GetMSIScopes();
++        }
+ 
+         for (auto architecture : Utility::GetApplicableArchitectures())
+         {
+@@ -378,12 +445,12 @@ namespace AppInstaller::Repository::Microsoft
+ 
+             if (arpRootKey)
+             {
+-                PopulateIndexFromKey(index, arpRootKey, Manifest::ScopeToString(scope), Utility::ToString(architecture), upgradeCodes);
++                PopulateIndexFromKey(index, arpRootKey, Manifest::ScopeToString(scope), Utility::ToString(architecture), upgradeCodes, &m_msiScopes.value(), scopeFilter);
+             }
+         }
+     }
+ 
+-    void ARPHelper::PopulateIndexFromKey(SQLiteIndex& index, const Registry::Key& key, std::string_view scope, std::string_view architecture, const std::map<std::string, std::string>& upgradeCodes) const
++    void ARPHelper::PopulateIndexFromKey(SQLiteIndex& index, const Registry::Key& key, std::string_view scope, std::string_view architecture, const std::map<std::string, std::string>& upgradeCodes, const MSIScopeMap* msiScopes, Manifest::ScopeEnum scopeFilter) const
+     {
+         AICLI_LOG(Repo, Verbose, << "Examining ARP entries for " << scope << " | " << architecture);
+ 
+@@ -468,10 +535,21 @@ namespace AppInstaller::Repository::Microsoft
+                 // Pick up WindowsInstaller to determine if this is an MSI install.
+                 // TODO: Could also determine Inno (and maybe other types) through detecting other keys here.
+                 auto installedType = Manifest::InstallerTypeEnum::Exe;
++                std::string installedScope{ scope };
+ 
+                 if (GetBoolValue(arpKey, WindowsInstaller))
+                 {
+                     installedType = Manifest::InstallerTypeEnum::Msi;
++                    if (msiScopes)
++                    {
++                        auto context = msiScopes->find(Utility::ToLower(productCode));
++                        if (context == msiScopes->end() || context->second == Manifest::ScopeEnum::Unknown)
++                        {
++                            AICLI_LOG(Repo, Warning, << "Ignoring MSI with unavailable or ambiguous installation context: " << productCode);
++                            continue;
++                        }
++                        installedScope = Manifest::ScopeToString(context->second);
++                    }
+ 
+                     // If this is an MSI, look up the UpgradeCode
+                     auto upgradeCodeItr = upgradeCodes.find(productCode);
+@@ -481,6 +559,11 @@ namespace AppInstaller::Repository::Microsoft
+                     }
+                 }
+ 
++                if (scopeFilter != Manifest::ScopeEnum::Unknown && installedScope != Manifest::ScopeToString(scopeFilter))
++                {
++                    continue;
++                }
++
+                 // TODO: If we want to keep the constructed manifest around to allow for `show` type commands
+                 //       against installed packages, we should use URLInfoAbout/HelpLink for the Homepage.
+ 
+@@ -509,7 +592,7 @@ namespace AppInstaller::Repository::Microsoft
+                 SQLiteIndex::IdType manifestId = manifestIdOpt.value();
+ 
+                 // Pass scope along to metadata.
+-                index.SetMetadataByManifestId(manifestId, PackageVersionMetadata::InstalledScope, scope);
++                index.SetMetadataByManifestId(manifestId, PackageVersionMetadata::InstalledScope, installedScope);
+ 
+                 // TODO: Pass along architecture, although there are cases where it is not clear what architecture the package
+                 //       is from it's ARP location, despite it very clearly being a specific architecture. And note that user
+diff --git a/src/AppInstallerRepositoryCore/Microsoft/ARPHelper.h b/src/AppInstallerRepositoryCore/Microsoft/ARPHelper.h
+index 88b4cca..ae36959 100644
+--- a/src/AppInstallerRepositoryCore/Microsoft/ARPHelper.h
++++ b/src/AppInstallerRepositoryCore/Microsoft/ARPHelper.h
+@@ -9,6 +9,8 @@
+ #include <wil/resource.h>
+ 
+ #include <string>
++#include <map>
++#include <optional>
+ #include <vector>
+ 
+ namespace AppInstaller::Repository::Microsoft
+@@ -16,6 +18,13 @@ namespace AppInstaller::Repository::Microsoft
+     // A helper to find the various locations that contain ARP (Add/Remove Programs) entries.
+     struct ARPHelper
+     {
++        // Keys are case-folded MSI ProductCodes. Unknown means multiple scopes.
++        using MSIScopeMap = std::map<std::string, Manifest::ScopeEnum>;
++
++        // Enumerates only the calling user's MSI registrations and machine registrations.
++        // An enumeration failure returns an empty map rather than guessing scope.
++        static MSIScopeMap GetMSIScopes();
++
+         // See https://docs.microsoft.com/en-us/windows/win32/msi/uninstall-registry-key for details.
+         const std::wstring SubKeyPath{ L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall" };
+ 
+@@ -88,14 +97,17 @@ namespace AppInstaller::Repository::Microsoft
+ 
+         // Populates the index with the ARP entries from the given scope (machine/user).
+         // Handles all of the architectures for the given scope.
+-        void PopulateIndexFromARP(SQLiteIndex& index, Manifest::ScopeEnum scope) const;
++        void PopulateIndexFromARP(SQLiteIndex& index, Manifest::ScopeEnum scope, Manifest::ScopeEnum scopeFilter = Manifest::ScopeEnum::Unknown) const;
+ 
+         // Populates the index with the ARP entries from the given key.
+         // This entry point is primarily to allow unit tests to operate of arbitrary keys;
+         // product code should use PopulateIndexFromARP.
+-        void PopulateIndexFromKey(SQLiteIndex& index, const Registry::Key& key, std::string_view scope, std::string_view architecture, const std::map<std::string, std::string>& upgradeCodes = {}) const;
++        void PopulateIndexFromKey(SQLiteIndex& index, const Registry::Key& key, std::string_view scope, std::string_view architecture, const std::map<std::string, std::string>& upgradeCodes = {}, const MSIScopeMap* msiScopes = nullptr, Manifest::ScopeEnum scopeFilter = Manifest::ScopeEnum::Unknown) const;
+ 
+         // Creates registry watchers for the given scope
+         std::vector<wil::unique_registry_watcher> CreateRegistryWatchers(Manifest::ScopeEnum scope, std::function<void(Manifest::ScopeEnum, Utility::Architecture, wil::RegistryChangeKind)> callback);
++
++    private:
++        mutable std::optional<MSIScopeMap> m_msiScopes;
+     };
+ }
+diff --git a/src/AppInstallerRepositoryCore/Microsoft/PredefinedInstalledSourceFactory.cpp b/src/AppInstallerRepositoryCore/Microsoft/PredefinedInstalledSourceFactory.cpp
+index 40edd79..938e5aa 100644
+--- a/src/AppInstallerRepositoryCore/Microsoft/PredefinedInstalledSourceFactory.cpp
++++ b/src/AppInstallerRepositoryCore/Microsoft/PredefinedInstalledSourceFactory.cpp
+@@ -243,14 +243,19 @@ namespace AppInstaller::Repository::Microsoft
+                 filter == PredefinedInstalledSourceFactory::Filter::User || filter == PredefinedInstalledSourceFactory::Filter::Machine)
+             {
+                 ARPHelper arpHelper;
+-                if (filter != PredefinedInstalledSourceFactory::Filter::User)
++                auto scopeFilter = Manifest::ScopeEnum::Unknown;
++                if (filter == PredefinedInstalledSourceFactory::Filter::User)
+                 {
+-                    arpHelper.PopulateIndexFromARP(index, Manifest::ScopeEnum::Machine);
++                    scopeFilter = Manifest::ScopeEnum::User;
+                 }
+-                if (filter != PredefinedInstalledSourceFactory::Filter::Machine)
++                else if (filter == PredefinedInstalledSourceFactory::Filter::Machine)
+                 {
+-                    arpHelper.PopulateIndexFromARP(index, Manifest::ScopeEnum::User);
++                    scopeFilter = Manifest::ScopeEnum::Machine;
+                 }
++                // The ARP hive is not authoritative for MSI context. Scan both
++                // locations and filter by resolved context, including for --scope.
++                arpHelper.PopulateIndexFromARP(index, Manifest::ScopeEnum::Machine, scopeFilter);
++                arpHelper.PopulateIndexFromARP(index, Manifest::ScopeEnum::User, scopeFilter);
+             }
+ 
+             if (filter == PredefinedInstalledSourceFactory::Filter::None ||

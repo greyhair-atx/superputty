@@ -1,0 +1,2 @@
+# Unified diff context intentionally contains space-prefixed blank lines.
+*.patch text eol=lf -whitespace
