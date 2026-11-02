@@ -1,5 +1,7 @@
 # Inno Setup packaging evaluation
 
+The subsequent durable-recovery authoring, signing workflow and real-identity migration tests are documented in [the candidate review](CANDIDATE-REVIEW.md). Results below describe the earlier isolated prototype.
+
 This is an isolated prototype, not a replacement release. Builds are unsigned by default; two normal fixtures were subsequently signed privately for catalog testing. Existing MSI releases and the [tested WinGet migration workaround](../winget/CURRENT-USER-MIGRATION.md) remain unchanged. Automatic current-user upgrades of the existing MSI remain unapproved.
 
 ## Design

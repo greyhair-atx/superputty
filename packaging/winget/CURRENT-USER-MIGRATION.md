@@ -34,3 +34,11 @@ If the candidate cannot be installed, preserve the settings and logs and use the
 ## Gate for resuming automatic upgrades
 
 After a candidate WinGet correction is available, repeat both scoped and unscoped catalog upgrades in a standard interactive account, with both-version and latest-only catalog visibility. Require the user installer, no elevation, correct native MSI user context, old-version removal only as part of a valid upgrade, unchanged settings, and final uninstall. Repeat machine controls and test failure before installation, ambiguity, and cancellation without losing the old installation. Record the exact corrected client version before changing the approval status.
+
+Correct scope selection is insufficient by itself: the existing MSI also failed the executed-script rollback tests. Require complete restoration of the old installed registration and files after failure before approving unattended MSI upgrades.
+
+## Qualified private Inno path
+
+The [Inno candidate review](../inno/CANDIDATE-REVIEW.md) records a separately qualified packaging path. On released WinGet 1.29.380, both user and machine tests correlated the existing signed 1.8.3 MSI under the real package identity. Automatic cross-type upgrade attempts preserved the MSI; exact ProductCode removal followed by explicit-scope catalog installation succeeded. Subsequent Inno-to-Inno upgrades passed explicit-scope, unscoped and source-restricted `upgrade --all` commands in both scopes, including settings preservation and final uninstall. The new installer also passed durable recovery and signing checks.
+
+These are private packaging fixtures, not a published replacement release. The existing MSI commands above remain version-specific. Do not advertise automatic MSI-to-Inno conversion or substitute a private fixture into the public manifest. A new signed Inno release and reviewed manifests are still required; after that initial explicit migration, future Inno upgrades can retain the working previous payload during installation.

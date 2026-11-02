@@ -1,8 +1,8 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$InstallerDirectory,[Parameter(Mandatory)][string]$ResultFile)
+param([Parameter(Mandatory)][string]$InstallerDirectory,[Parameter(Mandatory)][string]$ResultFile,[switch]$CandidateInstallers)
 $ErrorActionPreference='Stop'
 if($env:SUPERPUTTY_DISPOSABLE_TEST -ne '1'){throw 'Authorized disposable VM required.'}
-$name='SuperPuTTY-CE-Prototype-1.8.4.101-none.exe'
+$name=if($CandidateInstallers){'SuperPuTTY-CE-Candidate-1.8.4.101-none.exe'}else{'SuperPuTTY-CE-Prototype-1.8.4.101-none.exe'}
 $url="https://localhost:9443/installers/$name"
 $expected=[IO.File]::ReadAllBytes((Join-Path $InstallerDirectory $name))
 function Assert([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message}}
@@ -21,7 +21,8 @@ $head=Request $url 'HEAD';Assert ($head.status -eq 200 -and $head.length -eq $ex
 $range=Request $url 'GET' 0 31
 Assert ($range.status -eq 206 -and $range.bytes.Length -eq 32 -and [BitConverter]::ToString($range.bytes) -eq [BitConverter]::ToString($expected[0..31])) 'Byte-range response incorrect.'
 $invalid=Request $url 'GET' $expected.Length ($expected.Length+10);Assert ($invalid.status -eq 416) 'Invalid range not rejected.'
-$denied=Request 'https://localhost:9443/installers/SuperPuTTY-CE-Prototype-1.8.4.101-registration.exe';Assert ($denied.status -eq 404) 'Failure fixture was downloadable.'
+$deniedName=if($CandidateInstallers){'SuperPuTTY-CE-Candidate-1.8.4.101-pause-files.exe'}else{'SuperPuTTY-CE-Prototype-1.8.4.101-registration.exe'}
+$denied=Request "https://localhost:9443/installers/$deniedName";Assert ($denied.status -eq 404) 'Failure fixture was downloadable.'
 $null=Request $url 'GET' -AbortBody
 $full=Request $url
 $sha=[Security.Cryptography.SHA256]::Create()

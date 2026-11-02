@@ -1,5 +1,6 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$Directory,[int]$Port=9443,[string]$InstallerDirectory)
+param([Parameter(Mandatory)][string]$Directory,[int]$Port=9443,[string]$InstallerDirectory,
+ [switch]$CandidateInstallers)
 $ErrorActionPreference='Stop'
 # A deliberately narrow REST fixture for the two reviewed manifest versions.
 # Metadata-only by default. An optional hash-pinned prototype directory allows
@@ -8,8 +9,10 @@ $catalog=Get-Content (Join-Path $Directory 'catalog.json') -Raw|ConvertFrom-Json
 $downloads=@{}
 if($InstallerDirectory){
     $InstallerDirectory=(Resolve-Path $InstallerDirectory).Path
-    foreach($entry in (Get-Content (Join-Path $InstallerDirectory 'prototype-hashes.json') -Raw|ConvertFrom-Json)){
-        if($entry.name -notmatch '^SuperPuTTY-CE-Prototype-[0-9.]+-none\.exe$'){continue}
+    $hashManifest=if($CandidateInstallers){'candidate-hashes.json'}else{'prototype-hashes.json'}
+    $allowed=if($CandidateInstallers){'^SuperPuTTY-CE-Candidate-[0-9.]+-none\.exe$'}else{'^SuperPuTTY-CE-Prototype-[0-9.]+-none\.exe$'}
+    foreach($entry in (Get-Content (Join-Path $InstallerDirectory $hashManifest) -Raw|ConvertFrom-Json)){
+        if($entry.name -notmatch $allowed){continue}
         $downloads[$entry.name]=[string]$entry.sha256
     }
 }
