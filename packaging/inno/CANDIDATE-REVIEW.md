@@ -43,6 +43,8 @@ Earlier failed attempts remain available. They exposed a 32-bit registry-tool vi
 
 ## Catalog and migration policy
 
+A subsequent [focused explicit migration retest](EXPLICIT-MIGRATION-TEST.md) exercises the published MSI and the normal-mode signed Inno proof directly, without recreating a temporary catalog. It records its outcomes separately from the fixture catalog matrix below.
+
 `New-InnoCandidateCatalog.ps1` retains the actual published MSI ProductCodes/UpgradeCodes and truthful `wix`/`inno` installer types. It does not fabricate an MSI AppsAndFeatures entry on the Inno candidate. Released WinGet rejects the unscoped cross-type upgrade with “the install technology is different”; explicit user scope also encounters the known MSI scope-correlation defect. In every tested user command the old MSI remained installed and unchanged. An `upgrade --all` exit code of zero alone is not treated as proof of migration.
 
 The existing [explicit migration procedure](../winget/CURRENT-USER-MIGRATION.md) remains necessary for MSI installations. Preserve verified recovery installers and back up settings first. Remove the actual MSI by exact ProductCode without the misleading current-user scope filter, verify complete removal, then install the Inno package in the intended scope. Removal and installation are separate operations, not one rollback transaction. The Inno installer also independently rejects a visible CE/historical MSI.
