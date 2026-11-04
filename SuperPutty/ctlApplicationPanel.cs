@@ -844,16 +844,25 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
         public virtual bool ExternalProcessCaptured { get { return this.m_AppWin != IntPtr.Zero; } }
 
-        public virtual bool IsSessionActive
+        public virtual SessionConnectionState ConnectionState
         {
             get
             {
+                if (IsDisposed || Disposing) return SessionConnectionState.Disconnected;
                 if (UsesManagedChildHost)
-                    return ExternalProcessCaptured;
-                try { return m_Process != null && !m_Process.HasExited; }
-                catch (InvalidOperationException) { return false; }
+                    return ExternalProcessCaptured ? SessionConnectionState.Connected : SessionConnectionState.Unknown;
+                if (startupInProgress) return SessionConnectionState.Connecting;
+                if (m_Process == null) return SessionConnectionState.Disconnected;
+                // PuTTY and other external clients may keep their window/process
+                // after disconnecting. Neither their title nor a TCP socket proves
+                // that the remote session is usable: keep the close warning.
+                try { return m_Process.HasExited ? SessionConnectionState.Disconnected : SessionConnectionState.Unknown; }
+                catch (InvalidOperationException) { return SessionConnectionState.Unknown; }
             }
         }
+
+        /// <summary>Conservative close protection; an unknown connection still needs confirmation.</summary>
+        public virtual bool IsSessionActive { get { return ConnectionState != SessionConnectionState.Disconnected; } }
 
         internal static bool TryReadWindowTitle(IntPtr window, out string title)
         {

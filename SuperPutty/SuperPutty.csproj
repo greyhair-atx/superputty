@@ -204,6 +204,7 @@
     <Compile Include="RdpClientPanel.cs">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="SessionConnectionState.cs" />
     <Compile Include="Data\LayoutData.cs" />
     <Compile Include="Data\PuttyDataHelper.cs" />
     <Compile Include="Data\RDPDataHelper.cs" />

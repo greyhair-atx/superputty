@@ -14,6 +14,34 @@ namespace SuperPuttyUnitTests
     [Apartment(ApartmentState.STA)]
     public class SessionTabActionsTests
     {
+        [TestCase(SessionConnectionState.Connected, false, true)]
+        [TestCase(SessionConnectionState.Connecting, false, true)]
+        [TestCase(SessionConnectionState.Reconnecting, false, true)]
+        [TestCase(SessionConnectionState.Unknown, false, true)]
+        [TestCase(SessionConnectionState.Connected, true, false)]
+        [TestCase(SessionConnectionState.Connecting, true, false)]
+        [TestCase(SessionConnectionState.Reconnecting, true, false)]
+        [TestCase(SessionConnectionState.Unknown, true, false)]
+        [TestCase(SessionConnectionState.Disconnected, false, false)]
+        public void CloseUsesConnectionStateRatherThanWindowPresence(SessionConnectionState state, bool approve, bool cancelled)
+        {
+            using (var panel = new TestPanel(state))
+            {
+                panel.Approve = approve;
+                Assert.AreEqual(cancelled, panel.RequestClose(CloseReason.UserClosing));
+                Assert.AreEqual(state == SessionConnectionState.Disconnected ? 0 : 1, panel.PromptCount);
+            }
+        }
+
+        [Test]
+        public void UncertainCloseWarningDoesNotClaimTheSessionIsConnected()
+        {
+            StringAssert.Contains("may still be connected", ctlPuttyPanel.GetCloseConfirmationMessage(SessionConnectionState.Unknown, "server"));
+            StringAssert.Contains("server", ctlPuttyPanel.GetCloseConfirmationMessage(SessionConnectionState.Unknown, "server"));
+            StringAssert.Contains("connecting session", ctlPuttyPanel.GetCloseConfirmationMessage(SessionConnectionState.Connecting, "server"));
+            StringAssert.Contains("reconnecting session", ctlPuttyPanel.GetCloseConfirmationMessage(SessionConnectionState.Reconnecting, "server"));
+        }
+
         [TestCase(false, true)]
         [TestCase(true, false)]
         public void ActiveTabHonorsCloseConfirmation(bool approve, bool cancelled)
@@ -97,6 +125,16 @@ namespace SuperPuttyUnitTests
                         .SetValue(AppPanel, Process.GetCurrentProcess());
             }
 
+            public TestPanel(SessionConnectionState state) : this(false)
+            {
+                var original = AppPanel;
+                Controls.Remove(original);
+                original.Dispose();
+                var replacement = new StatePanel(state);
+                typeof(ctlPuttyPanel).GetProperty("AppPanel").SetValue(this, replacement, null);
+                Controls.Add(replacement);
+            }
+
             protected override bool ConfirmSessionClose()
             {
                 PromptCount++;
@@ -109,6 +147,14 @@ namespace SuperPuttyUnitTests
                 OnFormClosing(args);
                 return args.Cancel;
             }
+        }
+
+        private sealed class StatePanel : ApplicationPanel
+        {
+            private readonly SessionConnectionState state;
+            internal StatePanel(SessionConnectionState state) : base(ConnectionProtocol.SSH) { this.state = state; }
+            public override bool ExternalProcessCaptured { get { return true; } }
+            public override SessionConnectionState ConnectionState { get { return state; } }
         }
     }
 }

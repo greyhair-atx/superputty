@@ -48,6 +48,7 @@ namespace SuperPutty
         private static int RefocusAttempts = Convert.ToInt32(ConfigurationManager.AppSettings["SuperPuTTY.RefocusAttempts"] ?? "3");
         private static int RefocusIntervalMs = Convert.ToInt32(ConfigurationManager.AppSettings["SuperPuTTY.RefocusIntervalMs"] ?? "40");
         private bool closeWithoutConfirmation;
+        private SessionConnectionState closeConnectionState = SessionConnectionState.Unknown;
 
         private PuttyStartInfo m_puttyStartInfo;
         private PuttyClosedCallback m_ApplicationExit;
@@ -271,17 +272,30 @@ namespace SuperPutty
             base.OnFormClosing(e);
             if (!e.Cancel && !closeWithoutConfirmation && e.CloseReason == CloseReason.UserClosing &&
                 !(SuperPuTTY.MainForm != null && SuperPuTTY.MainForm.IsShuttingDown) &&
-                AppPanel != null && AppPanel.IsSessionActive)
+                AppPanel != null)
             {
-                e.Cancel = !ConfirmSessionClose();
+                closeConnectionState = AppPanel.ConnectionState;
+                if (closeConnectionState != SessionConnectionState.Disconnected)
+                    e.Cancel = !ConfirmSessionClose();
             }
         }
 
         protected virtual bool ConfirmSessionClose()
         {
-            return MessageBox.Show(this, String.Format("Close active session '{0}'?", TextOverride ?? Text),
+            return MessageBox.Show(this, GetCloseConfirmationMessage(closeConnectionState, TextOverride ?? Text),
                 "Confirm Close Session", MessageBoxButtons.OKCancel, MessageBoxIcon.Question,
                 MessageBoxDefaultButton.Button2) == DialogResult.OK;
+        }
+
+        internal static string GetCloseConfirmationMessage(SessionConnectionState state, string sessionName)
+        {
+            switch (state)
+            {
+                case SessionConnectionState.Connected: return String.Format("Close active session '{0}'?", sessionName);
+                case SessionConnectionState.Connecting: return String.Format("Close connecting session '{0}'?", sessionName);
+                case SessionConnectionState.Reconnecting: return String.Format("Close reconnecting session '{0}'?", sessionName);
+                default: return String.Format("This session may still be connected. Close tab '{0}'?", sessionName);
+            }
         }
 
         internal void CloseWithoutConfirmation()

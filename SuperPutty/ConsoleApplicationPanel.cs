@@ -50,6 +50,16 @@ namespace SuperPutty
 
         protected override bool UsesManagedChildHost { get { return true; } }
 
+        public override SessionConnectionState ConnectionState
+        {
+            get
+            {
+                if (closing || closeReported != 0 || IsDisposed || Disposing || !started)
+                    return SessionConnectionState.Disconnected;
+                return ExternalProcessCaptured ? SessionConnectionState.Connected : SessionConnectionState.Unknown;
+            }
+        }
+
         public override IntPtr AppWindowHandle { get { return this.consoleWindow; } }
 
         public override bool ExternalProcessCaptured

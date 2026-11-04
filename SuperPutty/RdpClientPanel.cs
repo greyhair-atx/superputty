@@ -26,6 +26,7 @@ namespace SuperPutty
         private static readonly ILog Log = LogManager.GetLogger(typeof(RdpClientPanel));
 
         private readonly SessionData session;
+        private readonly RdpConnectionStateTracker connectionState = new RdpConnectionStateTracker();
         private AxMsRdpClient10NotSafeForScripting client;
         private bool configured;
         private bool connecting;
@@ -46,6 +47,24 @@ namespace SuperPutty
         }
 
         protected override bool UsesManagedChildHost { get { return true; } }
+
+        public override SessionConnectionState ConnectionState
+        {
+            get
+            {
+                if (this.closing || this.IsDisposed || this.Disposing)
+                    return SessionConnectionState.Disconnected;
+                if (this.client == null || !this.client.IsHandleCreated)
+                    return SessionConnectionState.Unknown;
+                // ActiveX must be queried on its owning UI thread. An unavailable
+                // control is uncertainty, not evidence of a disconnected session.
+                if (this.client.InvokeRequired) return SessionConnectionState.Unknown;
+                try { return this.connectionState.Resolve(this.client.Connected); }
+                catch (COMException) { return SessionConnectionState.Unknown; }
+                catch (InvalidComObjectException) { return SessionConnectionState.Unknown; }
+                catch (AxHost.InvalidActiveXStateException) { return SessionConnectionState.Unknown; }
+            }
+        }
 
         public override IntPtr AppWindowHandle
         {
@@ -184,11 +203,13 @@ namespace SuperPutty
                 }
 
                 this.connecting = true;
+                this.connectionState.Connecting();
                 this.client.Connect();
             }
             catch (InvalidComObjectException ex)
             {
                 this.connecting = false;
+                this.connectionState.Disconnected();
                 Log.Debug("Ignoring a visibility change after the RDP ActiveX control was released.", ex);
 
                 if (!this.closing && !this.IsDisposed && !this.Disposing)
@@ -199,6 +220,7 @@ namespace SuperPutty
             catch (COMException ex)
             {
                 this.connecting = false;
+                this.connectionState.Disconnected();
                 Log.Error("Unable to connect the RDP ActiveX control.", ex);
                 this.NotifyClosed(true);
             }
@@ -246,7 +268,10 @@ namespace SuperPutty
             this.Controls.Add(this.client);
             ((ISupportInitialize)this.client).EndInit();
 
+            this.client.OnConnecting += this.Client_OnConnecting;
             this.client.OnConnected += this.Client_OnConnected;
+            this.client.OnAutoReconnecting2 += this.Client_OnAutoReconnecting;
+            this.client.OnAutoReconnected += this.Client_OnAutoReconnected;
             this.client.OnLoginComplete += this.Client_OnLoginComplete;
             this.client.OnDisconnected += this.Client_OnDisconnected;
             this.client.OnFatalError += this.Client_OnFatalError;
@@ -271,9 +296,34 @@ namespace SuperPutty
             this.configured = true;
         }
 
+        private void Client_OnConnecting(object sender, EventArgs e)
+        {
+            if (this.closing || this.IsDisposed || this.Disposing) return;
+            this.connecting = true;
+            this.connectionState.Connecting();
+        }
+
+        private void Client_OnAutoReconnecting(object sender, IMsTscAxEvents_OnAutoReconnecting2Event e)
+        {
+            if (this.closing || this.IsDisposed || this.Disposing) return;
+            this.connecting = true;
+            this.loginComplete = false;
+            this.connectionState.Reconnecting();
+        }
+
+        private void Client_OnAutoReconnected(object sender, EventArgs e)
+        {
+            if (this.closing || this.IsDisposed || this.Disposing) return;
+            this.connecting = false;
+            this.connectionState.Connected();
+            this.Client_OnLoginComplete(sender, e);
+        }
+
         private void Client_OnConnected(object sender, EventArgs e)
         {
+            if (this.closing || this.IsDisposed || this.Disposing) return;
             this.connecting = false;
+            this.connectionState.Connected();
             Log.InfoFormat("RDP ActiveX connected to {0}:{1}",
                 this.session.Host,
                 this.session.Port == 0 ? 3389 : this.session.Port);
@@ -344,6 +394,7 @@ namespace SuperPutty
         {
             if (this.closing || this.IsDisposed || this.Disposing) return;
             this.loginComplete = true;
+            this.connectionState.Connected();
             this.NotifyWindowCaptured();
             Log.InfoFormat("RDP ActiveX login completed for {0}", this.session.Host);
         }
@@ -352,6 +403,7 @@ namespace SuperPutty
         {
             this.loginComplete = false;
             this.connecting = false;
+            this.connectionState.Disconnected();
             if (this.closing)
             {
                 return;
@@ -382,6 +434,8 @@ namespace SuperPutty
         private void Client_OnFatalError(object sender, IMsTscAxEvents_OnFatalErrorEvent e)
         {
             this.loginComplete = false;
+            this.connecting = false;
+            this.connectionState.Disconnected();
             Log.ErrorFormat("RDP ActiveX fatal error {0}", e.errorCode);
             this.NotifyClosed(true);
         }
@@ -395,6 +449,7 @@ namespace SuperPutty
 
             this.loginComplete = false;
             this.closing = true;
+            this.connectionState.Disconnected();
             try
             {
                 if (this.client != null && this.client.IsHandleCreated && this.client.Connected != 0)
@@ -421,7 +476,10 @@ namespace SuperPutty
 
             try
             {
+                this.client.OnConnecting -= this.Client_OnConnecting;
                 this.client.OnConnected -= this.Client_OnConnected;
+                this.client.OnAutoReconnecting2 -= this.Client_OnAutoReconnecting;
+                this.client.OnAutoReconnected -= this.Client_OnAutoReconnected;
                 this.client.OnLoginComplete -= this.Client_OnLoginComplete;
                 this.client.OnDisconnected -= this.Client_OnDisconnected;
                 this.client.OnFatalError -= this.Client_OnFatalError;

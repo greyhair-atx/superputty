@@ -19,6 +19,12 @@ Under **Tools > Options > Protocols**, check the protocols you want in the conne
 
 Hidden protocols still work for saved sessions. When editing an existing session, its current protocol remains available so it is not changed accidentally.
 
+## Closing session tabs (unreleased improvements)
+
+Closing a connected, connecting or reconnecting tab asks for confirmation. A confirmed disconnected session does not need the session-close warning. If SuperPuTTY cannot determine the connection state, it warns that the session may still be connected; Cancel keeps the tab open.
+
+Embedded RDP uses the client's connection events and connection-state property. A running external PuTTY or RDP process can remain open after disconnection, so those clients retain the uncertainty warning. Window titles and TCP sockets are not treated as proof that a remote session has ended. These checks do not determine whether a remote command or job is running. Confirmed bulk closes and application shutdown retain their existing confirmation behavior.
+
 ## SCP interactive authentication (unreleased)
 
 Edit a saved SCP or SSH session and enable **Interactive SCP authentication (MFA)**. SCP directory listings and transfers then open an embedded PSCP console. Enter the password, verification code, recovery code or other server-requested response directly in that console. PSCP handles hidden input and host-key confirmation. Stored passwords and password-file arguments are not supplied in this mode.
