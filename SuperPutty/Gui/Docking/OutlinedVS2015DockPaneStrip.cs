@@ -593,6 +593,9 @@ namespace SuperPutty.Gui.Docking
 
         public override GraphicsPath GetOutline(int index)
         {
+            if (IsDisposed || Disposing || index < 0 || index >= Tabs.Count)
+                return new GraphicsPath();
+            CalculateTabs();
             if (Appearance == DockPane.AppearanceStyle.Document)
                 return GetOutline_Document(index);
             else
@@ -601,7 +604,7 @@ namespace SuperPutty.Gui.Docking
 
         private GraphicsPath GetOutline_Document(int index)
         {
-            Rectangle rectTab = Tabs[index].Rectangle.Value;
+            Rectangle rectTab = GetTabRectangle(index);
             rectTab.X -= rectTab.Height / 2;
             rectTab.Intersect(TabsRectangle);
             rectTab = RectangleToScreen(DrawHelper.RtlTransform(this, rectTab));
@@ -609,6 +612,8 @@ namespace SuperPutty.Gui.Docking
 
             GraphicsPath path = new GraphicsPath();
             GraphicsPath pathTab = GetTabOutline_Document(Tabs[index], true, true, true);
+            if (pathTab.PointCount == 0)
+                return path;
             path.AddPath(pathTab, true);
 
             if (DockPane.DockPanel.DocumentTabStripLocation == DocumentTabStripLocation.Bottom)
@@ -632,13 +637,15 @@ namespace SuperPutty.Gui.Docking
 
         private GraphicsPath GetOutline_ToolWindow(int index)
         {
-            Rectangle rectTab = Tabs[index].Rectangle.Value;
+            Rectangle rectTab = GetTabRectangle(index);
             rectTab.Intersect(TabsRectangle);
             rectTab = RectangleToScreen(DrawHelper.RtlTransform(this, rectTab));
             Rectangle rectPaneClient = DockPane.RectangleToScreen(DockPane.ClientRectangle);
 
             GraphicsPath path = new GraphicsPath();
             GraphicsPath pathTab = GetTabOutline(Tabs[index], true, true);
+            if (pathTab.PointCount == 0)
+                return path;
             path.AddPath(pathTab, true);
             path.AddLine(rectTab.Left, rectTab.Top, rectPaneClient.Left, rectTab.Top);
             path.AddLine(rectPaneClient.Left, rectTab.Top, rectPaneClient.Left, rectPaneClient.Top);
@@ -971,6 +978,8 @@ namespace SuperPutty.Gui.Docking
 
         private Rectangle GetTabRectangle(int index)
         {
+            if (index < 0 || index >= Tabs.Count)
+                return Rectangle.Empty;
             if (Appearance == DockPane.AppearanceStyle.ToolWindow)
                 return GetTabRectangle_ToolWindow(index);
             else
@@ -1048,7 +1057,10 @@ namespace SuperPutty.Gui.Docking
             using (GraphicsPath path = CreateStyledDocumentTabPath(rect,
                 DockPane.DockPanel.DocumentTabStripLocation == DocumentTabStripLocation.Bottom))
             {
-                GraphicsPath.AddPath(path, false);
+                // GDI+ rejects AddPath on an empty path. Overflow and clipped
+                // tabs legitimately have no visible outline during hit testing.
+                if (path.PointCount > 0)
+                    GraphicsPath.AddPath(path, false);
             }
             return GraphicsPath;
         }
@@ -1331,14 +1343,17 @@ namespace SuperPutty.Gui.Docking
 
         protected override void OnMouseUp(MouseEventArgs e)
         {
-            base.OnMouseUp(e);
+            this.m_suspendDrag = false;
             if (IsMouseDown)
                 IsMouseDown = false;
+            base.OnMouseUp(e);
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
+            if (IsDisposed || Disposing)
+                return;
             // suspend drag if mouse is down on active close button.
             this.m_suspendDrag = ActiveCloseHitTest(e.Location);
             if (!IsMouseDown)
@@ -1347,10 +1362,14 @@ namespace SuperPutty.Gui.Docking
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
+            if (IsDisposed || Disposing)
+                return;
             if (!this.m_suspendDrag)
                 base.OnMouseMove(e);
+            if (IsDisposed || Disposing)
+                return;
 
-            int index = HitTest(PointToClient(MousePosition));
+            int index = HitTest(e.Location);
             string toolTip = string.Empty;
 
             bool tabUpdate = false;
@@ -1368,8 +1387,8 @@ namespace SuperPutty.Gui.Docking
                 else if (tab.MaxWidth > tab.TabWidth)
                     toolTip = tab.Content.DockHandler.TabText;
 
-                var mousePos = PointToClient(MousePosition);
-                var tabRect = tab.Rectangle.Value;
+                var mousePos = e.Location;
+                var tabRect = GetTabRectangle(index);
                 var closeButtonRect = GetCloseButtonRect(tabRect);
                 var mouseRect = new Rectangle(mousePos, new Size(1, 1));
                 buttonUpdate = SetActiveClose(closeButtonRect.IntersectsWith(mouseRect) ? closeButtonRect : Rectangle.Empty);
@@ -1394,19 +1413,22 @@ namespace SuperPutty.Gui.Docking
         protected override void OnMouseClick(MouseEventArgs e)
         {
             base.OnMouseClick(e);
-            if (e.Button != MouseButtons.Left || Appearance != DockPane.AppearanceStyle.Document)
+            if (IsDisposed || Disposing || e.Button != MouseButtons.Left || Appearance != DockPane.AppearanceStyle.Document)
                 return;
 
-            var indexHit = HitTest();
+            var indexHit = HitTest(e.Location);
             if (indexHit > -1)
-                TabCloseButtonHit(indexHit);
+                TabCloseButtonHit(indexHit, e.Location);
         }
 
-        private void TabCloseButtonHit(int index)
+        private void TabCloseButtonHit(int index, Point mousePos)
         {
-            var mousePos = PointToClient(MousePosition);
-            var tabRect = GetTabBounds(Tabs[index]);
-            if (tabRect.Contains(ActiveClose) && ActiveCloseHitTest(mousePos))
+            if (index < 0 || index >= Tabs.Count)
+                return;
+            // Hover state can be stale after resizing, overflow changes or an
+            // interrupted mouse event. The click must use current tab geometry.
+            var tabRect = GetTabRectangle(index);
+            if (tabRect.Contains(mousePos) && GetCloseButtonRect(tabRect).Contains(mousePos))
                 TryCloseTab(index);
         }
 
@@ -1537,13 +1559,16 @@ namespace SuperPutty.Gui.Docking
 
         protected override int HitTest(Point point)
         {
+            if (IsDisposed || Disposing)
+                return -1;
+            CalculateTabs();
             if (!TabsRectangle.Contains(point))
                 return -1;
 
             foreach (Tab tab in Tabs)
             {
                 GraphicsPath path = GetTabOutline(tab, true, false);
-                if (path.IsVisible(point))
+                if (path.PointCount > 0 && path.IsVisible(point))
                     return Tabs.IndexOf(tab);
             }
 
@@ -1563,18 +1588,17 @@ namespace SuperPutty.Gui.Docking
 
         private bool ActiveCloseHitTest(Point ptMouse)
         {
-            bool result = false;
-            if (!ActiveClose.IsEmpty)
-            {
-                var mouseRect = new Rectangle(ptMouse, new Size(1, 1));
-                result = ActiveClose.IntersectsWith(mouseRect);
-            }
-            return result;
+            if (Appearance != DockPane.AppearanceStyle.Document)
+                return false;
+            int index = HitTest(ptMouse);
+            return index >= 0 && GetCloseButtonRect(GetTabRectangle(index)).Contains(ptMouse);
         }
 
         protected override Rectangle GetTabBounds(Tab tab)
         {
             GraphicsPath path = GetTabOutline(tab, true, false);
+            if (path.PointCount == 0)
+                return Rectangle.Empty;
             RectangleF rectangle = path.GetBounds();
             return new Rectangle((int)rectangle.Left, (int)rectangle.Top, (int)rectangle.Width, (int)rectangle.Height);
         }
