@@ -41,6 +41,7 @@ $lines=Get-ChildItem $payload -Recurse -File|Sort-Object FullName|ForEach-Object
 [IO.File]::WriteAllLines($manifest,[string[]]$lines,[Text.UTF8Encoding]::new($false))
 $script=Join-Path (Split-Path $PSScriptRoot -Parent) 'packaging/inno/SuperPuttyCandidate.iss'
 $arguments=@("/DPayloadDirectory=$payload","/DPayloadManifest=$manifest","/DCandidateVersion=$Version","/DTestFault=$TestFault","/DSignedUninstallerDirectory=$SignedUninstallerDirectory","/O$output")
+if($TestFixture){$arguments+='/DPackagingTestFixture=1'}
 & $Compiler @arguments $script
 if($LASTEXITCODE -ne 0 -and -not $SigningTool){throw 'Candidate compilation failed. If this is the unsigned uninstaller seed pass, sign the persistent cache before retrying into a new output directory.'}
 # Compile once to populate/sign the persistent uninstaller cache, then pin the
@@ -73,5 +74,5 @@ if(-not $TestFixture -and (Get-AuthenticodeSignature $setup.FullName).Status -ne
 $sourceCommit=$null
 if(Get-Command git -ErrorAction SilentlyContinue){$sourceCommit=& git -C (Split-Path $PSScriptRoot -Parent) rev-parse HEAD 2>$null}
 $sourceHashes=@(Get-FileHash $script,(Join-Path (Split-Path $script -Parent) 'Recovery.iss')|ForEach-Object {@{name=(Split-Path $_.Path -Leaf);sha256=$_.Hash}})
-[pscustomobject]@{version=$Version;applicationVersion=$appVersion.ToString();testFixture=[bool]$TestFixture;testFault=$TestFault;archiveSha256=$ExpectedArchiveSha256;uninstallerSha256=(Get-FileHash $cached[0].FullName).Hash;setup=$setup.Name;sha256=(Get-FileHash $setup.FullName).Hash;sourceCommit=$sourceCommit;sourceHashes=$sourceHashes}|
+[pscustomobject]@{version=$Version;applicationVersion=$appVersion.ToString();applicationSha256=(Get-FileHash $exe).Hash;testFixture=[bool]$TestFixture;testFault=$TestFault;archiveSha256=$ExpectedArchiveSha256;uninstallerSha256=(Get-FileHash $cached[0].FullName).Hash;setup=$setup.Name;sha256=(Get-FileHash $setup.FullName).Hash;sourceCommit=$sourceCommit;sourceHashes=$sourceHashes}|
  ConvertTo-Json -Depth 5|Set-Content (Join-Path $output 'candidate-build.json')

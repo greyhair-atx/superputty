@@ -1,64 +1,69 @@
 # Installation
 
-[Back to the manual](README.md)
+The latest published stable release is [1.8.3](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.3). **1.8.4 is an unpublished release candidate.** These instructions describe its Inno installer; use the assets and instructions supplied with older releases when installing them.
 
-## Choose a package
+## Package and scope
 
-Download [SuperPuTTY Community Edition 1.8.0](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.0), the latest stable release. The filenames below identify its signed Windows x64 packages. Choose one of the two Windows x64 packages:
+`SuperPuTTY-CE-1.8.4-setup-win-x64.exe` supports both scopes:
 
-- **Current user:** `SuperPuTTY-CE-1.8.0-current-user-win-x64-signed.msi` installs under the current user's Local AppData directory without elevation.
-- **All users:** `SuperPuTTY-CE-1.8.0-all-users-win-x64-signed.msi` installs under 64-bit Program Files and requests administrator approval.
+- **Current user:** `%LOCALAPPDATA%\Programs\SuperPuTTY Community Edition`, without administrator rights.
+- **All users:** `%ProgramFiles%\SuperPuTTY Community Edition`, with administrator approval.
 
-Use only one installed scope on a machine unless you have a specific reason to keep both. The application version is shown under **Help > About SuperPuTTY CE**.
+Use one scope and retain it for upgrades. Requires Windows x64, Windows 10 build 19041 or later, .NET Framework 4.8, and separately installed connection clients. Windows 10 candidate validation remains pending. Help > About SuperPuTTY CE should show **1.8.4.0**.
 
-## Install PuTTY and PSCP
+**Existing MSI installations must be explicitly removed before installing Inno.** Back up settings and retain the verified recovery MSI first. Removal and replacement are not atomic; automatic MSI-to-Inno upgrades are not supported.
 
-Install the 64-bit PuTTY package from the [official PuTTY site](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html). On first launch, open **Tools > Options > General** and verify:
+## Verify before running
 
-- `putty.exe` location
-- `pscp.exe` location, if integrated file transfer is required
-- Settings folder
-
-Other executable locations are optional and are needed only for their associated protocols or shortcuts. These include MinTTY, a VNC viewer, FreeRDP or MSTSC, WinSCP, and FileZilla.
-
-## First launch
-
-On the initial configuration screen:
-
-1. Select `putty.exe`.
-2. Select `pscp.exe` if SCP will be used.
-3. Accept or choose a writable settings folder.
-4. Leave **Default Layout** set to `<Auto Restore>` to restore the window arrangement at startup without reopening the prior connections.
-5. Save the options.
-
-## Verify signatures and checksums
-
-Check the MSI before installing, or the extracted executable before launching:
+Compare the full SHA-256 with the matching filename in `SuperPuTTY-CE-1.8.4-SHA256SUMS.txt`. Obtain both from the same trusted release/review source:
 
 ```powershell
-Get-AuthenticodeSignature .\SuperPuTTY-CE-1.8.0-current-user-win-x64-signed.msi | Format-List
+Get-FileHash .\SuperPuTTY-CE-1.8.4-setup-win-x64.exe -Algorithm SHA256
+Get-AuthenticodeSignature .\SuperPuTTY-CE-1.8.4-setup-win-x64.exe | Format-List
+# For an extracted ZIP:
 Get-AuthenticodeSignature .\SuperPutty.exe | Format-List
-Get-FileHash .\SuperPuTTY-CE-1.8.0-current-user-win-x64-signed.msi -Algorithm SHA256
 ```
 
-Expect `Valid`, signer **Christopher Thornton**, and a timestamp certificate. Compare the complete SHA-256 value with the matching filename in `SuperPuTTY-CE-1.8.0-SHA256SUMS.txt`. For earlier releases use their own checksum files. The final 1.8.0 EXE and five DLLs completed VirusTotal scans with zero malicious or suspicious detections; the MSIs were not submitted. See the release assets for per-file results and engine limitations.
+Expect `Valid`, signer **Christopher Thornton**, and a timestamp certificate. Archives containing `portable-dev` in their name are unsigned CI artifacts.
+
+## Back up and migrate from MSI
+
+Close SuperPuTTY and its connection clients. Back up `%USERPROFILE%\SuperPuTTY.settings` (or the active preferences beside the EXE) and the entire settings folder shown in Tools > Options. Keep backups private. Retain the verified MSI matching the installed version and scope before removal.
+
+Find the actual installed **ProductCode** in its uninstall registration or matching build manifest. Inno's detection message reports the detected code. Never use the shared UpgradeCode. Remove that exact product, without a scope filter:
+
+```powershell
+winget uninstall --product-code "{ACTUAL-INSTALLED-PRODUCT-CODE}" --exact
+# Alternatively, wait for Windows Installer and inspect its exit code:
+$p = Start-Process msiexec.exe -ArgumentList '/x {ACTUAL-INSTALLED-PRODUCT-CODE} /qn /norestart' -Wait -PassThru
+$p.ExitCode
+```
+
+Elevate for machine-scope removal. MSI exit 0 means success; 3010 requires a restart before continuing. Confirm removal, then install Inno in the original scope. If replacement fails, preserve logs and backups and restore the verified previous MSI if necessary. Do not delete registration or files manually to bypass detection. **Uninstall followed by installation is not a transaction.**
+
+## Install and first launch
+
+Run the installer and select the scope. Install PuTTY/PSCP from the [official PuTTY site](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html). In Tools > Options > General, select `putty.exe`, optionally `pscp.exe`, and a writable settings folder. Other clients are required only for their associated protocols. Default Layout `<Auto Restore>` restores window arrangement without reopening prior connections.
+
+For unattended setup, wait and check the exit code. Use an elevated shell and `/ALLUSERS` for machine scope:
+
+```powershell
+$p = Start-Process .\SuperPuTTY-CE-1.8.4-setup-win-x64.exe -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CURRENTUSER /LOG="setup.log"' -Wait -PassThru
+if ($p.ExitCode -ne 0) { throw "Setup failed: $($p.ExitCode). Review setup.log." }
+```
+
+## Subsequent Inno upgrades and recovery
+
+Install a strictly newer Inno version in the same scope with the application and clients closed. The installer stages a separate version directory and retains the previous payload. Same-version reinstall and downgrade are rejected.
+
+After failure or interruption, close setup and rerun **the same installer in the same scope**. Pending recovery restores the previous registered state before proceeding. Preserve the setup log and recovery files. If recovery reports missing, changed or locked backup data, stop and retain logs for support. Do not delete `.upgrade-recovery`, edit registration, switch scopes or force uninstall to bypass recovery. This recovery does not undo a separately removed MSI.
+
+Uninstall through Windows Settings > Apps or the registered Inno uninstaller. Do not use `msiexec` for Inno. Keep settings backups until launch, sessions and layouts have been checked.
 
 ## No-install ZIP
 
-Extract `SuperPuTTY-CE-1.8.0-portable-win-x64.zip` in full and run `SuperPutty.exe`. Requires Windows x64 and .NET Framework 4.8, plus separately installed clients. Verify the ZIP checksum and then the EXE signature. No installer registration or automatic uninstall is provided.
+Extract `SuperPuTTY-CE-1.8.4-portable-win-x64.zip` completely into a new writable directory, verify the EXE signature, and run `SuperPutty.exe`. Never extract over a running application. The ZIP has no uninstall registration and does not remove an MSI.
 
-This is not a fully isolated portable profile. An existing `%USERPROFILE%\SuperPuTTY.settings` is discovered first; an existing preferences file beside the EXE is used only if there is no profile file. Sessions and layouts use the configured settings folder. Back up that folder before switching copies.
+This is not an isolated portable profile: `%USERPROFILE%\SuperPuTTY.settings` takes precedence; preferences beside the EXE are used only if there is no profile file. Sessions and layouts use the configured settings folder. Back up before switching copies.
 
-## Unattended installation
-
-```powershell
-msiexec.exe /i .\SuperPuTTY-CE-1.8.0-current-user-win-x64-signed.msi /qn /norestart
-# Run an elevated shell for the all-users package:
-msiexec.exe /i .\SuperPuTTY-CE-1.8.0-all-users-win-x64-signed.msi /qn /norestart
-```
-
-Wait for Windows Installer to complete when scripting and inspect its exit code (0 success; 3010 success requiring restart). Uninstall through Windows Settings, or use `msiexec /x {ProductCode} /qn /norestart` with the exact ProductCode from the installed product or matching build manifest. Never use the shared historical UpgradeCode as an uninstall identifier. Read the [upgrade guide](upgrading.md) before replacing an existing installation.
-
-The application license is [License.txt](../../License.txt), and installed runtime components are described in [THIRD-PARTY-NOTICES.txt](../../THIRD-PARTY-NOTICES.txt).
-
-Read [branding and compatibility](../branding.md) before upgrading: CE preserves settings, upgrades known community 1.6.0–1.7.5 packages in the same scope, and requires manual removal of ambiguous 1.5 packages. Upstream coexistence is unsupported.
+Further details: [upgrade compatibility](https://github.com/greyhair-atx/superputty/blob/master/docs/manual/upgrading.md), [license](https://github.com/greyhair-atx/superputty/blob/master/License.txt), [third-party notices](https://github.com/greyhair-atx/superputty/blob/master/THIRD-PARTY-NOTICES.txt), and [security](https://github.com/greyhair-atx/superputty/blob/master/docs/manual/security.md).

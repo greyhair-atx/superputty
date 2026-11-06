@@ -1,25 +1,31 @@
 # Upgrading SuperPuTTY Community Edition
 
-[Back to the manual](README.md) · [Installation](installation.md)
+[Back to the manual](README.md) · [Installation and recovery](installation.md)
 
-Close the application and back up `%USERPROFILE%\SuperPuTTY.settings` (or the existing file beside `SuperPutty.exe` if that is the one in use), plus the complete settings folder shown in **Tools > Options**. That folder contains your sessions and layouts. Treat these backups as private. Atomic saves retain the preceding preferences in `SuperPuTTY.settings.bak`; restoration is manual, not automatic.
+## 1.8.4 candidate: explicit MSI migration
 
-## Choose the same installation scope
+1.8.4 is an unpublished Inno candidate. The published 1.8.3 uses MSI. Automatic MSI-to-Inno replacement is not supported. Back up active preferences and the entire configured settings folder, close applications/clients, and retain a verified recovery MSI before removal.
 
-CE 1.7.6 and later use stable, distinct current-user and all-users MSI upgrade identities. Install the newer package in the same scope to upgrade. The 1.8.0 launch preparation does not change these identities. Avoid installing multiple rebuilt packages of the same version; their generated ProductCodes can differ and MSI major-upgrade logic does not treat them as a normal version increase.
+Use the actual installed ProductCode with `winget uninstall --product-code "{PRODUCT-CODE}" --exact` or `msiexec /x {PRODUCT-CODE}`. Do not pass a scope filter to WinGet removal: catalog matching can omit current-user MSI registration. Elevate for machine scope, wait, inspect the exit code and confirm removal. Then install the signed Inno EXE in the original scope. See the installation guide for commands.
 
-The current-user installation remains under `%LOCALAPPDATA%\Apps\SuperPuTTY`; the all-users installation remains under native Program Files in `SuperPuTTY`. Scope changes require a deliberate uninstall/install operation after backups. Although the scopes have separate registrations, their applications can share user settings and shortcuts. We do not recommend running both against the same profile.
+Removal and installation are separate, non-atomic operations. If replacement cannot complete, preserve logs and backups and restore the matching verified MSI. Never claim an Inno installer is MSI in a WinGet manifest. The withdrawn package submission stays closed while release validation is completed.
 
-## Historical packages and upstream
+## Inno-to-Inno upgrades
 
-The old UpgradeCode was shared with upstream. The installer only bridges known community versions **1.6.0 through 1.7.5 inclusive** in its applicable install scope. This range must stay fixed as new CE versions are released.
+Use the same signed EXE for either scope, selecting `/CURRENTUSER` or `/ALLUSERS`. Current-user roots are `%LOCALAPPDATA%\Programs\SuperPuTTY Community Edition`; machine roots are `%ProgramFiles%\SuperPuTTY Community Edition`, differing from historical MSI paths.
 
-MSI ignores the fourth version field, so upstream 1.5.0.0 cannot reliably be distinguished from historical community 1.5.0.1. The installer detects and blocks these ambiguous packages instead of automatically removing them. Back up settings and uninstall the old package manually first. Unrecognized newer packages using the historical UpgradeCode also block installation.
+Install a strictly newer version in the same scope. Immutable `versions/<version>` directories retain the previous payload while registration and shortcuts activate. Same-version reinstall, downgrade, running/locked files, conflicting MSI registration and unsafe recovery data are rejected. Scope changes require deliberate uninstall/install after backups. Avoid concurrent installations sharing a profile.
 
-**Coexistence with upstream is unsupported.** Different package identities do not isolate existing settings, folders and shortcuts. Detection by MSI also does not guarantee detection of another user's installation, another scope, or a manually extracted copy. Check those yourself before installing. Detailed codes and constraints are recorded in [branding and compatibility](../branding.md).
+After interruption, close setup and retry the **same installer and scope**. Preserve logs and `.upgrade-recovery`; do not edit/delete recovery data or registration. Missing, corrupt or locked backups require investigation. Recovery protects Inno activation, not earlier independent MSI removal. Repeat normal upgrade, deliberate failure and interruption tests on the release candidate.
 
-## Compatibility preserved
+## Settings and compatibility
 
-The executable remains `SuperPutty.exe`, the namespace remains `SuperPutty`, and `AssemblyProduct` remains `SuperPuTTY` so preference discovery still finds `SuperPuTTY.settings`. Registry roots, configured settings directories, session/layout formats, and command-line behavior are unchanged. Existing layout fixtures and preference-discovery tests remain part of release validation.
+The executable remains `SuperPutty.exe`, namespace `SuperPutty`, and AssemblyProduct `SuperPuTTY`, preserving preference discovery. `%USERPROFILE%\SuperPuTTY.settings` takes precedence over preferences beside the executable. Sessions and layouts use the configured settings folder. Atomic preference saves retain `.bak`; restoration is manual. Keep private backups until launch, sessions and layouts are checked.
 
-For the no-install ZIP, extract the entire new archive into a clean directory, verify it, and point to your existing settings deliberately. Never extract over a running application. The ZIP does not isolate settings from another installation.
+The ZIP does not migrate registrations or isolate settings. Extract into a fresh directory and deliberately select existing settings. Coexistence with upstream remains unsupported because settings and shortcuts can overlap.
+
+## Historical MSI behavior
+
+CE 1.7.6–1.8.3 used distinct current-user and machine MSI identities. Current-user installs used `%LOCALAPPDATA%\Apps\SuperPuTTY`; machine installs used native Program Files in `SuperPuTTY`. Current-user automatic upgrades exhibited catalog matching and failed-upgrade recovery problems; use explicit removal instead of treating these identities as a safety guarantee.
+
+The historical UpgradeCode was shared with upstream. Legacy MSI bridging covered known community versions **1.6.0 through 1.7.5 inclusive**. MSI ignores the fourth version field, so upstream 1.5.0.0 and community 1.5.0.1 cannot safely be distinguished: remove ambiguous products manually after backups. Do not expand that bridge or use UpgradeCode as an uninstall identifier. See [branding and compatibility](../branding.md) for historical identities.

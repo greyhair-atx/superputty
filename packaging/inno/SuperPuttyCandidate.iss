@@ -1,4 +1,4 @@
-; Production authoring candidate. No public release is created by this script.
+; Production authoring. PackagingTestFixture is reserved for disposable tests.
 #ifndef PayloadDirectory
   #error PayloadDirectory is required
 #endif
@@ -6,7 +6,7 @@
   #error PayloadManifest is required
 #endif
 #ifndef CandidateVersion
-  #define CandidateVersion "1.8.4.100"
+  #error CandidateVersion is required
 #endif
 #ifndef TestFault
   #define TestFault "none"
@@ -16,6 +16,11 @@
 #endif
 #ifndef SignedUninstallerDirectory
   #error SignedUninstallerDirectory is required
+#endif
+#ifndef PackagingTestFixture
+  #if TestFault != "none"
+    #error Fault hooks must not be compiled into a production installer
+  #endif
 #endif
 #define CandidateAppId "EBCA29DD-46C1-4A93-9340-79DF5375711D"
 
@@ -32,8 +37,17 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.19041
 DisableProgramGroupPage=yes
 DisableDirPage=yes
+DisableWelcomePage=no
+WizardStyle=modern
+AppPublisherURL=https://github.com/greyhair-atx/superputty
+AppSupportURL=https://github.com/greyhair-atx/superputty/issues
+AppUpdatesURL=https://github.com/greyhair-atx/superputty/releases
 SetupMutex=Global\GreyhairATX.SuperPuTTYCE.Installer
+#ifdef PackagingTestFixture
 OutputBaseFilename=SuperPuTTY-CE-Candidate-{#CandidateVersion}-{#TestFault}
+#else
+OutputBaseFilename=SuperPuTTY-CE-{#CandidateVersion}-setup-win-x64
+#endif
 SignedUninstaller=yes
 SignedUninstallerDir={#SignedUninstallerDirectory}
 #ifdef SigningConfigured
@@ -46,7 +60,8 @@ LicenseFile=..\..\License.txt
 CloseApplications=no
 RestartApplications=no
 SetupLogging=yes
-VersionInfoDescription=SuperPuTTY Community Edition installer candidate
+VersionInfoDescription=SuperPuTTY Community Edition Setup
+UninstallDisplayName=SuperPuTTY Community Edition
 
 [Files]
 Source: "{#PayloadManifest}"; DestName: "payload.manifest"; Flags: dontcopy
@@ -116,17 +131,36 @@ function MsiEnumRelatedProducts(UpgradeCode: String; Reserved, Index: LongWord; 
   external 'MsiEnumRelatedProductsW@msi.dll stdcall';
 
 function InitializeSetup: Boolean;
-var Codes: TArrayOfString; Product: String; I: Integer; Status: LongWord;
+var Codes: TArrayOfString; Product, Message: String; I: Integer; Status, FrameworkRelease: LongWord;
 begin
   Result := False;
   if not OwnInstallerOperation then Exit;
+  FrameworkRelease := 0;
+  if not RegQueryDWordValue(HKLM64,'SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full','Release',FrameworkRelease) or
+    (FrameworkRelease < 528040) then begin
+    Message := 'SuperPuTTY requires .NET Framework 4.8 or later. Install it from https://dotnet.microsoft.com/download/dotnet-framework/net48 and run Setup again.';
+    Log(Message);
+    if not WizardSilent then MsgBox(Message,mbError,MB_OK);
+    Exit;
+  end;
   Codes := ['{3E4059D9-E5A5-48DE-B787-FC88268C1B95}',
     '{98CB966B-60D4-46C3-AADA-1990464696B8}','{42567F59-2F27-4E5B-A900-9141DC2DD929}'];
   for I := 0 to GetArrayLength(Codes)-1 do begin
     SetLength(Product,39); Status := MsiEnumRelatedProducts(Codes[I],0,0,Product);
     if Status <> 259 then begin
       Log('SPCE_MIGRATION_REQUIRED: existing MSI or unresolved MSI context');
-      if not WizardSilent then MsgBox('Back up your settings and complete the reviewed MSI migration before installing this version.',mbError,MB_OK);
+      if Status = 0 then begin
+        Product := Copy(Product,1,38);
+        Message := 'An existing MSI installation must be removed first ('+Product+').' + #13#10#13#10 +
+          'Close SuperPuTTY. Back up SuperPuTTY.settings and the configured sessions/layouts folder. Keep the matching signed MSI for recovery.' + #13#10#13#10 +
+          'Uninstall it in Windows Settings, or run:' + #13#10 +
+          'winget uninstall --product-code "'+Product+'" --exact' + #13#10#13#10 +
+          'Then run this Setup again in the same installation scope. Removing the MSI and installing this version are separate operations.';
+      end else
+        Message := 'Windows Installer inventory could not be read (error '+IntToStr(Status)+'). No MSI was removed. Resolve the inventory error before retrying Setup.';
+      Message := Message + #13#10#13#10 + 'Migration guide: https://github.com/greyhair-atx/superputty/blob/master/docs/manual/upgrading.md';
+      Log(Message);
+      if not WizardSilent then MsgBox(Message,mbError,MB_OK);
       Exit;
     end;
   end;

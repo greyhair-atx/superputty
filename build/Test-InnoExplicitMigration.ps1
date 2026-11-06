@@ -13,7 +13,15 @@ $result=(Resolve-Path $ResultDirectory).Path
 function Assert([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message}}
 function Signed([string]$Path){$sig=Get-AuthenticodeSignature $Path;Assert ($sig.Status -eq 'Valid' -and $sig.SignerCertificate.GetNameInfo('SimpleName',$false) -eq 'Christopher Thornton' -and $null -ne $sig.TimeStamperCertificate) "Invalid project signature/timestamp: $Path"}
 function Run([string]$File,[string[]]$Arguments){$p=Start-Process $File -ArgumentList $Arguments -WindowStyle Hidden -Wait -PassThru;return $p.ExitCode}
-$metadata=Get-Content "$CandidateDirectory/candidate-build.json" -Raw|ConvertFrom-Json
+if(Test-Path "$CandidateDirectory/candidate-build.json"){
+ $metadata=Get-Content "$CandidateDirectory/candidate-build.json" -Raw|ConvertFrom-Json
+}else{
+ $release=@(Get-ChildItem $CandidateDirectory -Filter '*-build-manifest.json' -File)
+ Assert ($release.Count -eq 1) 'Expected one release manifest.'
+ $bundle=Get-Content $release[0].FullName -Raw|ConvertFrom-Json
+ & "$PSScriptRoot/Verify-InnoReleaseBundle.ps1" -ReleaseDirectory $CandidateDirectory -Version $bundle.version -RequireInstaller
+ $metadata=$bundle.installerBuild
+}
 Assert (-not $metadata.testFixture -and $metadata.testFault -eq 'none') 'Normal-mode candidate required.'
 $setup=Join-Path $CandidateDirectory $metadata.setup
 Assert ((Get-FileHash $setup).Hash -eq $metadata.sha256) 'Candidate setup hash changed.'
@@ -57,7 +65,9 @@ try{
  Assert ((InstallCandidate 'install-inno') -eq 0) 'Separate Inno installation failed; retain verified recovery MSI and settings backups.'
  Assert ((Get-ItemProperty $key).DisplayVersion -eq $metadata.version -and -not (Test-Path $otherKey) -and -not (Test-Path "$app/.upgrade-recovery")) 'Wrong Inno version/scope or unresolved journal.'
  $exe="$app/versions/$($metadata.version)/SuperPutty.exe"
- Assert ((Get-FileHash $exe).Hash -eq $oldHash) 'Application payload changed during packaging migration.'
+ $expectedAppHash=if($metadata.applicationSha256){$metadata.applicationSha256}else{$oldHash}
+ Assert ((Get-FileHash $exe).Hash -eq $expectedAppHash) 'Application payload differs from the verified candidate.'
+ Assert ([version][Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion -eq [version]$metadata.applicationVersion) 'Installed application version differs from the candidate.'
  Signed $exe;Signed "$app/unins000.exe"
  Assert ((Get-FileHash "$app/unins000.exe").Hash -eq $metadata.uninstallerSha256) 'Installed uninstaller digest mismatch.'
  $programs=if($Scope -eq 'user'){[Environment]::GetFolderPath('Programs')}else{Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs'}
@@ -82,3 +92,4 @@ try{
  $preserved=$true;foreach($entry in $baseline){if(-not (Test-Path $entry.path) -or (Get-FileHash $entry.path).Hash -ne $entry.hash){$preserved=$false}}
  [pscustomobject]@{success=($success -and $cleaned -and $preserved);scope=$Scope;identity=$identity.Name;msiProductCode=$code;candidateVersion=$metadata.version;checks=@($checks.ToArray());settingsFilesChecked=$baseline.Count;settingsPreserved=$preserved;cleanupSucceeded=$cleaned;completedUtc=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json -Depth 6|Set-Content "$result/summary.json"
 }
+if(-not $cleaned -or -not $preserved){throw 'Migration cleanup or settings preservation failed; review summary.json.'}

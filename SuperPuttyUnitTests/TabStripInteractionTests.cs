@@ -13,11 +13,13 @@ namespace SuperPuttyUnitTests
     [TestFixture, NonParallelizable, Apartment(ApartmentState.STA)]
     public class TabStripInteractionTests
     {
-        [TestCase(false)]
-        [TestCase(true)]
-        public void OverflowHitTestingAndOutlinesDoNotThrow(bool modern)
+        [TestCase(false, 20)]
+        [TestCase(true, 20)]
+        [TestCase(false, 30)]
+        [TestCase(true, 30)]
+        public void OverflowHitTestingAndOutlinesDoNotThrow(bool modern, int count)
         {
-            using (var fixture = new TabFixture(modern))
+            using (var fixture = new TabFixture(modern, count))
             {
                 var strip = fixture.Strip;
                 strip.PaintNow();
@@ -39,11 +41,13 @@ namespace SuperPuttyUnitTests
             }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void CloseButtonsWorkWithoutAPriorHoverAfterOverflowAndResize(bool modern)
+        [TestCase(false, 20)]
+        [TestCase(true, 20)]
+        [TestCase(false, 30)]
+        [TestCase(true, 30)]
+        public void CloseButtonsWorkWithoutAPriorHoverAfterOverflowAndResize(bool modern, int count)
         {
-            using (var fixture = new TabFixture(modern))
+            using (var fixture = new TabFixture(modern, count))
             {
                 for (int remaining = fixture.Documents.Count; remaining > 0; remaining--)
                 {
@@ -69,7 +73,7 @@ namespace SuperPuttyUnitTests
             internal readonly List<DockContent> Documents = new List<DockContent>();
             internal TestStrip Strip { get { return (TestStrip)Documents[0].DockHandler.Pane.TabStripControl; } }
 
-            internal TabFixture(bool modern)
+            internal TabFixture(bool modern, int count)
             {
                 theme = modern ? (ThemeBase)new DarkModernTheme() : new OutlinedVS2015LightTheme();
                 theme.Extender.DockPaneStripFactory = new TestFactory();
@@ -78,7 +82,7 @@ namespace SuperPuttyUnitTests
                 panel = new DockPanel { Dock = DockStyle.Fill, DocumentStyle = DocumentStyle.DockingWindow, Theme = theme };
                 host.Controls.Add(panel);
                 host.Show();
-                for (int i = 0; i < 20; i++)
+                for (int i = 0; i < count; i++)
                 {
                     var document = new DockContent { Text = "Long session name for overflow " + i };
                     Documents.Add(document);

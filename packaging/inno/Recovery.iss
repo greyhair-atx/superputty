@@ -337,7 +337,17 @@ begin
     Shortcut := ExpandConstant('{autoprograms}\SuperPuTTY Community Edition.lnk');
     RecoveryRoot := AppRoot+'\.upgrade-recovery';
     BeginTransaction;
-  except Result := GetExceptionMessage; end;
+  except
+    Result := GetExceptionMessage;
+    if (RecoveryRoot <> '') and DirExists(RecoveryRoot) then
+      Result := Result + #13#10#13#10 + 'Recovery is pending. Close SuperPuTTY and run this same Setup again in the same current-user or all-users mode before uninstalling. Keep your settings backup and installer logs.';
+  end;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpFinished) and (SetupFailure <> 0) then
+    WizardForm.FinishedLabel.Caption := 'Installation did not complete. Close Setup to attempt recovery of the previous installation. Resolve the reported problem, then run this same Setup again in the same installation scope. Keep your settings backup and logs.';
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -373,6 +383,6 @@ begin
   Result := not DirExists(RecoveryRoot);
   if not Result then begin
     Log('Finish installation recovery before uninstalling.');
-    if not UninstallSilent then MsgBox('Run the reviewed installer again to finish recovery before uninstalling.',mbError,MB_OK);
+    if not UninstallSilent then MsgBox('An interrupted installation must be recovered before uninstalling. Close SuperPuTTY and run the same Setup again, choosing the same current-user or all-users mode. Keep your settings backup and installer logs. Do not delete the recovery folder manually.',mbError,MB_OK);
   end;
 end;
