@@ -44,7 +44,9 @@ namespace SuperPutty
         public event SelectionChangedHandler SelectionChanged;
         private static readonly ILog Log = LogManager.GetLogger(typeof(SessionTreeview));
 
-        private static int MaxSessionsToOpen = Convert.ToInt32(ConfigurationManager.AppSettings["SuperPuTTY.MaxSessionsToOpen"] ?? "10");
+        // Legacy configuration name: this prompts before a large Connect All
+        // operation; it never caps the number of sessions or open tabs.
+        private static readonly int ConnectAllConfirmationThreshold = Convert.ToInt32(ConfigurationManager.AppSettings["SuperPuTTY.MaxSessionsToOpen"] ?? "10");
 
         public const string SessionIdDelim = "/";
         public const string ImageKeySession = "computer";
@@ -613,14 +615,14 @@ namespace SuperPutty
                 GetAllSessions(node, sessions);
                 Log.InfoFormat("Found {0} sessions", sessions.Count);
 
-                if (sessions.Count > MaxSessionsToOpen)
+                if (sessions.Count > ConnectAllConfirmationThreshold)
                 {
                     if (DialogResult.Cancel == MessageBox.Show(
                         "Open All " + sessions.Count + " sessions?", 
                         "WARNING", 
                         MessageBoxButtons.OKCancel, MessageBoxIcon.Warning))
                     {
-                        // bug out...too many sessions to open
+                        // The user canceled the batch; confirming opens every session.
                         return;
                     }
                 }

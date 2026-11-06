@@ -533,6 +533,7 @@ namespace SuperPutty.Gui.Docking
         {
             if (disposing)
             {
+                ClearWindowList();
                 Components.Dispose();
                 if (m_boldFont != null)
                 {
@@ -1444,16 +1445,40 @@ namespace SuperPutty.Gui.Docking
             return new Rectangle(rectTab.X + rectTab.Width - imageSize - gap - 1, rectTab.Y + gap, imageSize, imageSize);
         }
 
-        private void WindowList_Click(object sender, EventArgs e)
+        private void ClearWindowList()
         {
-            SelectMenu.Items.Clear();
+            if (m_selectMenu == null)
+                return;
+            // Items.Clear only detaches items. Each icon bitmap was created
+            // for this menu and must be released along with its menu item.
+            while (m_selectMenu.Items.Count > 0)
+            {
+                int last = m_selectMenu.Items.Count - 1;
+                ToolStripItem item = m_selectMenu.Items[last];
+                m_selectMenu.Items.RemoveAt(last);
+                Image image = item.Image;
+                item.Image = null;
+                item.Dispose();
+                if (image != null) image.Dispose();
+            }
+        }
+
+        internal void PopulateWindowList()
+        {
+            ClearWindowList();
             foreach (TabVS2013 tab in Tabs)
             {
                 IDockContent content = tab.Content;
-                ToolStripItem item = SelectMenu.Items.Add(content.DockHandler.TabText, content.DockHandler.Icon.ToBitmap());
+                Icon icon = content.DockHandler.Icon;
+                ToolStripItem item = SelectMenu.Items.Add(content.DockHandler.TabText, icon == null ? null : icon.ToBitmap());
                 item.Tag = tab.Content;
                 item.Click += new EventHandler(ContextMenuItem_Click);
             }
+        }
+
+        private void WindowList_Click(object sender, EventArgs e)
+        {
+            PopulateWindowList();
 
             var workingArea = Screen.GetWorkingArea(ButtonWindowList.PointToScreen(new Point(ButtonWindowList.Width / 2, ButtonWindowList.Height / 2)));
             var menu = new Rectangle(ButtonWindowList.PointToScreen(new Point(0, ButtonWindowList.Location.Y + ButtonWindowList.Height)), SelectMenu.Size);

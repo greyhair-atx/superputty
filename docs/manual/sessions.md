@@ -4,6 +4,8 @@
 
 Saved sessions appear in the Sessions panel and are stored in `Sessions.XML`. Double-click a session to open it. Right-click a session or folder for editing and organization commands.
 
+SuperPuTTY imposes no fixed limit on the number of open tabs. Available memory, Windows resources and the connection clients determine practical capacity. Overflow hides tab headers that do not fit; use the tab list to select them. **Connect All** asks for confirmation above 10 sessions by default, then opens every session if confirmed. The legacy `SuperPuTTY.MaxSessionsToOpen` configuration key controls that confirmation threshold, not the number of tabs allowed.
+
 ## Creating and updating sessions
 
 Create a session from the Sessions panel, or open a quick connection and choose **File > Save Current Session**. When a saved session is active, that command updates it after confirmation through the session editor.
