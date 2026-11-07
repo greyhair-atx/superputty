@@ -72,6 +72,8 @@ namespace SuperPutty.Utils
                 args.Append(" /cert-ignore");
 
             string endpoint = session.Host ?? String.Empty;
+            if (endpoint.Contains(":") && !endpoint.StartsWith("[", StringComparison.Ordinal))
+                endpoint = "[" + endpoint + "]";
             if (session.Port != 0)
                 endpoint += ":" + session.Port;
             args.Append(" ").Append(CommandLineOptions.QuoteArgument("/v:" + endpoint));
@@ -102,6 +104,8 @@ namespace SuperPutty.Utils
             StringBuilder args = new StringBuilder();
             args.Append('"').Append(GetSmartSizingConnectionFile()).Append('"');
             string endpoint = session.Host ?? String.Empty;
+            if (endpoint.Contains(":") && !endpoint.StartsWith("[", StringComparison.Ordinal))
+                endpoint = "[" + endpoint + "]";
             if (session.Port != 0)
                 endpoint += ":" + session.Port;
             args.Append(" ").Append(CommandLineOptions.QuoteArgument("/v:" + endpoint));

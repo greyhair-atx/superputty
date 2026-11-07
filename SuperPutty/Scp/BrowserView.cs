@@ -247,6 +247,7 @@ namespace SuperPutty.Scp
 
         private void listViewFiles_DragEnter(object sender, DragEventArgs e)
         {
+            ResetDragDrop();
             // Check for copy allowed, payload = DataFormats.FileDrop or BrowserFileInfo
             bool copyAllowed = (e.AllowedEffect & DragDropEffects.Copy) == DragDropEffects.Copy;
             bool isFile = e.Data.GetDataPresent(DataFormats.FileDrop, false);
@@ -256,30 +257,41 @@ namespace SuperPutty.Scp
             // update effect
             e.Effect = dragDropIsValid ? DragDropEffects.Copy : DragDropEffects.None;
 
-            // parse out payload
-            if (this.dragDropIsValid)
+            try
             {
-                this.dragDropFileTransfer = new FileTransferRequest { Session = this.Presenter.Session };
-
-                // Get source files (payload)
-                if (e.Data.GetDataPresent(DataFormats.FileDrop))
+                // parse out payload
+                if (this.dragDropIsValid)
                 {
-                    // windows files
-                    Array files = (Array)e.Data.GetData(DataFormats.FileDrop, false);
-                    foreach (string fileName in files)
+                    this.dragDropFileTransfer = new FileTransferRequest { Session = this.Presenter.Session };
+
+                    // Get source files (payload)
+                    if (e.Data.GetDataPresent(DataFormats.FileDrop))
                     {
-                        BrowserFileInfo item = Directory.Exists(fileName)
-                            ? new BrowserFileInfo(new DirectoryInfo(fileName))
-                            : new BrowserFileInfo(new FileInfo(fileName));
-                        this.dragDropFileTransfer.SourceFiles.Add(item);
+                        // windows files
+                        Array files = (Array)e.Data.GetData(DataFormats.FileDrop, false);
+                        foreach (string fileName in files)
+                        {
+                            BrowserFileInfo item = Directory.Exists(fileName)
+                                ? new BrowserFileInfo(new DirectoryInfo(fileName))
+                                : new BrowserFileInfo(new FileInfo(fileName));
+                            this.dragDropFileTransfer.SourceFiles.Add(item);
+                        }
+                    }
+                    else if (e.Data.GetDataPresent(typeof(BrowserFileInfo[])))
+                    {
+                        // from another browser
+                        BrowserFileInfo[] files = (BrowserFileInfo[])e.Data.GetData(typeof(BrowserFileInfo[]));
+                        this.dragDropFileTransfer.SourceFiles.AddRange(files);
                     }
                 }
-                else if (e.Data.GetDataPresent(typeof(BrowserFileInfo[])))
-                {
-                    // from another browser
-                    BrowserFileInfo[] files = (BrowserFileInfo[])e.Data.GetData(typeof(BrowserFileInfo[]));
-                    this.dragDropFileTransfer.SourceFiles.AddRange(files);
-                }
+
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException ||
+                ex is System.Security.SecurityException || ex is ArgumentException || ex is NotSupportedException)
+            {
+                Log.Warn("Unable to read dropped files", ex);
+                ResetDragDrop();
+                e.Effect = DragDropEffects.None;
             }
 
             Log.DebugFormat(
@@ -339,6 +351,15 @@ namespace SuperPutty.Scp
         private void listViewFiles_DragDrop(object sender, DragEventArgs e)
         {
             Log.InfoFormat("DragDrop: valid={0}, effect={1}", this.dragDropIsValid, e.Effect);
+
+            if (!dragDropIsValid || dragDropFileTransfer == null || dragDropFileTransfer.SourceFiles.Count == 0 ||
+                dragDropFileTransfer.TargetFile == null ||
+                !dragDropFileTransfer.SourceFiles.TrueForAll(source => Presenter.CanTransferFile(source, dragDropFileTransfer.TargetFile)))
+            {
+                e.Effect = DragDropEffects.None;
+                ResetDragDrop();
+                return;
+            }
 
             // Ask for confirmation
             if (this.ConfirmTransfer)

@@ -124,6 +124,7 @@ namespace SuperPutty.Utils
             }
             catch(Exception ex){
                 Log.Error("Error saving settings", ex);
+                throw new ConfigurationErrorsException("Unable to save settings. Check that the settings folder is writable.", ex);
             }
         }
 

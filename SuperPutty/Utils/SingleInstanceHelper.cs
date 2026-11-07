@@ -32,6 +32,20 @@ namespace SuperPutty.Utils
             }            
         }
 
+        internal static bool TryLaunchInExistingInstance(string[] args, Action<string[]> launch = null)
+        {
+            try
+            {
+                (launch ?? LaunchInExistingInstance)(args);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("Unable to forward command to the running instance", ex);
+                return false;
+            }
+        }
+
         public static void LaunchInExistingInstance(string[] args)
         {
             IpcChannel channel = new IpcChannel();
@@ -62,9 +76,30 @@ namespace SuperPutty.Utils
         public void Run(String[] args)
         {
             Log.InfoFormat("Received remote Run command: [{0}]", CommandLineOptions.RedactSensitiveArguments(args));
-            CommandLineOptions cmd = new CommandLineOptions(args);
-            SessionDataStartInfo ssi = cmd.ToSessionStartInfo();
-            SuperPuTTY.OpenSession(ssi);
+            var form = SuperPuTTY.MainForm;
+            if (form == null || form.IsDisposed || form.Disposing || !form.IsHandleCreated)
+                throw new InvalidOperationException("The running instance is not ready to accept commands.");
+            // Parse and resolve layouts/sessions on the UI thread as both use UI-owned collections.
+            form.Invoke(new Action(() => DispatchCommand(args,
+                name =>
+                {
+                    var layout = SuperPuTTY.FindLayout(name);
+                    if (layout == null) throw new ArgumentException("Layout not found: " + name);
+                    SuperPuTTY.LoadLayout(layout);
+                }, SuperPuTTY.OpenSession)));
+        }
+
+        internal static void DispatchCommand(string[] args, Action<string> loadLayout, Action<SessionDataStartInfo> openSession)
+        {
+            var cmd = new CommandLineOptions(args);
+            if (!cmd.IsValid) return;
+            if (cmd.Layout != null)
+                loadLayout(cmd.Layout);
+            else
+            {
+                var session = cmd.ToSessionStartInfo();
+                if (session != null) openSession(session);
+            }
         }
     }
 }

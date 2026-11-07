@@ -27,35 +27,67 @@ namespace SuperPutty.Data
         {
             List<SessionData> sessions = new List<SessionData>();
 
-            RegistryKey key = RootAppKey;
-            if (key != null)
+            using (RegistryKey key = RootAppKey)
             {
-                string[] cachedEntriesNames = key.GetValueNames();
-                foreach (string keyName in cachedEntriesNames)
+                if (key == null) return sessions;
+                foreach (string keyName in key.GetValueNames())
                 {
-                    if (!keyName.StartsWith("MRU", StringComparison .CurrentCulture))
-                        continue;
-                    string sessionName = (string)key.GetValue(keyName,"",RegistryValueOptions.DoNotExpandEnvironmentNames);
-                    if (sessionName != null)
+                    if (!keyName.StartsWith("MRU", StringComparison.OrdinalIgnoreCase)) continue;
+                    try
                     {
-                        SessionData session = new SessionData
-                        {
-                            Host = sessionName,
-                            Port = 3389,
-                            Proto = 
-                                (ConnectionProtocol)
-                                    Enum.Parse(typeof (ConnectionProtocol),
-                                        "RDP", true),
-                            PuttySession = sessionName,
-                            SessionName = sessionName,
-                            Username = ""
-                        };
-                        sessions.Add(session);
+                        string endpoint = key.GetValue(keyName, "", RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
+                        sessions.Add(CreateSession(endpoint));
+                    }
+                    catch (Exception ex) when (ex is ArgumentException || ex is IOException ||
+                        ex is UnauthorizedAccessException || ex is System.Security.SecurityException)
+                    {
+                        Log.Warn("Skipping invalid or inaccessible RDP history entry: " + keyName, ex);
                     }
                 }
             }
 
             return sessions;
         }
+
+        internal static SessionData CreateSession(string endpoint)
+        {
+            if (String.IsNullOrWhiteSpace(endpoint)) throw new ArgumentException("An RDP server address is required.");
+            string host = endpoint.Trim();
+            string portText = null;
+            int port = 3389;
+            if (host.StartsWith("[", StringComparison.Ordinal))
+            {
+                int close = host.IndexOf(']');
+                if (close < 0) throw new ArgumentException("Invalid IPv6 server address.");
+                string suffix = host.Substring(close + 1);
+                if (suffix.Length > 0)
+                {
+                    if (!suffix.StartsWith(":", StringComparison.Ordinal)) throw new ArgumentException("Invalid RDP port.");
+                    portText = suffix.Substring(1);
+                }
+                host = host.Substring(1, close - 1);
+            }
+            else if (host.IndexOf(':') >= 0 && host.IndexOf(':') == host.LastIndexOf(':'))
+            {
+                int separator = host.IndexOf(':');
+                portText = host.Substring(separator + 1);
+                host = host.Substring(0, separator);
+            }
+            if (portText != null && (!int.TryParse(portText, System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out port) || port < 1 || port > 65535))
+                throw new ArgumentException("Invalid RDP port.");
+            if (Uri.CheckHostName(host) == UriHostNameType.Unknown)
+                throw new ArgumentException("Invalid RDP server address.");
+            return new SessionData
+            {
+                Host = host,
+                Port = port,
+                Proto = ConnectionProtocol.RDP,
+                PuttySession = endpoint,
+                SessionName = endpoint,
+                Username = ""
+            };
+        }
+
     }
 }

@@ -665,7 +665,13 @@ namespace SuperPutty
             };
             if (openDialog.ShowDialog(this) == DialogResult.OK)
             {
-                SuperPuTTY.ImportSessionsFromPuttyCM(openDialog.FileName);
+                try { SuperPuTTY.ImportSessionsFromPuttyCM(openDialog.FileName); }
+                catch (Exception ex) when (ex is IOException || ex is InvalidDataException || ex is UnauthorizedAccessException || ex is System.Xml.XmlException)
+                {
+                    Log.Warn("Unable to import PuTTYCM sessions", ex);
+                    MessageBox.Show(this, "Unable to import PuTTYCM sessions: " + ex.Message,
+                        "Import Sessions", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             }
         }
 

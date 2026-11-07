@@ -108,7 +108,7 @@ namespace SuperPutty.Scp
             {
                 PscpClient client = new PscpClient(this.Options, this.Request.Session);
 
-                int estSizeKB = Int32.MaxValue;
+                long estSizeKB = Int64.MaxValue;
                 FileTransferResult res = client.CopyFiles(
                     this.Request.SourceFiles,
                     this.Request.TargetFile,
@@ -117,7 +117,7 @@ namespace SuperPutty.Scp
                         string msg;
                         if (s.PercentComplete > 0)
                         {
-                            estSizeKB = Math.Min(estSizeKB, s.BytesTransferred * 100 / s.PercentComplete);
+                            estSizeKB = Math.Min(estSizeKB, EstimateSizeKilobytes(s.BytesTransferred, s.PercentComplete));
                             string units = estSizeKB > 1024 * 10 ? "MB" : "KB";
                             int divisor = units == "MB" ? 1024 : 1;
                             msg = string.Format(
@@ -207,6 +207,11 @@ namespace SuperPutty.Scp
                 handler = this.Update;
             }
             handler?.Invoke(this, EventArgs.Empty);
+        }
+
+        internal static long EstimateSizeKilobytes(int transferredKilobytes, int percentComplete)
+        {
+            return (long)transferredKilobytes * 100 / percentComplete;
         }
 
         public static bool CanRestart(Status status)

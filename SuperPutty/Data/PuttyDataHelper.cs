@@ -47,35 +47,62 @@ namespace SuperPutty.Data
 
         public static List<SessionData> GetAllSessionsFromPuTTY()
         {
-            List<SessionData> sessions = new List<SessionData>();
+            using (RegistryKey key = RootAppKey)
+                return ReadRegistrySessions(key);
+        }
 
-            RegistryKey key = RootAppKey;
-            if (key != null)
+        internal static List<SessionData> ReadRegistrySessions(RegistryKey key)
+        {
+            var sessions = new List<SessionData>();
+            if (key == null) return sessions;
+            foreach (string keyName in key.GetSubKeyNames())
             {
-                string[] savedSessionNames = key.GetSubKeyNames();
-                foreach (string keyName in savedSessionNames)
+                try
                 {
-                    RegistryKey sessionKey = key.OpenSubKey(keyName);
-                    if (sessionKey != null)
+                    using (RegistryKey sessionKey = key.OpenSubKey(keyName))
                     {
-                        SessionData session = new SessionData
+                        if (sessionKey == null) continue;
+                        object port = sessionKey.GetValue("PortNumber", 22);
+                        ConnectionProtocol protocol;
+                        if (!(port is int) || (int)port < 1 || (int)port > 65535 ||
+                            !TryParseProtocol(sessionKey.GetValue("Protocol", "SSH") as string, out protocol))
+                            throw new InvalidDataException("Invalid port or unsupported protocol.");
+                        sessions.Add(new SessionData
                         {
-                            Host = (string) sessionKey.GetValue("HostName", ""),
-                            Port = (int) sessionKey.GetValue("PortNumber", 22),
-                            Proto =
-                                (ConnectionProtocol)
-                                    Enum.Parse(typeof (ConnectionProtocol),
-                                        (string) sessionKey.GetValue("Protocol", "SSH"), true),
-                            PuttySession = (string) sessionKey.GetValue("PuttySession", HttpUtility.UrlDecode(keyName)),
+                            Host = ReadRegistryString(sessionKey, "HostName", ""),
+                            Port = (int)port,
+                            Proto = protocol,
+                            PuttySession = ReadRegistryString(sessionKey, "PuttySession", HttpUtility.UrlDecode(keyName)),
                             SessionName = HttpUtility.UrlDecode(keyName),
-                            Username = (string) sessionKey.GetValue("UserName", "")
-                        };
-                        sessions.Add(session);
+                            Username = ReadRegistryString(sessionKey, "UserName", "")
+                        });
                     }
                 }
+                catch (Exception ex) when (ex is IOException || ex is InvalidDataException || ex is UnauthorizedAccessException || ex is System.Security.SecurityException)
+                {
+                    Log.Warn("Skipping invalid or inaccessible PuTTY session: " + keyName, ex);
+                }
             }
-
             return sessions;
+        }
+
+        private static string ReadRegistryString(RegistryKey key, string name, string fallback)
+        {
+            string value = key.GetValue(name, fallback) as string;
+            if (value == null) throw new InvalidDataException("Invalid string value: " + name);
+            return value;
+        }
+
+        private static bool TryParseProtocol(string value, out ConnectionProtocol protocol)
+        {
+            return Enum.TryParse(value, true, out protocol) && Enum.IsDefined(typeof(ConnectionProtocol), protocol);
+        }
+
+        private static string RequiredValue(XmlNode parent, string path)
+        {
+            XmlNode node = parent.SelectSingleNode(path);
+            if (node == null) throw new InvalidDataException("PuTTYCM export is missing " + path + ".");
+            return node.InnerText;
         }
 
         public static List<SessionData> GetAllSessionsFromPuTTYCM(string fileExport)
@@ -87,8 +114,10 @@ namespace SuperPutty.Data
                 return sessions;
             }
 
-            XmlDocument doc = new XmlDocument();
-            doc.Load(fileExport);
+            XmlDocument doc = new XmlDocument { XmlResolver = null };
+            using (XmlReader reader = XmlReader.Create(fileExport, new XmlReaderSettings
+                { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null }))
+                doc.Load(reader);
 
 
             XmlNodeList connections = doc.DocumentElement.SelectNodes("//connection[@type='PuTTY']");
@@ -107,23 +136,27 @@ namespace SuperPutty.Data
                 folders.Reverse();
                 string parentPath = string.Join("/", folders.ToArray());
 
-                XmlElement info = (XmlElement)connection.SelectSingleNode("connection_info");
-                XmlElement login = (XmlElement)connection.SelectSingleNode("login");
-
+                int port;
+                ConnectionProtocol protocol;
+                if (!int.TryParse(RequiredValue(connection, "connection_info/port"), out port) || port < 1 || port > 65535)
+                    throw new InvalidDataException("PuTTYCM export contains an invalid port.");
+                if (!TryParseProtocol(RequiredValue(connection, "connection_info/protocol"), out protocol))
+                    throw new InvalidDataException("PuTTYCM export contains an unsupported protocol.");
+                string name = RequiredValue(connection, "connection_info/name");
+                if (string.IsNullOrWhiteSpace(name))
+                    throw new InvalidDataException("PuTTYCM export contains an empty session name.");
                 SessionData session = new SessionData
                 {
-                    SessionName = info.SelectSingleNode("name").InnerText,
-                    Host = info.SelectSingleNode("host").InnerText,
-                    Port = Convert.ToInt32(info.SelectSingleNode("port").InnerText),
-                    Proto =
-                        (ConnectionProtocol)
-                            Enum.Parse(typeof (ConnectionProtocol), info.SelectSingleNode("protocol").InnerText),
-                    PuttySession = info.SelectSingleNode("session").InnerText
+                    SessionName = name,
+                    Host = RequiredValue(connection, "connection_info/host"),
+                    Port = port,
+                    Proto = protocol,
+                    PuttySession = RequiredValue(connection, "connection_info/session"),
+                    Username = RequiredValue(connection, "login/login")
                 };
-                session.SessionId = string.IsNullOrEmpty(parentPath) 
-                    ? session.SessionName 
+                session.SessionId = string.IsNullOrEmpty(parentPath)
+                    ? session.SessionName
                     : SessionData.CombineSessionIds(parentPath, session.SessionName);
-                session.Username = login.SelectSingleNode("login").InnerText;
 
                 sessions.Add(session);
             }

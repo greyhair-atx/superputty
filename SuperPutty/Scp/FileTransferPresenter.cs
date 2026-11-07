@@ -33,7 +33,7 @@ namespace SuperPutty.Scp
 
         public bool CanTransferFile(BrowserFileInfo source, BrowserFileInfo target)
         {
-            if (disposed) return false;
+            if (disposed || source == null || target == null || string.IsNullOrEmpty(target.Path)) return false;
             //    Source        Target   Result
             // 1) WindowsFile   Local    if not the same, File.Copy
             // 2) Local         Local    File.Copy
@@ -180,14 +180,8 @@ namespace SuperPutty.Scp
             FileTransfer transfer = GetById(id);
             if (transfer != null)
             {
-                if (FileTransfer.CanCancel(transfer.TransferStatus))
-                {
-                    transfer.Cancel();
-                }
-                else
-                {
-                    throw new InvalidOperationException("Can not cancel inactive transfer, id=" + id);
-                }
+                // Cancel checks the live state under the transfer lock; stale menu actions are harmless.
+                transfer.Cancel();
             }
         }
 

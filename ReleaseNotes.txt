@@ -1,3 +1,17 @@
+SuperPuTTY Community Edition 1.8.4 (unpublished candidate)
+ - Fix tab overflow hover/close targeting and release overflow-menu resources; retain unrestricted tab capacity.
+ - Add optional middle-click tab closing and a consistent 2px embedded PuTTY border.
+ - Improve connection-aware close confirmation and add optional interactive PSCP authentication.
+ - Handle stale SCP Cancel actions, invalid file drops and large-transfer size estimates safely.
+ - Preserve layout state after failed deletion; report settings save errors and roll back default-layout changes.
+ - Validate PuTTYCM imports and skip invalid PuTTY registry entries without blocking valid sessions.
+ - Handle single-instance forwarding failures and honor forwarded layout commands on the UI thread.
+ - Fix searches without hostnames and bound regex execution time.
+ - Preserve imported RDP custom ports and format IPv6 endpoints correctly.
+ - Report WinSCP/FileZilla launch failures with actionable guidance.
+ - Prepare signed Inno/portable packaging with durable upgrade recovery and explicit MSI migration.
+ - See docs/releases/1.8.4.md for the running change list and pending release gates.
+
 SuperPuTTY Community Edition 1.8.3
  - Add Light, Dark, Dark Modern and System themes; thanks to dustinreeves for dark mode.
  - Match Dark Modern toolbar/menu backgrounds and input borders.

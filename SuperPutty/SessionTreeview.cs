@@ -1120,12 +1120,12 @@ namespace SuperPutty
             public SearchFilter(string mode, string filter)
             {
                 this.Mode = FormUtils.SafeParseEnum(mode, true, SearchMode.CaseSensitive);
-                this.Filter = filter;
+                this.Filter = filter ?? String.Empty;
                 if (this.Mode == SearchMode.Regex)
                 {
                     try
                     {
-                        this.Regex = new Regex(filter);
+                        this.Regex = new Regex(this.Filter, RegexOptions.None, TimeSpan.FromMilliseconds(100));
                     }
                     catch (Exception ex)
                     {
@@ -1135,23 +1135,25 @@ namespace SuperPutty
             }
             public bool IsMatch(SessionData s)
             {
-                if (this.Mode == SearchMode.CaseInSensitive)
+                if (s == null) return false;
+                string name = s.SessionName ?? String.Empty;
+                string host = s.Host ?? String.Empty;
+                string filter = this.Filter ?? String.Empty;
+                if (this.Mode == SearchMode.Regex)
                 {
-                    return
-                        (s.SessionName.ToLower().Contains(this.Filter.ToLower())) ||
-                        (s.Host.ToLower().Contains(this.Filter.ToLower()));
+                    try { return this.Regex == null || this.Regex.IsMatch(name); }
+                    catch (RegexMatchTimeoutException)
+                    {
+                        // Disable this expression for the rest of the search so many sessions
+                        // cannot each consume another timeout on the UI thread.
+                        Log.Warn("Session search expression exceeded its time limit and was disabled.");
+                        this.Regex = null;
+                        return true;
+                    }
                 }
-                else if (this.Mode == SearchMode.Regex)
-                {
-                    return this.Regex != null ? this.Regex.IsMatch(s.SessionName) : true;
-                }
-                else
-                {
-                    // case sensitive
-                    return
-                        s.SessionName.Contains(this.Filter) ||
-                        s.Host.Contains(this.Filter);
-                }
+                var comparison = this.Mode == SearchMode.CaseInSensitive
+                    ? StringComparison.CurrentCultureIgnoreCase : StringComparison.Ordinal;
+                return name.IndexOf(filter, comparison) >= 0 || host.IndexOf(filter, comparison) >= 0;
             }
             public SearchMode Mode { get; set; }
             public string Filter { get; set; }

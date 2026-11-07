@@ -64,9 +64,13 @@ namespace SuperPutty
                 SuperPuTTY.IsFirstRun, SuperPuTTY.Settings.SingleInstanceMode, onlyInstance);
             if ((EnforceSingleInstance  || SuperPuTTY.Settings.SingleInstanceMode) && !SuperPuTTY.IsFirstRun && !onlyInstance)
             {
-                SingleInstanceHelper.LaunchInExistingInstance(args);
-                Log.InfoFormat("Sent Command to Existing Instance: [{0}]", CommandLineOptions.RedactSensitiveArguments(args));
-                Environment.Exit(0);
+                if (!SingleInstanceHelper.TryLaunchInExistingInstance(args))
+                {
+                    MessageBox.Show("Unable to contact the running SuperPuTTY instance. Wait for it to finish starting or closing, then try again.",
+                        "SuperPuTTY", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    Environment.ExitCode = 1;
+                }
+                return;
             }
 
             // open full file

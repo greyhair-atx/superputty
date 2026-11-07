@@ -76,7 +76,11 @@ namespace SuperPutty
             LayoutData layout = (LayoutData)this.listBoxLayouts.SelectedItem;
             if (layout != null)
             {
-                SuperPuTTY.SetLayoutAsDefault(layout.Name);
+                try { SuperPuTTY.SetLayoutAsDefault(layout.Name); }
+                catch (ConfigurationErrorsException ex)
+                {
+                    MessageBox.Show(this, ex.Message, "Default Layout", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             }
         }
 
@@ -107,7 +111,12 @@ namespace SuperPutty
             {
                 if (DialogResult.Yes == MessageBox.Show(this, "Delete Layout (" + layout.Name + ")?", "Delete Layout", MessageBoxButtons.YesNo, MessageBoxIcon.Warning))
                 {
-                    SuperPuTTY.RemoveLayout(layout.Name, true);
+                    try { SuperPuTTY.RemoveLayout(layout.Name, true); }
+                    catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                    {
+                        MessageBox.Show(this, "Unable to delete layout: " + ex.Message, "Delete Layout",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
                 }
             }
         }

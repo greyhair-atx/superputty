@@ -185,11 +185,11 @@ namespace SuperPutty
             LayoutData layout = FindLayout(name);
             if (layout != null)
             {
-                layouts.Remove(layout);
                 if (deleteFile)
                 {
                     File.Delete(layout.FilePath);
                 }
+                layouts.Remove(layout);
             }
         }
 
@@ -329,8 +329,14 @@ namespace SuperPutty
                 if (layout != null)
                 {
                     ReportStatus($"Setting {layoutName} as default layout");
-                    SuperPuTTY.Settings.DefaultLayoutName = layoutName;
-                    SuperPuTTY.Settings.Save();
+                    string previousDefault = Settings.DefaultLayoutName;
+                    Settings.DefaultLayoutName = layoutName;
+                    try { Settings.Save(); }
+                    catch
+                    {
+                        Settings.DefaultLayoutName = previousDefault;
+                        throw;
+                    }
 
                     // so gui change is propagated via events
                     LoadLayouts();

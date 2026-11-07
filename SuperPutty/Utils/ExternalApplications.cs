@@ -12,6 +12,7 @@ namespace SuperPutty.Utils
 
         internal static string BuildArguments(SessionData session, bool winScp, bool includePassword)
         {
+            if (session == null) throw new ArgumentNullException("session");
             string host = session.Host ?? String.Empty;
             if (Uri.CheckHostName(host.Trim('[', ']')) == UriHostNameType.Unknown)
                 throw new ArgumentException("A valid server hostname or IP address is required.");
@@ -44,12 +45,7 @@ namespace SuperPutty.Utils
         /// <param name="session"></param>
         public static void openFileZilla(SessionData session)
         {
-            if (!String.IsNullOrEmpty(session.Password) && !SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
-                Log.Warn("SuperPuTTY is set to NOT allow the use of the -pw <password> argument, this can be overriden in Tools -> Options -> GUI");
-
-            string args = BuildArguments(session, false, true);
-            Log.Debug("Send to FileZilla: " + BuildArguments(session, false, false));
-            Process.Start(SuperPuTTY.Settings.FileZillaExe, args);
+            OpenClient(session, false, SuperPuTTY.Settings.FileZillaExe);
         }
 
         /// <summary>
@@ -58,12 +54,40 @@ namespace SuperPutty.Utils
         /// <param name="session"></param>
         public static void openWinSCP(SessionData session)
         {
-            if (!String.IsNullOrEmpty(session.Password) && !SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
-                Log.Warn("SuperPuTTY is set to NOT allow the use of the -pw <password> argument, this can be overriden in Tools -> Options -> GUI");
+            OpenClient(session, true, SuperPuTTY.Settings.WinSCPExe);
+        }
 
-            string args = BuildArguments(session, true, true);
-            Log.Debug("Send to WinSCP: " + BuildArguments(session, true, false));
-            Process.Start(SuperPuTTY.Settings.WinSCPExe, args);
+
+        private static void OpenClient(SessionData session, bool winScp, string executable)
+        {
+            string error;
+            if (!TryOpenClient(session, winScp, executable, out error))
+                System.Windows.Forms.MessageBox.Show(error, "Open " + (winScp ? "WinSCP" : "FileZilla"),
+                    System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Warning);
+        }
+
+        internal static bool TryOpenClient(SessionData session, bool winScp, string executable,
+            out string error, Action<string, string> start = null)
+        {
+            try
+            {
+                if (String.IsNullOrWhiteSpace(executable))
+                    throw new ArgumentException("Configure the external client executable in Tools > Options.");
+                string args = BuildArguments(session, winScp, true);
+                Log.Debug("Send to " + (winScp ? "WinSCP: " : "FileZilla: ") + BuildArguments(session, winScp, false));
+                if (start != null) start(executable, args);
+                else using (Process process = Process.Start(executable, args)) { }
+                error = null;
+                return true;
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is System.ComponentModel.Win32Exception ||
+                ex is InvalidOperationException || ex is System.IO.IOException ||
+                ex is UnauthorizedAccessException || ex is System.Security.SecurityException)
+            {
+                Log.Warn("Unable to open external file-transfer client (" + ex.GetType().Name + ").");
+                error = "Unable to open the file-transfer client. Check the session hostname and the executable configured in Tools > Options.";
+                return false;
+            }
         }
 
     }
