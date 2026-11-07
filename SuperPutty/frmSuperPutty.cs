@@ -698,7 +698,13 @@ namespace SuperPutty
             };
             if (openDialog.ShowDialog(this) == DialogResult.OK)
             {
-                SuperPuTTY.ImportSessionsFromFolder(openDialog.SelectedPath);
+                try { SuperPuTTY.ImportSessionsFromFolder(openDialog.SelectedPath); }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is System.Security.SecurityException)
+                {
+                    Log.Warn("Unable to import portable PuTTY sessions", ex);
+                    MessageBox.Show(this, "Unable to import portable PuTTY sessions: " + ex.Message,
+                        "Import Sessions", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             }
         }
 

@@ -668,19 +668,22 @@ namespace SuperPutty.Data
                     string sessionName = HttpUtility.UrlDecode(Path.GetFileName(sessionFile));
                     SessionData sessionData = new SessionData();
                     Hashtable sessionInfoKv = new Hashtable();
-                    foreach (string cfgLine in File.ReadLines(sessionFile))
-                    {
-                        char[] sep = new char[] {'\\'};
-                        string[] cfgData = cfgLine.Split(sep, 2);
-                        if (cfgData.Length == 2)
-                            sessionInfoKv[cfgData[0]] = cfgData[1].TrimEnd(sep);
-                    }
-
                     try
                     {
+                        foreach (string cfgLine in File.ReadLines(sessionFile))
+                        {
+                            char[] sep = new char[] {'\\'};
+                            string[] cfgData = cfgLine.Split(sep, 2);
+                            if (cfgData.Length == 2)
+                                sessionInfoKv[cfgData[0]] = cfgData[1].TrimEnd(sep);
+                        }
                         sessionData.Host = sessionInfoKv.ContainsKey("HostName") ? (string)sessionInfoKv["HostName"] : "";
                         sessionData.Port = sessionInfoKv.ContainsKey("PortNumber") ? Int32.Parse((string)sessionInfoKv["PortNumber"]) : 22;
-                        sessionData.Proto = (ConnectionProtocol)Enum.Parse(typeof(ConnectionProtocol), sessionInfoKv.ContainsKey("Protocol") ? ((string)sessionInfoKv["Protocol"]).ToUpper() : "SSH");
+                        ConnectionProtocol protocol;
+                        string protocolName = sessionInfoKv.ContainsKey("Protocol") ? (string)sessionInfoKv["Protocol"] : "SSH";
+                        if (!Enum.TryParse(protocolName, true, out protocol) || !Enum.IsDefined(typeof(ConnectionProtocol), protocol))
+                            throw new FormatException("Unsupported portable session protocol.");
+                        sessionData.Proto = protocol;
                         sessionData.PuttySession = sessionName;
                         sessionData.SessionName = sessionName;
                         sessionData.SessionId = sessionName;

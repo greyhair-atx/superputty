@@ -1,4 +1,5 @@
 SuperPuTTY Community Edition 1.8.4 (unpublished candidate)
+ - Fix portable PuTTY protocol imports and unreadable files; preserve large SCP file sizes and culture-independent dates.
  - Update Apache log4net to 3.5.0.
  - Fix tab overflow hover/close targeting and release overflow-menu resources; retain unrestricted tab capacity.
  - Add optional middle-click tab closing and a consistent 2px embedded PuTTY border.
