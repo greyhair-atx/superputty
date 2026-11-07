@@ -123,7 +123,9 @@ namespace SuperPuttyUnitTests.Scp
         {
             int childId = 0;
             using (var cancellation = new CancellationTokenSource())
-            using (var dialog = new InteractivePscpDialog(client, "hang", timeout ? 1000 : 10000, cancellation.Token,
+            // Allow the mock runtime and its child process to start on a busy
+            // agent before asserting that timeout kills the complete tree.
+            using (var dialog = new InteractivePscpDialog(client, "hang", timeout ? 5000 : 10000, cancellation.Token,
                 line => { Int32.TryParse(line, out childId); return true; }))
             using (var watchdog = new System.Windows.Forms.Timer { Interval = 100 })
             {

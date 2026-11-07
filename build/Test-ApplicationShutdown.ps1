@@ -1,12 +1,13 @@
 [CmdletBinding()]
 param(
     [string] $Configuration = 'Release',
-    [string] $Platform = 'x64'
+    [string] $Platform = 'x64',
+    [string] $ApplicationPath
 )
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$appPath = Join-Path $repoRoot "bin\$Platform\$Configuration\SuperPutty.exe"
+$appPath = if ($ApplicationPath) { [IO.Path]::GetFullPath($ApplicationPath) } else { Join-Path $repoRoot "bin\$Platform\$Configuration\SuperPutty.exe" }
 if (-not (Test-Path -LiteralPath $appPath -PathType Leaf)) { throw "Missing application: $appPath" }
 
 Add-Type -AssemblyName UIAutomationClient

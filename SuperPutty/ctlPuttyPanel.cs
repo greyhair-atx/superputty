@@ -48,7 +48,6 @@ namespace SuperPutty
         private static int RefocusAttempts = Convert.ToInt32(ConfigurationManager.AppSettings["SuperPuTTY.RefocusAttempts"] ?? "3");
         private static int RefocusIntervalMs = Convert.ToInt32(ConfigurationManager.AppSettings["SuperPuTTY.RefocusIntervalMs"] ?? "40");
         private bool closeWithoutConfirmation;
-        private SessionConnectionState closeConnectionState = SessionConnectionState.Unknown;
 
         private PuttyStartInfo m_puttyStartInfo;
         private PuttyClosedCallback m_ApplicationExit;
@@ -269,33 +268,31 @@ namespace SuperPutty
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            // Identify the clicked tab before external FormClosing handlers run.
+            bool middleClick = e.CloseReason == CloseReason.UserClosing &&
+                SuperPutty.Gui.Docking.TabCloseMouseFilter.IsUnconfirmedMiddleClick(this);
             base.OnFormClosing(e);
-            if (!e.Cancel && !closeWithoutConfirmation && e.CloseReason == CloseReason.UserClosing &&
+            if (!e.Cancel && !closeWithoutConfirmation &&
+                !middleClick &&
+                e.CloseReason == CloseReason.UserClosing &&
                 !(SuperPuTTY.MainForm != null && SuperPuTTY.MainForm.IsShuttingDown) &&
                 AppPanel != null)
             {
-                closeConnectionState = AppPanel.ConnectionState;
-                if (closeConnectionState != SessionConnectionState.Disconnected)
+                if (AppPanel.ConnectionState != SessionConnectionState.Disconnected)
                     e.Cancel = !ConfirmSessionClose();
             }
         }
 
         protected virtual bool ConfirmSessionClose()
         {
-            return MessageBox.Show(this, GetCloseConfirmationMessage(closeConnectionState, TextOverride ?? Text),
+            return MessageBox.Show(this, GetCloseConfirmationMessage(TextOverride ?? Text),
                 "Confirm Close Session", MessageBoxButtons.OKCancel, MessageBoxIcon.Question,
                 MessageBoxDefaultButton.Button2) == DialogResult.OK;
         }
 
-        internal static string GetCloseConfirmationMessage(SessionConnectionState state, string sessionName)
+        internal static string GetCloseConfirmationMessage(string sessionName)
         {
-            switch (state)
-            {
-                case SessionConnectionState.Connected: return String.Format("Close active session '{0}'?", sessionName);
-                case SessionConnectionState.Connecting: return String.Format("Close connecting session '{0}'?", sessionName);
-                case SessionConnectionState.Reconnecting: return String.Format("Close reconnecting session '{0}'?", sessionName);
-                default: return String.Format("This session may still be connected. Close tab '{0}'?", sessionName);
-            }
+            return String.Format("Close tab '{0}'?", sessionName);
         }
 
         internal void CloseWithoutConfirmation()

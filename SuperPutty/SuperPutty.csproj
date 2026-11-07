@@ -106,6 +106,7 @@
     <Compile Include="Gui\DataGridViewProgressColumn.cs" />
     <Compile Include="Gui\DpiUtils.cs" />
     <Compile Include="Gui\Docking\OutlinedVS2015DockPaneStrip.cs" />
+    <Compile Include="Gui\Docking\TabCloseMouseFilter.cs" />
     <Compile Include="Gui\Docking\OutlinedVS2015LightTheme.cs" />
     <Compile Include="Gui\ImageListPopup.cs">
       <SubType>Form</SubType>
@@ -455,6 +456,10 @@
     </None>
   </ItemGroup>
   <ItemGroup>
+    <Content Include="Resources\themes\**\*">
+      <Link>themes\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="..\THIRD-PARTY-NOTICES.txt">
       <Link>THIRD-PARTY-NOTICES.txt</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -493,20 +498,4 @@
     </PackageReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <PropertyGroup>
-    <PostBuildEvent>IF NOT EXIST "$(ProjectDir)..\bin\x64\Release\themes" mkdir "$(ProjectDir)..\bin\x64\Release\themes"
-IF NOT EXIST "$(ProjectDir)..\bin\x64\Release\themes\default" xcopy /E  /Y "$(ProjectDir)Resources\themes" "$(ProjectDir)..\bin\x64\Release\themes\"
-IF EXIST "$(ProjectDir)..\bin\x64\Release\themes\default\icons" xcopy /D "$(ProjectDir)Resources\themes\default\icons\*.png" "$(ProjectDir)..\bin\x64\Release\themes\default\icons\"
-IF NOT EXIST "$(ProjectDir)..\bin\x64\Debug\themes" mkdir "$(ProjectDir)..\bin\x64\Debug\themes"
-IF NOT EXIST "$(ProjectDir)..\bin\x64\Debug\themes\default" xcopy /E  /Y "$(ProjectDir)Resources\themes" "$(ProjectDir)..\bin\x64\Debug\themes\"
-IF EXIST "$(ProjectDir)..\bin\x64\Debug\themes\default\icons" xcopy /D "$(ProjectDir)Resources\themes\default\icons\*.png" "$(ProjectDir)..\bin\x64\Debug\themes\default\icons\"
-SET errorlevel=</PostBuildEvent>
-  </PropertyGroup>
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
-       Other similar extension points exist, see Microsoft.Common.targets.
-  <Target Name="BeforeBuild">
-  </Target>
-  <Target Name="AfterBuild">
-  </Target>
-  -->
 </Project>

@@ -8,9 +8,13 @@ parameters:
   type: string
   default: 'not-configured'
 - name: runInteractiveTests
-  displayName: 'Run interactive console/shutdown tests on an interactive Windows agent'
+  displayName: 'Run desktop UI, console and shutdown tests (requires an interactive agent pool)'
   type: boolean
   default: false
+- name: windowsAgentPool
+  displayName: 'Microsoft-hosted for windows-latest, or the name of an existing Windows agent pool'
+  type: string
+  default: 'Microsoft-hosted'
 - name: testInstallerLifecycle
   displayName: 'Install/uninstall signed candidate on disposable agent (machine scope)'
   type: boolean
@@ -25,8 +29,6 @@ trigger:
     exclude:
     - '*'
 # Release candidates are retained as pipeline artifacts; publication is separate.
-pool:
-  vmImage: 'windows-latest'
 variables:
   buildPlatform: 'x64'
   buildConfiguration: 'Release'
@@ -34,144 +36,168 @@ variables:
   applicationVersion: '1.8.4.0'
   bundleDirectory: '$(Build.ArtifactStagingDirectory)/candidate'
 
-steps:
-- task: PowerShell@2
-  displayName: 'Prepare diagnostic output before build and tests'
-  inputs:
-    pwsh: true
-    targetType: 'inline'
-    script: |
-      New-Item -ItemType Directory -Force '$(Build.ArtifactStagingDirectory)/diagnostics' | Out-Null
-- task: NuGetToolInstaller@1
-- task: VSBuild@1
-  displayName: 'Build application and tests; legacy MSI project is excluded'
-  inputs:
-    solution: 'SuperPuttyUnitTests/SuperPuttyUnitTests.csproj'
-    platform: '$(buildPlatform)'
-    configuration: '$(buildConfiguration)'
-    msbuildArgs: '/restore'
-- task: VSTest@3
-  displayName: 'Run x64 regression tests'
-  inputs:
-    testSelector: 'testAssemblies'
-    testAssemblyVer2: 'SuperPuttyUnitTests.exe'
-    searchFolder: '$(Build.SourcesDirectory)/SuperPuttyUnitTests/bin/x64/Release'
-    resultsFolder: '$(Build.ArtifactStagingDirectory)/diagnostics/regression-tests'
-    ${{ if eq(parameters.runInteractiveTests, true) }}:
-      testFiltercriteria: 'TestCategory!=NetworkTest'
-    ${{ else }}:
-      testFiltercriteria: 'TestCategory!=NetworkTest&TestCategory!=InteractiveConsoleTest'
-    failOnMinTestsNotRun: true
-    minimumExpectedTests: '300'
-- ${{ if eq(parameters.runInteractiveTests, true) }}:
+jobs:
+- job: BuildAndReview
+  displayName: 'Build, test and retain review artifacts'
+  ${{ if eq(parameters.windowsAgentPool, 'Microsoft-hosted') }}:
+    pool:
+      vmImage: 'windows-latest'
+  ${{ else }}:
+    pool:
+      name: '${{ parameters.windowsAgentPool }}'
+      demands:
+      - Agent.OS -equals Windows_NT
+  steps:
   - task: PowerShell@2
-    displayName: 'Test interactive shutdown paths'
-    inputs:
-      filePath: 'build/Test-ApplicationShutdown.ps1'
-      arguments: '-Configuration $(buildConfiguration) -Platform x64'
-      pwsh: false
-
-- ${{ if eq(parameters.enableCodeSigning, true) }}:
-  - task: AzureCLI@2
-    displayName: 'Authenticate signing using workload identity federation'
-    inputs:
-      azureSubscription: '${{ parameters.azureServiceConnection }}'
-      scriptType: 'pscore'
-      scriptLocation: 'inlineScript'
-      addSpnToEnvironment: true
-      inlineScript: |
-        Write-Host "##vso[task.setvariable variable=ARM_CLIENT_ID;issecret=true]$env:servicePrincipalId"
-        Write-Host "##vso[task.setvariable variable=ARM_TENANT_ID;issecret=true]$env:tenantId"
-        Write-Host "##vso[task.setvariable variable=ARM_ID_TOKEN;issecret=true]$env:idToken"
-  - task: PowerShell@2
-    displayName: 'Establish signing login outside AzureCLI task-local configuration'
+    displayName: 'Prepare diagnostic output before build and tests'
     inputs:
       pwsh: true
       targetType: 'inline'
       script: |
-        az login --service-principal --username "$(ARM_CLIENT_ID)" --tenant "$(ARM_TENANT_ID)" --federated-token "$(ARM_ID_TOKEN)" --allow-no-subscriptions --output none
-        if ($LASTEXITCODE -ne 0) { throw 'Signing authentication failed.' }
-  - task: ArtifactSigning@1
-    displayName: 'Sign and timestamp the application'
-    inputs:
-      Endpoint: 'https://cus.codesigning.azure.net/'
-      ArtifactSigningAccountName: 'greyhair-atx'
-      CertificateProfileName: 'greyhair-atx-superputty'
-      Files: '$(Build.SourcesDirectory)/bin/x64/Release/SuperPutty.exe'
-      FileDigest: 'SHA256'
-      TimestampRfc3161: 'http://timestamp.acs.microsoft.com'
-      TimestampDigest: 'SHA256'
-      ExcludeEnvironmentCredential: true
-      ExcludeWorkloadIdentityCredential: true
-      ExcludeManagedIdentityCredential: true
-      ExcludeSharedTokenCacheCredential: true
-      ExcludeVisualStudioCredential: true
-      ExcludeVisualStudioCodeCredential: true
-      ExcludeAzureCliCredential: false
-      ExcludeAzurePowershellCredential: true
-      ExcludeAzureDeveloperCliCredential: true
-      ExcludeInteractiveBrowserCredential: true
-  - task: PowerShell@2
-    displayName: 'Prepare pinned Inno and signing toolchain'
-    inputs:
-      pwsh: true
-      targetType: 'inline'
-      script: |
-        & ./build/Install-InnoToolchain.ps1 -Directory '$(Agent.TempDirectory)/spce-inno'
-        $pin = Import-PowerShellDataFile ./build/InnoToolchain.psd1
-        nuget install Microsoft.ArtifactSigning.Client -Version $pin.ArtifactSigningClientVersion -OutputDirectory '$(Agent.TempDirectory)/spce-signing' -ExcludeVersion -NonInteractive -Source https://api.nuget.org/v3/index.json
-        if ($LASTEXITCODE -ne 0) { throw 'Pinned signing client restore failed.' }
-  - task: PowerShell@2
-    displayName: 'Build and verify signed dual-scope Inno bundle'
-    inputs:
-      pwsh: true
-      targetType: 'inline'
-      script: |
-        $sdk = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin'
-        $tool = Get-ChildItem $sdk -Directory | Where-Object Name -Match '^\d+\.' | Sort-Object { [version]$_.Name } -Descending | ForEach-Object { Join-Path $_.FullName 'x64/signtool.exe' } | Where-Object { Test-Path $_ } | Select-Object -First 1
-        if (-not $tool) { throw 'Windows SDK signing tool missing.' }
-        & ./build/New-InnoReleaseBundle.ps1 -Version $(releaseVersion) -OutputDirectory '$(bundleDirectory)' -WorkDirectory '$(Agent.TempDirectory)/spce-bundle-work' -Compiler '$(Agent.TempDirectory)/spce-inno/ISCC.exe' -SigningTool $tool -SigningDlib '$(Agent.TempDirectory)/spce-signing/Microsoft.ArtifactSigning.Client/bin/x64/Azure.CodeSigning.Dlib.dll' -SigningMetadata ./build/ArtifactSigningMetadata.json
-  - task: PowerShell@2
-    displayName: 'Generate Inno WinGet review manifests from exact signed bytes'
-    inputs:
-      pwsh: true
-      filePath: 'build/New-InnoWinGetManifest.ps1'
-      arguments: '-ReleaseDirectory "$(bundleDirectory)" -Version $(releaseVersion) -ManifestDirectory "$(Build.ArtifactStagingDirectory)/winget-review"'
-  - ${{ if eq(parameters.testInstallerLifecycle, true) }}:
+        New-Item -ItemType Directory -Force '$(Build.ArtifactStagingDirectory)/diagnostics' | Out-Null
+  - ${{ if eq(parameters.runInteractiveTests, true) }}:
     - task: PowerShell@2
-      displayName: 'Test signed installer machine lifecycle on disposable agent'
+      displayName: 'Require an interactive Windows agent and unlocked desktop'
       env:
-        SUPERPUTTY_DISPOSABLE_TEST: '1'
+        SPCE_WINDOWS_AGENT_POOL: '${{ parameters.windowsAgentPool }}'
+      inputs:
+        pwsh: false
+        targetType: 'inline'
+        script: |
+          if ([string]::IsNullOrWhiteSpace($env:SPCE_WINDOWS_AGENT_POOL) -or $env:SPCE_WINDOWS_AGENT_POOL -eq 'Microsoft-hosted') {
+            throw 'Set windowsAgentPool to an existing interactive Windows agent pool when enabling runInteractiveTests.'
+          }
+          & ./build/Test-InteractiveDesktop.ps1
+  - task: NuGetToolInstaller@1
+  - task: VSBuild@1
+    displayName: 'Build application and tests; legacy MSI project is excluded'
+    inputs:
+      solution: 'SuperPuttyUnitTests/SuperPuttyUnitTests.csproj'
+      platform: '$(buildPlatform)'
+      configuration: '$(buildConfiguration)'
+      msbuildArgs: '/restore'
+  - task: VSTest@3
+    displayName: 'Run x64 regression tests'
+    inputs:
+      testSelector: 'testAssemblies'
+      testAssemblyVer2: 'SuperPuttyUnitTests.exe'
+      searchFolder: '$(Build.SourcesDirectory)/SuperPuttyUnitTests/bin/x64/Release'
+      resultsFolder: '$(Build.ArtifactStagingDirectory)/diagnostics/regression-tests'
+      ${{ if eq(parameters.runInteractiveTests, true) }}:
+        testFiltercriteria: 'TestCategory!=NetworkTest'
+      ${{ else }}:
+        testFiltercriteria: 'TestCategory!=NetworkTest&TestCategory!=InteractiveConsoleTest&TestCategory!=InteractiveUiTest'
+      failOnMinTestsNotRun: true
+      minimumExpectedTests: '300'
+  - ${{ if eq(parameters.runInteractiveTests, true) }}:
+    - task: PowerShell@2
+      displayName: 'Test interactive shutdown paths'
+      inputs:
+        filePath: 'build/Test-ApplicationShutdown.ps1'
+        arguments: '-Configuration $(buildConfiguration) -Platform x64'
+        pwsh: false
+
+  - ${{ if eq(parameters.enableCodeSigning, true) }}:
+    - task: AzureCLI@2
+      displayName: 'Authenticate signing using workload identity federation'
+      inputs:
+        azureSubscription: '${{ parameters.azureServiceConnection }}'
+        scriptType: 'pscore'
+        scriptLocation: 'inlineScript'
+        addSpnToEnvironment: true
+        inlineScript: |
+          Write-Host "##vso[task.setvariable variable=ARM_CLIENT_ID;issecret=true]$env:servicePrincipalId"
+          Write-Host "##vso[task.setvariable variable=ARM_TENANT_ID;issecret=true]$env:tenantId"
+          Write-Host "##vso[task.setvariable variable=ARM_ID_TOKEN;issecret=true]$env:idToken"
+    - task: PowerShell@2
+      displayName: 'Establish signing login outside AzureCLI task-local configuration'
       inputs:
         pwsh: true
-        filePath: 'build/Test-InnoReleaseLifecycle.ps1'
-        arguments: '-ReleaseDirectory "$(bundleDirectory)" -ResultDirectory "$(Build.ArtifactStagingDirectory)/diagnostics/machine-lifecycle" -Scope machine'
-  - task: PublishPipelineArtifact@1
-    inputs:
-      targetPath: '$(Build.ArtifactStagingDirectory)/winget-review'
-      artifactName: 'SuperPuTTY-CE-$(releaseVersion)-winget-review'
+        targetType: 'inline'
+        script: |
+          az login --service-principal --username "$(ARM_CLIENT_ID)" --tenant "$(ARM_TENANT_ID)" --federated-token "$(ARM_ID_TOKEN)" --allow-no-subscriptions --output none
+          if ($LASTEXITCODE -ne 0) { throw 'Signing authentication failed.' }
+    - task: ArtifactSigning@1
+      displayName: 'Sign and timestamp the application'
+      inputs:
+        Endpoint: 'https://cus.codesigning.azure.net/'
+        ArtifactSigningAccountName: 'greyhair-atx'
+        CertificateProfileName: 'greyhair-atx-superputty'
+        Files: '$(Build.SourcesDirectory)/bin/x64/Release/SuperPutty.exe'
+        FileDigest: 'SHA256'
+        TimestampRfc3161: 'http://timestamp.acs.microsoft.com'
+        TimestampDigest: 'SHA256'
+        ExcludeEnvironmentCredential: true
+        ExcludeWorkloadIdentityCredential: true
+        ExcludeManagedIdentityCredential: true
+        ExcludeSharedTokenCacheCredential: true
+        ExcludeVisualStudioCredential: true
+        ExcludeVisualStudioCodeCredential: true
+        ExcludeAzureCliCredential: false
+        ExcludeAzurePowershellCredential: true
+        ExcludeAzureDeveloperCliCredential: true
+        ExcludeInteractiveBrowserCredential: true
+    - task: PowerShell@2
+      displayName: 'Prepare pinned Inno and signing toolchain'
+      inputs:
+        pwsh: true
+        targetType: 'inline'
+        script: |
+          & ./build/Install-InnoToolchain.ps1 -Directory '$(Agent.TempDirectory)/spce-inno'
+          $pin = Import-PowerShellDataFile ./build/InnoToolchain.psd1
+          nuget install Microsoft.ArtifactSigning.Client -Version $pin.ArtifactSigningClientVersion -OutputDirectory '$(Agent.TempDirectory)/spce-signing' -ExcludeVersion -NonInteractive -Source https://api.nuget.org/v3/index.json
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned signing client restore failed.' }
+    - task: PowerShell@2
+      displayName: 'Build and verify signed dual-scope Inno bundle'
+      inputs:
+        pwsh: true
+        targetType: 'inline'
+        script: |
+          $sdk = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin'
+          $tool = Get-ChildItem $sdk -Directory | Where-Object Name -Match '^\d+\.' | Sort-Object { [version]$_.Name } -Descending | ForEach-Object { Join-Path $_.FullName 'x64/signtool.exe' } | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $tool) { throw 'Windows SDK signing tool missing.' }
+          & ./build/New-InnoReleaseBundle.ps1 -Version $(releaseVersion) -OutputDirectory '$(bundleDirectory)' -WorkDirectory '$(Agent.TempDirectory)/spce-bundle-work' -Compiler '$(Agent.TempDirectory)/spce-inno/ISCC.exe' -SigningTool $tool -SigningDlib '$(Agent.TempDirectory)/spce-signing/Microsoft.ArtifactSigning.Client/bin/x64/Azure.CodeSigning.Dlib.dll' -SigningMetadata ./build/ArtifactSigningMetadata.json
+    - task: PowerShell@2
+      displayName: 'Generate Inno WinGet review manifests from exact signed bytes'
+      inputs:
+        pwsh: true
+        filePath: 'build/New-InnoWinGetManifest.ps1'
+        arguments: '-ReleaseDirectory "$(bundleDirectory)" -Version $(releaseVersion) -ManifestDirectory "$(Build.ArtifactStagingDirectory)/winget-review"'
+    - ${{ if eq(parameters.testInstallerLifecycle, true) }}:
+      - task: PowerShell@2
+        displayName: 'Test signed installer machine lifecycle on disposable agent'
+        env:
+          SUPERPUTTY_DISPOSABLE_TEST: '1'
+        inputs:
+          pwsh: true
+          filePath: 'build/Test-InnoReleaseLifecycle.ps1'
+          arguments: '-ReleaseDirectory "$(bundleDirectory)" -ResultDirectory "$(Build.ArtifactStagingDirectory)/diagnostics/machine-lifecycle" -Scope machine'
+    - task: PublishPipelineArtifact@1
+      inputs:
+        targetPath: '$(Build.ArtifactStagingDirectory)/winget-review'
+        artifactName: 'SuperPuTTY-CE-$(releaseVersion)-winget-review'
 
-- ${{ if eq(parameters.enableCodeSigning, false) }}:
+  - ${{ if eq(parameters.enableCodeSigning, false) }}:
+    - task: PowerShell@2
+      displayName: 'Build development portable bundle; no unsigned installer is distributed'
+      inputs:
+        pwsh: true
+        filePath: 'build/New-InnoReleaseBundle.ps1'
+        arguments: '-Version $(releaseVersion) -OutputDirectory "$(bundleDirectory)" -PortableOnly'
   - task: PowerShell@2
-    displayName: 'Build development portable bundle; no unsigned installer is distributed'
+    displayName: 'Exercise release artifact verification boundaries'
     inputs:
       pwsh: true
-      filePath: 'build/New-InnoReleaseBundle.ps1'
-      arguments: '-Version $(releaseVersion) -OutputDirectory "$(bundleDirectory)" -PortableOnly'
-- task: PowerShell@2
-  displayName: 'Exercise release artifact verification boundaries'
-  inputs:
-    pwsh: true
-    filePath: 'build/Test-InnoReleaseTooling.ps1'
-    arguments: '-ReleaseDirectory "$(bundleDirectory)" -Version $(releaseVersion) -ResultDirectory "$(Build.ArtifactStagingDirectory)/diagnostics/tooling-tests"'
-- task: PublishPipelineArtifact@1
-  displayName: 'Retain unpublished candidate for review and VM testing'
-  inputs:
-    targetPath: '$(Build.ArtifactStagingDirectory)'
-    artifactName: 'SuperPuTTY-CE-$(releaseVersion)-candidate-review'
-- task: PublishPipelineArtifact@1
-  displayName: 'Retain diagnostics after success or failure'
-  condition: succeededOrFailed()
-  inputs:
-    targetPath: '$(Build.ArtifactStagingDirectory)/diagnostics'
-    artifactName: 'SuperPuTTY-CE-$(releaseVersion)-diagnostics'
+      filePath: 'build/Test-InnoReleaseTooling.ps1'
+      arguments: '-ReleaseDirectory "$(bundleDirectory)" -Version $(releaseVersion) -ResultDirectory "$(Build.ArtifactStagingDirectory)/diagnostics/tooling-tests"'
+  - task: PublishPipelineArtifact@1
+    displayName: 'Retain unpublished candidate for review and VM testing'
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+      artifactName: 'SuperPuTTY-CE-$(releaseVersion)-candidate-review'
+  - task: PublishPipelineArtifact@1
+    displayName: 'Retain diagnostics after success or failure'
+    condition: succeededOrFailed()
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)/diagnostics'
+      artifactName: 'SuperPuTTY-CE-$(releaseVersion)-diagnostics'

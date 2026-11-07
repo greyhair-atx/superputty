@@ -482,6 +482,19 @@ namespace SuperPutty.Properties {
         [global::System.Configuration.SettingsProviderAttribute(typeof(SuperPutty.Utils.PortableSettingsProvider))]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool MiddleClickClosesWithoutConfirmation {
+            get {
+                return ((bool)(this["MiddleClickClosesWithoutConfirmation"]));
+            }
+            set {
+                this["MiddleClickClosesWithoutConfirmation"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Configuration.SettingsProviderAttribute(typeof(SuperPutty.Utils.PortableSettingsProvider))]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
         public bool MultipleTabCloseConfirmation {
             get {
                 return ((bool)(this["MultipleTabCloseConfirmation"]));

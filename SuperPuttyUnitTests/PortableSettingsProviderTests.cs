@@ -110,6 +110,24 @@ namespace SuperPuttyUnitTests
             Assert.IsEmpty(Directory.GetFiles(directory, "*.tmp"));
         }
 
+        [TestCase(null)]
+        [TestCase("False")]
+        [TestCase("True")]
+        public void MiddleClickPreferenceDefaultsOffAndRoundTrips(string stored)
+        {
+            const string name = "MiddleClickClosesWithoutConfirmation";
+            if (stored != null) File.WriteAllText(settingsPath, "<Settings><" + name + ">" + stored + "</" + name + "></Settings>");
+            var provider = new TestProvider { DirectoryPath = directory };
+            var metadata = new SuperPutty.Properties.Settings().Properties[name];
+            var properties = new SettingsPropertyCollection { new SettingsProperty(metadata) { Provider = provider } };
+            var values = provider.GetPropertyValues(new SettingsContext(), properties);
+            Assert.AreEqual(stored == "True", values[name].PropertyValue);
+            values[name].PropertyValue = !(bool)values[name].PropertyValue;
+            provider.SetPropertyValues(new SettingsContext(), values);
+            var reloaded = new TestProvider { DirectoryPath = directory }.GetPropertyValues(new SettingsContext(), properties);
+            Assert.AreEqual(stored != "True", reloaded[name].PropertyValue);
+        }
+
         [TestCase(null, UpdateChannel.CommunityFork)]
         [TestCase(UpdateChannel.OfficialUpstream, UpdateChannel.OfficialUpstream)]
         [TestCase(UpdateChannel.CommunityFork, UpdateChannel.CommunityFork)]
