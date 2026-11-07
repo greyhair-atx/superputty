@@ -53,6 +53,10 @@ namespace SuperPutty.Utils
             WS_THICKFRAME = 0x00040000,
             WS_MAXIMIZE = 0x01000000,
             WS_DLGFRAME = 0x00400000,
+            WS_EX_DLGMODALFRAME = 0x00000001,
+            WS_EX_WINDOWEDGE = 0x00000100,
+            WS_EX_CLIENTEDGE = 0x00000200,
+            WS_EX_STATICEDGE = 0x00020000,
             WS_EX_APPWINDOW = 0x00040000,
             WS_EX_TOOLWINDOW = 0x00000080,
             WS_EX_NOACTIVATE = 0x08000000,
@@ -1355,8 +1359,9 @@ namespace SuperPutty.Utils
         [DllImport("user32.dll")]
         public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
 
-        [DllImport("user32.dll", EntryPoint = "SetWindowPos")]
-        public static extern IntPtr SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int Y, int cx, int cy, int wFlags);
+        [DllImport("user32.dll", EntryPoint = "SetWindowPos", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int Y, int cx, int cy, int wFlags);
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         public static extern IntPtr GetParent(IntPtr hWnd);

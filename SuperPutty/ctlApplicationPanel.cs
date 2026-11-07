@@ -21,6 +21,7 @@
 
 using System;
 using System.ComponentModel;
+using System.Drawing;
 using System.Diagnostics;
 using System.Windows.Forms;
 using WeifenLuo.WinFormsUI.Docking;
@@ -43,6 +44,8 @@ namespace SuperPutty
         #region Private Member Variables
 
         private static readonly ILog Log = LogManager.GetLogger(typeof(ApplicationPanel));
+        internal const int PuttyBorderWidth = 2;
+        private static readonly Color PuttyBorderColor = Color.FromArgb(96, 96, 96);
 
         private static bool RefocusOnVisChanged = Convert.ToBoolean(ConfigurationManager.AppSettings["SuperPuTTY.RefocusOnVisChanged"] ?? "False");
         private static bool LoopWaitForHandle = Convert.ToBoolean(ConfigurationManager.AppSettings["SuperPuTTY.LoopWaitForHandle"] ?? "False");
@@ -102,6 +105,21 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         /// capture and reparenting lifecycle.
         /// </summary>
         protected virtual bool UsesManagedChildHost { get { return false; } }
+
+        private bool UsesPuttyFrame { get { return !UsesManagedChildHost && ctlPuttyPanel.SupportsPuttyRestart(proto); } }
+
+        internal Rectangle HostedWindowBounds
+        {
+            get
+            {
+                if (!UsesPuttyFrame)
+                    return ClientRectangle;
+                return new Rectangle(Math.Min(PuttyBorderWidth, ClientSize.Width / 2),
+                    Math.Min(PuttyBorderWidth, ClientSize.Height / 2),
+                    Math.Max(0, ClientSize.Width - 2 * PuttyBorderWidth),
+                    Math.Max(0, ClientSize.Height - 2 * PuttyBorderWidth));
+            }
+        }
         
         // Some windows need closed with WM_DESTROY others need closed with WM_CLOSE or they leave zombies
         public bool ApplicationCloseWithDestroy { get; set; }
@@ -114,6 +132,8 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             this.ApplicationParameters = "";
             this.ApplicationWorkingDirectory = "";
             this.proto = proto;
+            if (UsesPuttyFrame)
+                SetStyle(ControlStyles.ResizeRedraw, true);
 
             this.Disposed += new EventHandler(ApplicationPanel_Disposed);
             SuperPuTTY.LayoutChanged += new EventHandler<Data.LayoutChangedEventArgs>(SuperPuTTY_LayoutChanged);
@@ -171,11 +191,22 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             this.MoveWindow("RefreshWindow");
         }
 
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            if (UsesPuttyFrame)
+                ControlPaint.DrawBorder(e.Graphics, ClientRectangle,
+                    PuttyBorderColor, PuttyBorderWidth, ButtonBorderStyle.Solid,
+                    PuttyBorderColor, PuttyBorderWidth, ButtonBorderStyle.Solid,
+                    PuttyBorderColor, PuttyBorderWidth, ButtonBorderStyle.Solid,
+                    PuttyBorderColor, PuttyBorderWidth, ButtonBorderStyle.Solid);
+        }
+
         private void MoveWindow(string src)
         {
             // if there is more than one screen and we're maximizing the window on the non-primary screen
             // and the non-primary screen has greater resolution than the primary, do an extra move window
-            if (Screen.AllScreens.Length > 1 && SuperPuTTY.MainForm.WindowState == FormWindowState.Maximized)
+            if (Screen.AllScreens.Length > 1 && SuperPuTTY.MainForm != null && SuperPuTTY.MainForm.WindowState == FormWindowState.Maximized)
             {
                 Screen screen = Screen.FromControl(this);
                 Screen primary = Screen.PrimaryScreen;
@@ -198,7 +229,11 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
             if (!SuperPuTTY.IsLayoutChanging)
             {
-                bool success = NativeMethods.MoveWindow(m_AppWin, x, y, this.Width, this.Height, this.Visible);
+                if (UsesPuttyFrame)
+                    RemovePuttyWindowFrame(m_AppWin);
+                Rectangle bounds = HostedWindowBounds;
+                bool success = NativeMethods.MoveWindow(m_AppWin, x + bounds.X, y + bounds.Y,
+                    bounds.Width, bounds.Height, this.Visible);
                 if (Log.IsInfoEnabled)
                 {
                     Log.InfoFormat("MoveWindow [{3,-15}{4,20}] w={0,4}, h={1,4}, visible={2}, success={5}, hnd={6}", this.Width, this.Height, this.Visible, src, this.Name, success, m_AppWin);
@@ -334,6 +369,65 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 elapsedMilliseconds >= timeoutMilliseconds;
         }
 
+        internal static bool RemovePuttyWindowFrame(IntPtr window)
+        {
+            if (!NativeMethods.IsWindow(window))
+                return false;
+            int originalStyle = NativeMethods.GetWindowLong(window, NativeMethods.GWL_STYLE);
+            int originalExtendedStyle = NativeMethods.GetWindowLong(window, NativeMethods.GWL_EXSTYLE);
+            // Keep PuTTY's top-level activation and scrollbars. WS_CHILD breaks
+            // its active-terminal state and keyboard input when switching tabs.
+            int style = unchecked((int)((uint)originalStyle & ~(NativeMethods.WS_CAPTION | NativeMethods.WS_THICKFRAME)));
+            int extendedStyle = unchecked((int)((uint)originalExtendedStyle &
+                ~(NativeMethods.WS_EX_DLGMODALFRAME | NativeMethods.WS_EX_WINDOWEDGE |
+                  NativeMethods.WS_EX_CLIENTEDGE | NativeMethods.WS_EX_STATICEDGE)));
+            if (style == originalStyle && extendedStyle == originalExtendedStyle)
+                return false;
+            int flags = NativeMethods.SWP_FRAMECHANGED | NativeMethods.SWP_NOMOVE |
+                NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE;
+            try
+            {
+                if (style != originalStyle)
+                    SetFrameStyle(window, NativeMethods.GWL_STYLE, style);
+                if (extendedStyle != originalExtendedStyle)
+                    SetFrameStyle(window, NativeMethods.GWL_EXSTYLE, extendedStyle);
+                if (!NativeMethods.SetWindowPos(window, IntPtr.Zero, 0, 0, 0, 0, flags))
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                return true;
+            }
+            catch (Win32Exception ex)
+            {
+                NativeMethods.SetWindowLong(window, NativeMethods.GWL_STYLE, originalStyle);
+                NativeMethods.SetWindowLong(window, NativeMethods.GWL_EXSTYLE, originalExtendedStyle);
+                NativeMethods.SetWindowPos(window, IntPtr.Zero, 0, 0, 0, 0, flags);
+                Log.Warn("Unable to remove the embedded PuTTY window frame", ex);
+                return false;
+            }
+        }
+
+        private static void SetFrameStyle(IntPtr window, int index, int style)
+        {
+            NativeMethods.ClearLastError(0);
+            int previous = NativeMethods.SetWindowLong(window, index, style);
+            int error = Marshal.GetLastWin32Error();
+            if (previous == 0 && error != 0)
+                throw new Win32Exception(error);
+        }
+
+        private void RefreshPuttyFrame()
+        {
+            if (!UsesPuttyFrame || !Visible || SuperPuTTY.IsLayoutChanging || !ExternalProcessCaptured)
+                return;
+            bool changed = RemovePuttyWindowFrame(m_AppWin);
+            Rectangle bounds = HostedWindowBounds;
+            Point origin = PointToScreen(bounds.Location);
+            var actual = new NativeMethods.RECT();
+            if (changed || (NativeMethods.GetWindowRect(m_AppWin, ref actual) &&
+                (actual.Left != origin.X || actual.Top != origin.Y ||
+                 actual.Right - actual.Left != bounds.Width || actual.Bottom - actual.Top != bounds.Height)))
+                MoveWindow("PuttyFrameChanged");
+        }
+
         private void AttachToWindow()
         {
             if (this.m_AppWin != IntPtr.Zero)
@@ -345,11 +439,16 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 NativeMethods.ShowWindow(m_AppWin, NativeMethods.WindowShowStyle.Maximize);
 
                 // set window parameters (how it's displayed)
-                long lStyle = NativeMethods.GetWindowLong(m_AppWin, NativeMethods.GWL_STYLE);
-                lStyle &= ~NativeMethods.WS_BORDER;
-                if (this.proto == SuperPutty.Data.ConnectionProtocol.VNC)
-                    lStyle |= NativeMethods.WS_HSCROLL | NativeMethods.WS_VSCROLL;
-                NativeMethods.SetWindowLong(m_AppWin, NativeMethods.GWL_STYLE, unchecked((int)lStyle));
+                if (UsesPuttyFrame)
+                    RemovePuttyWindowFrame(m_AppWin);
+                else
+                {
+                    long lStyle = NativeMethods.GetWindowLong(m_AppWin, NativeMethods.GWL_STYLE);
+                    lStyle &= ~NativeMethods.WS_BORDER;
+                    if (this.proto == SuperPutty.Data.ConnectionProtocol.VNC)
+                        lStyle |= NativeMethods.WS_HSCROLL | NativeMethods.WS_VSCROLL;
+                    NativeMethods.SetWindowLong(m_AppWin, NativeMethods.GWL_STYLE, unchecked((int)lStyle));
+                }
                 // Hooks are process-scoped and remain valid when VNC replaces its window.
                 if (this.lpfnWinEventProcs.Count == 0)
                 {
@@ -357,6 +456,8 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                     this.lpfnWinEventProcs.Add(lpfnWinEventProc);
                     RegisterWinEventHook(NativeMethods.WinEvents.EVENT_OBJECT_NAMECHANGE, lpfnWinEventProc);
                     RegisterWinEventHook(NativeMethods.WinEvents.EVENT_SYSTEM_FOREGROUND, lpfnWinEventProc);
+                    if (UsesPuttyFrame)
+                        RegisterWinEventHook(NativeMethods.WinEvents.EVENT_OBJECT_LOCATIONCHANGE, lpfnWinEventProc);
                 }
                 NotifyWindowCaptured();
             }
@@ -500,6 +601,12 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
             switch (eventType)
             {
+                case (uint)NativeMethods.WinEvents.EVENT_OBJECT_LOCATIONCHANGE:
+                    // Change Settings can restore PuTTY's frame styles. Repair
+                    // only actual window changes, ignoring caret/scrollbar events.
+                    if (UsesPuttyFrame && idObject == 0 && idChild == 0)
+                        RunOnUiThread(RefreshPuttyFrame);
+                    break;
                 case (uint)NativeMethods.WinEvents.EVENT_OBJECT_NAMECHANGE:
                     RunOnUiThread(UpdateTitle);
                     break;
