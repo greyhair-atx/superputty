@@ -163,16 +163,32 @@ namespace SuperPutty.Utils
         /// </summary>
         public void StartStandalone()
         {
-            ProcessStartInfo startInfo = new ProcessStartInfo
+            string error;
+            if (!TryStartStandalone(out error))
+                System.Windows.Forms.MessageBox.Show(error, "Unable to start external session",
+                    System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Warning);
+        }
+
+        internal bool TryStartStandalone(out string error, Action<ProcessStartInfo> start = null)
+        {
+            try
             {
-                FileName = this.Executable,
-                Arguments = this.Args
-            };
-            if (this.WorkingDir != null && Directory.Exists(this.WorkingDir))
-            {
-                startInfo.WorkingDirectory = this.WorkingDir;
+                var startInfo = new ProcessStartInfo { FileName = this.Executable, Arguments = this.Args };
+                if (this.WorkingDir != null && Directory.Exists(this.WorkingDir))
+                    startInfo.WorkingDirectory = this.WorkingDir;
+                if (start != null) start(startInfo);
+                else using (Process process = Process.Start(startInfo)) { }
+                error = null;
+                return true;
             }
-            Process.Start(startInfo);
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception || ex is IOException ||
+                ex is UnauthorizedAccessException || ex is System.Security.SecurityException ||
+                ex is ArgumentException || ex is InvalidOperationException)
+            {
+                Log.Warn("Could not start external session (" + ex.GetType().Name + ").");
+                error = "Unable to start the external client. Check its executable path in Tools > Options and your permission to run it.";
+                return false;
+            }
         }
 
         public SessionData Session { get; private set; }

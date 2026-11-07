@@ -30,26 +30,22 @@ namespace SuperPutty.Utils
 
             // Firefox addes a '/'...
             hostPort = hostPort.TrimEnd('/');
-            int idxPort = hostPort.IndexOf(":");
-            if (idxPort != -1)
+            this.Host = hostPort;
+            if (!ignorePort)
             {
-                // localhost:2020
+                int separator = hostPort.LastIndexOf(':');
+                bool bracketed = hostPort.StartsWith("[", StringComparison.Ordinal);
+                int closeBracket = bracketed ? hostPort.IndexOf(']') : -1;
+                bool hasPort = bracketed ? closeBracket > 0 && separator == closeBracket + 1
+                    : separator >= 0 && hostPort.IndexOf(':') == separator;
                 int port;
-                if (!ignorePort && (int.TryParse(hostPort.Substring(idxPort + 1), out port)))
+                if (hasPort && int.TryParse(hostPort.Substring(separator + 1), out port) && port > 0 && port <= 65535)
                 {
-                    this.Host = hostPort.Substring(0, idxPort);
+                    this.Host = hostPort.Substring(0, separator).Trim('[', ']');
                     this.Port = port;
                 }
-                else
-                {
-                    this.Host = hostPort;
-                }
-
-            }
-            else
-            {
-                // localhost
-                this.Host = hostPort;
+                else if (bracketed && closeBracket == hostPort.Length - 1)
+                    this.Host = hostPort.Substring(1, closeBracket - 1);
             }
 
 
