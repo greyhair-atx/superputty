@@ -20,6 +20,7 @@
  */
 
 using System;
+using System.Linq;
 using System.Xml;
 using System.Collections.Generic;
 using Microsoft.Win32;
@@ -803,7 +804,8 @@ namespace SuperPutty.Data
                     // backup
                     string fileBaseName = Path.GetFileNameWithoutExtension(fileName);
                     string dirName = Path.GetDirectoryName(fileName);
-                    string backupName = Path.Combine(dirName, string.Format("{0}.{1:yyyyMMdd_HHmmss}.XML", fileBaseName, DateTime.Now));
+                    string backupName = Path.Combine(dirName, string.Format("{0}.{1:yyyyMMdd_HHmmss_fff}_{2}.XML",
+                        fileBaseName, DateTime.Now, Guid.NewGuid().ToString("N")));
                     XmlDocument backup = new XmlDocument { XmlResolver = null };
                     using (XmlReader reader = XmlReader.Create(fileName, new XmlReaderSettings
                     {
@@ -812,11 +814,17 @@ namespace SuperPutty.Data
                         backup.Load(reader);
                     foreach (XmlAttribute args in backup.SelectNodes("//@ExtraArgs"))
                         args.Value = CommandLineOptions.RemoveSensitiveArguments(args.Value);
-                    backup.Save(backupName);
+                    using (var stream = new FileStream(backupName, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                        backup.Save(stream);
                     File.SetAttributes(backupName, File.GetAttributes(backupName) & ~FileAttributes.ReadOnly);
 
                     // limit last count saves
-                    List<string> oldFiles = new List<string>(Directory.GetFiles(dirName, fileBaseName + ".*.XML"));
+                    var backupPattern = new System.Text.RegularExpressions.Regex(
+                        "^" + System.Text.RegularExpressions.Regex.Escape(fileBaseName) +
+                        @"\.\d{8}_\d{6}(?:_\d{3}_[0-9a-f]{32})?\.XML$",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+                    List<string> oldFiles = Directory.GetFiles(dirName, fileBaseName + ".*.XML")
+                        .Where(path => backupPattern.IsMatch(Path.GetFileName(path))).ToList();
                     oldFiles.Sort();
                     oldFiles.Reverse();
                     if (oldFiles.Count > count)

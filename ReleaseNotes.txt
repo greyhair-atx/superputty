@@ -1,4 +1,6 @@
 SuperPuTTY Community Edition 1.8.4 (unpublished candidate)
+ - Handle standalone launch failures, IPv6 URL ports and quoted session IDs in new-instance commands.
+ - Fix literal Quick Selector searches and rapid-save backup collisions; preserve unrelated XML during retention cleanup.
  - Fix portable PuTTY protocol imports and unreadable files; preserve large SCP file sizes and culture-independent dates.
  - Update Apache log4net to 3.5.0.
  - Fix tab overflow hover/close targeting and release overflow-menu resources; retain unrestricted tab capacity.

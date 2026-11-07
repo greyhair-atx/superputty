@@ -10,7 +10,6 @@ namespace SuperPutty.Gui
     public partial class QuickSelector : Form
     {
         private static readonly ILog Log = LogManager.GetLogger(typeof(QuickSelector));
-        private static char[] sanitizeChars = { '*', '[', ',' };
         private static char[] splitChars = { ' ', '.', '*' };
 
         public QuickSelector()
@@ -84,7 +83,8 @@ namespace SuperPutty.Gui
 
         string tokenSanitize(string token)
         {
-            return sanitizeChars.Aggregate(token, (current, sanitizeChar) => current.Replace(Convert.ToString(sanitizeChar), "")).Replace("'", "''");
+            return String.Concat(token.Select(c => c == '\'' ? "''"
+                : c == '[' ? "[[]" : c == ']' ? "[]]" : c == '%' ? "[%]" : c.ToString()));
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
