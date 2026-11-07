@@ -34,12 +34,30 @@ namespace SuperPuttyUnitTests
         }
 
         [Test]
-        public void UncertainCloseWarningDoesNotClaimTheSessionIsConnected()
+        public void CloseQuestionContainsOnlyTheTabName()
         {
-            StringAssert.Contains("may still be connected", ctlPuttyPanel.GetCloseConfirmationMessage(SessionConnectionState.Unknown, "server"));
-            StringAssert.Contains("server", ctlPuttyPanel.GetCloseConfirmationMessage(SessionConnectionState.Unknown, "server"));
-            StringAssert.Contains("connecting session", ctlPuttyPanel.GetCloseConfirmationMessage(SessionConnectionState.Connecting, "server"));
-            StringAssert.Contains("reconnecting session", ctlPuttyPanel.GetCloseConfirmationMessage(SessionConnectionState.Reconnecting, "server"));
+            Assert.AreEqual("Close tab 'server'?", ctlPuttyPanel.GetCloseConfirmationMessage("server"));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void GuiLoadsMiddleClickPreferenceAndDoesNotApplyAnUnsavedChange(bool enabled)
+        {
+            bool original = SuperPutty.SuperPuTTY.Settings.MiddleClickClosesWithoutConfirmation;
+            try
+            {
+                SuperPutty.SuperPuTTY.Settings.MiddleClickClosesWithoutConfirmation = enabled;
+                using (var options = new dlgFindPutty())
+                {
+                    var checkbox = (CheckBox)options.Controls.Find("checkMiddleClickClose", true).Single();
+                    Assert.AreEqual(enabled, checkbox.Checked);
+                    Assert.AreEqual("Tabs and Docking", checkbox.Parent.Text);
+                    Assert.IsTrue(checkbox.Parent.ClientRectangle.Contains(checkbox.Bounds));
+                    checkbox.Checked = !enabled;
+                    Assert.AreEqual(enabled, SuperPutty.SuperPuTTY.Settings.MiddleClickClosesWithoutConfirmation);
+                }
+            }
+            finally { SuperPutty.SuperPuTTY.Settings.MiddleClickClosesWithoutConfirmation = original; }
         }
 
         [TestCase(false, true)]

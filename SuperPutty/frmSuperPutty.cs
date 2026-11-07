@@ -110,6 +110,7 @@ namespace SuperPutty
             // apply Light/Dark theme before any dock content is created
             ThemeManager.ApplyToDockPanel(this.DockPanel);
             ThemeManager.Apply(this);
+            this.components.Add(new SuperPutty.Gui.Docking.TabCloseMouseFilter(this.DockPanel));
 
             // setup connection bar
             this.tbTxtBoxPassword.TextBox.PasswordChar = '*';

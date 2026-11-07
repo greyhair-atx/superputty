@@ -6,6 +6,8 @@ Saved sessions appear in the Sessions panel and are stored in `Sessions.XML`. Do
 
 SuperPuTTY imposes no fixed limit on the number of open tabs. Available memory, Windows resources and the connection clients determine practical capacity. Overflow hides tab headers that do not fit; use the tab list to select them. **Connect All** asks for confirmation above 10 sessions by default, then opens every session if confirmed. The legacy `SuperPuTTY.MaxSessionsToOpen` configuration key controls that confirmation threshold, not the number of tabs allowed.
 
+In **Tools > Options > GUI > Tabs and Docking**, enable **Middle-click closes tabs without confirmation** to close the tab under the middle mouse button immediately. This is off by default; with it off, middle-click uses the normal close confirmation. Clicking the tab's **X** still asks before closing an active or unknown-state session, using `Close tab '<tab name>'?`. The setting takes effect after saving Options and works in Light, Dark, Dark Modern and System themes. Disconnected sessions retain their normal behavior without a session-close prompt.
+
 ## Creating and updating sessions
 
 Create a session from the Sessions panel, or open a quick connection and choose **File > Save Current Session**. When a saved session is active, that command updates it after confirmation through the session editor.

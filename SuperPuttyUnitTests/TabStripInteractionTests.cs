@@ -10,7 +10,7 @@ using WeifenLuo.WinFormsUI.Docking;
 
 namespace SuperPuttyUnitTests
 {
-    [TestFixture, NonParallelizable, Apartment(ApartmentState.STA)]
+    [TestFixture, NonParallelizable, Apartment(ApartmentState.STA), Category("InteractiveUiTest")]
     public class TabStripInteractionTests
     {
         [TestCase(false, 20)]

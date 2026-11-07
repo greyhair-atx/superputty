@@ -4,6 +4,8 @@ The 1.8.4 release path is `azure-pipelines.yml` → `build/New-InnoReleaseBundle
 
 Default CI produces an unsigned `portable-dev` bundle only. Enabling code signing requires the configured Azure service connection, Artifact Signing task extension and permission to the existing signing profile. Both application and setup/uninstaller are signed and timestamped. The pipeline retains review artifacts; it never creates release tags, public GitHub/Gitea releases or WinGet submissions.
 
+Desktop tests use the `InteractiveUiTest` category; console authentication tests use `InteractiveConsoleTest`. The default run excludes both categories and all `NetworkTest` cases. Set `runInteractiveTests: true` and `windowsAgentPool` to an existing interactive Windows agent pool to run all non-network tests and shutdown scenarios. The default pool value, `Microsoft-hosted`, selects `windows-latest` for the noninteractive run. Enabling desktop tests with that default is rejected before build/signing; a custom agent must also pass `build/Test-InteractiveDesktop.ps1`. The check reads the active desktop without unlocking or switching it. Keep the agent's Windows session signed in and unlocked. Agent registration/autologon configuration is a separate setup task; see [Microsoft's UI-testing guidance](https://learn.microsoft.com/en-us/azure/devops/pipelines/test/ui-testing-considerations?view=azure-devops).
+
 `build/InnoToolchain.psd1` pins the official Inno SDK installer and compiler SHA-256 and signing client version. `Install-InnoToolchain.ps1` verifies the SDK publisher/hash before running it. `-VerifyOnly -Installer <cached official SDK>` checks without installation. Review upstream release information before changing any pin.
 
 After building and signing `bin/x64/Release/SuperPutty.exe`:
@@ -14,6 +16,8 @@ After building and signing `bin/x64/Release/SuperPutty.exe`:
 ./build/Test-InnoReleaseTooling.ps1 -ReleaseDirectory <bundle-dir> -ResultDirectory <new-test-dir>
 ./build/New-InnoWinGetManifest.ps1 -ReleaseDirectory <bundle-dir> -ManifestDirectory <new-review-dir>
 ```
+
+For an isolated local build, supply `-ApplicationDirectory <compiled-app-directory>` to the bundle builder. Runtime themes/icons are MSBuild content with relative output paths, so Release, Debug and custom output directories receive them automatically. Use `-PortableOnly` for unsigned visual acceptance; signing and installer generation remain separate.
 
 Use fresh output/work/cache directories, preserve earlier evidence, and keep private signing/work files outside distributable assets. The compiler's initial unsigned-uninstaller seed pass is expected to fail; the builder signs that cache and substitutes its exact pinned bytes into the final installer. Fault hooks require `-TestFixture` and are forbidden in a release bundle.
 

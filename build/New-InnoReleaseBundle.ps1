@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$Version='1.8.4',[string]$Configuration='Release',
+param([string]$Version='1.8.4',[string]$Configuration='Release',[string]$ApplicationDirectory,
  [Parameter(Mandatory)][string]$OutputDirectory,[string]$WorkDirectory,
  [switch]$PortableOnly,[string]$Compiler,[string]$SigningTool,[string]$SigningDlib,[string]$SigningMetadata)
 $ErrorActionPreference='Stop'
@@ -11,7 +11,7 @@ if(-not $WorkDirectory){$WorkDirectory=Join-Path (Split-Path $output -Parent) ('
 $work=[IO.Path]::GetFullPath($WorkDirectory)
 if(Test-Path $work){throw 'Use a new working directory.'}
 if($work.StartsWith($output+'\',[StringComparison]::OrdinalIgnoreCase) -or $work -eq $output){throw 'Private signing/work files must stay outside the distributable bundle.'}
-$app=Join-Path $repo "bin/x64/$Configuration"
+$app=if($ApplicationDirectory){(Resolve-Path -LiteralPath $ApplicationDirectory).Path}else{Join-Path $repo "bin/x64/$Configuration"}
 $appExe=Join-Path $app 'SuperPutty.exe'
 if([version][Diagnostics.FileVersionInfo]::GetVersionInfo($appExe).FileVersion -ne [version]($Version+'.0')){throw 'Application/release versions differ.'}
 if(-not $PortableOnly){

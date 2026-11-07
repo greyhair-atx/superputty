@@ -79,6 +79,7 @@ namespace SuperPutty
             this.numericUpDown1 = new System.Windows.Forms.NumericUpDown();
             this.checkBoxAllowPuttyPWArg = new System.Windows.Forms.CheckBox();
             this.checkConfirmTabClose = new System.Windows.Forms.CheckBox();
+            this.checkMiddleClickClose = new System.Windows.Forms.CheckBox();
             this.tabControl = new System.Windows.Forms.TabControl();
             this.tabPageGeneral = new System.Windows.Forms.TabPage();
             this.label23 = new System.Windows.Forms.Label();
@@ -647,8 +648,18 @@ namespace SuperPutty
             this.checkConfirmTabClose.Name = "checkConfirmTabClose";
             this.checkConfirmTabClose.Size = new System.Drawing.Size(280, 17);
             this.checkConfirmTabClose.TabIndex = 38;
-            this.checkConfirmTabClose.Text = "Ask for Confirmation When Closing Mulitple Tabs";
+            this.checkConfirmTabClose.Text = "Ask for Confirmation When Closing Multiple Tabs";
             this.checkConfirmTabClose.UseVisualStyleBackColor = true;
+            //
+            // checkMiddleClickClose
+            //
+            this.checkMiddleClickClose.AutoSize = true;
+            this.checkMiddleClickClose.Location = new System.Drawing.Point(12, 147);
+            this.checkMiddleClickClose.Name = "checkMiddleClickClose";
+            this.checkMiddleClickClose.TabIndex = 39;
+            this.checkMiddleClickClose.Text = "Middle-click closes tabs without confirmation";
+            this.checkMiddleClickClose.UseVisualStyleBackColor = true;
+            this.toolTip.SetToolTip(this.checkMiddleClickClose, "When enabled, middle-clicking a session tab closes it immediately. The tab X keeps its normal close confirmation.");
             // 
             // tabControl
             // 
@@ -858,12 +869,13 @@ namespace SuperPutty
             this.tabPageGUI.Size = new System.Drawing.Size(616, 402);
             this.tabPageGUI.TabIndex = 1;
             this.tabPageGUI.Text = "GUI";
+            this.tabPageGUI.AutoScroll = true;
             this.tabPageGUI.UseVisualStyleBackColor = true;
             // 
             // groupBox9
             // 
             this.groupBox9.Controls.Add(this.checkBoxAllowPuttyPWArg);
-            this.groupBox9.Location = new System.Drawing.Point(3, 324);
+            this.groupBox9.Location = new System.Drawing.Point(3, 350);
             this.groupBox9.Name = "groupBox9";
             this.groupBox9.Size = new System.Drawing.Size(355, 44);
             this.groupBox9.TabIndex = 44;
@@ -1074,6 +1086,7 @@ namespace SuperPutty
             // 
             this.groupBox2.Controls.Add(this.checkRestrictFloatingWindows);
             this.groupBox2.Controls.Add(this.checkConfirmTabClose);
+            this.groupBox2.Controls.Add(this.checkMiddleClickClose);
             this.groupBox2.Controls.Add(this.checkConstrainPuttyDocking);
             this.groupBox2.Controls.Add(this.comboBoxTabText);
             this.groupBox2.Controls.Add(this.label5);
@@ -1082,7 +1095,7 @@ namespace SuperPutty
             this.groupBox2.Controls.Add(this.label9);
             this.groupBox2.Location = new System.Drawing.Point(3, 170);
             this.groupBox2.Name = "groupBox2";
-            this.groupBox2.Size = new System.Drawing.Size(355, 148);
+            this.groupBox2.Size = new System.Drawing.Size(355, 174);
             this.groupBox2.TabIndex = 39;
             this.groupBox2.TabStop = false;
             this.groupBox2.Text = "Tabs and Docking";
@@ -1418,6 +1431,7 @@ namespace SuperPutty
         private System.Windows.Forms.Label label12;
         private System.Windows.Forms.NumericUpDown numericUpDownOpacity;
         private System.Windows.Forms.CheckBox checkConfirmTabClose;
+        private System.Windows.Forms.CheckBox checkMiddleClickClose;
         private System.Windows.Forms.CheckBox checkEnableKeyboardShortcuts;
         private System.Windows.Forms.CheckBox checkEnableControlTabSwitching;
         private System.Windows.Forms.ComboBox comboSearchMode;

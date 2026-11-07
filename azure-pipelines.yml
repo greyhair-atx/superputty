@@ -8,9 +8,13 @@ parameters:
   type: string
   default: 'not-configured'
 - name: runInteractiveTests
-  displayName: 'Run interactive console/shutdown tests on an interactive Windows agent'
+  displayName: 'Run desktop UI, console and shutdown tests (requires an interactive agent pool)'
   type: boolean
   default: false
+- name: windowsAgentPool
+  displayName: 'Microsoft-hosted for windows-latest, or the name of an existing Windows agent pool'
+  type: string
+  default: 'Microsoft-hosted'
 - name: testInstallerLifecycle
   displayName: 'Install/uninstall signed candidate on disposable agent (machine scope)'
   type: boolean
@@ -26,7 +30,12 @@ trigger:
     - '*'
 # Release candidates are retained as pipeline artifacts; publication is separate.
 pool:
-  vmImage: 'windows-latest'
+  ${{ if eq(parameters.windowsAgentPool, 'Microsoft-hosted') }}:
+    vmImage: 'windows-latest'
+  ${{ else }}:
+    name: '${{ parameters.windowsAgentPool }}'
+    demands:
+    - Agent.OS -equals Windows_NT
 variables:
   buildPlatform: 'x64'
   buildConfiguration: 'Release'
@@ -42,6 +51,19 @@ steps:
     targetType: 'inline'
     script: |
       New-Item -ItemType Directory -Force '$(Build.ArtifactStagingDirectory)/diagnostics' | Out-Null
+- ${{ if eq(parameters.runInteractiveTests, true) }}:
+  - task: PowerShell@2
+    displayName: 'Require an interactive Windows agent and unlocked desktop'
+    env:
+      SPCE_WINDOWS_AGENT_POOL: '${{ parameters.windowsAgentPool }}'
+    inputs:
+      pwsh: false
+      targetType: 'inline'
+      script: |
+        if ([string]::IsNullOrWhiteSpace($env:SPCE_WINDOWS_AGENT_POOL) -or $env:SPCE_WINDOWS_AGENT_POOL -eq 'Microsoft-hosted') {
+          throw 'Set windowsAgentPool to an existing interactive Windows agent pool when enabling runInteractiveTests.'
+        }
+        & ./build/Test-InteractiveDesktop.ps1
 - task: NuGetToolInstaller@1
 - task: VSBuild@1
   displayName: 'Build application and tests; legacy MSI project is excluded'
@@ -60,7 +82,7 @@ steps:
     ${{ if eq(parameters.runInteractiveTests, true) }}:
       testFiltercriteria: 'TestCategory!=NetworkTest'
     ${{ else }}:
-      testFiltercriteria: 'TestCategory!=NetworkTest&TestCategory!=InteractiveConsoleTest'
+      testFiltercriteria: 'TestCategory!=NetworkTest&TestCategory!=InteractiveConsoleTest&TestCategory!=InteractiveUiTest'
     failOnMinTestsNotRun: true
     minimumExpectedTests: '300'
 - ${{ if eq(parameters.runInteractiveTests, true) }}:
