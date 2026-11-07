@@ -1,4 +1,5 @@
 SuperPuTTY Community Edition 1.8.4 (unpublished candidate)
+ - Update Apache log4net to 3.5.0.
  - Fix tab overflow hover/close targeting and release overflow-menu resources; retain unrestricted tab capacity.
  - Add optional middle-click tab closing and a consistent 2px embedded PuTTY border.
  - Improve connection-aware close confirmation and add optional interactive PSCP authentication.
@@ -7,6 +8,7 @@ SuperPuTTY Community Edition 1.8.4 (unpublished candidate)
  - Validate PuTTYCM imports and skip invalid PuTTY registry entries without blocking valid sessions.
  - Handle single-instance forwarding failures and honor forwarded layout commands on the UI thread.
  - Fix searches without hostnames and bound regex execution time.
+ - Preserve nested session paths after folder moves; fix Quick Selector apostrophes and empty-result navigation.
  - Preserve imported RDP custom ports and format IPv6 endpoints correctly.
  - Report WinSCP/FileZilla launch failures with actionable guidance.
  - Prepare signed Inno/portable packaging with durable upgrade recovery and explicit MSI migration.

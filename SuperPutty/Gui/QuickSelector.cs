@@ -84,7 +84,7 @@ namespace SuperPutty.Gui
 
         string tokenSanitize(string token)
         {
-            return sanitizeChars.Aggregate(token, (current, sanitizeChar) => current.Replace(Convert.ToString(sanitizeChar), ""));
+            return sanitizeChars.Aggregate(token, (current, sanitizeChar) => current.Replace(Convert.ToString(sanitizeChar), "")).Replace("'", "''");
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
@@ -109,14 +109,15 @@ namespace SuperPutty.Gui
                     e.Handled = true;
                     break;
                 case Keys.Down:
-                    // focus grid and move selection down by 1 row if possible
-                    this.dataGridViewData.Focus();
-                    if (this.dataGridViewData.SelectedRows[0].Index == 0)
+                    if (this.dataGridViewData.Rows.Count > 0)
                     {
-                        if (this.dataGridViewData.Rows.Count > 1)
-                        {
-                            this.dataGridViewData.CurrentCell = this.dataGridViewData.Rows[1].Cells[0];
-                        }
+                        this.dataGridViewData.Focus();
+                        var selected = this.dataGridViewData.SelectedRows;
+                        int rowIndex = selected.Count == 0 ? 0
+                            : selected[0].Index == 0 && this.dataGridViewData.Rows.Count > 1 ? 1 : selected[0].Index;
+                        var column = this.dataGridViewData.Columns.Cast<DataGridViewColumn>().FirstOrDefault(c => c.Visible);
+                        if (column != null)
+                            this.dataGridViewData.CurrentCell = this.dataGridViewData.Rows[rowIndex].Cells[column.Index];
                     }
                     e.Handled = true;
                     break;
@@ -161,7 +162,7 @@ namespace SuperPutty.Gui
                     e.Handled = true;
                     break;
                 case Keys.Up:
-                    if (this.dataGridViewData.Rows[0].Selected)
+                    if (this.dataGridViewData.Rows.Count == 0 || this.dataGridViewData.Rows[0].Selected)
                     {
                         this.textBoxData.Focus();
                         e.Handled = true;

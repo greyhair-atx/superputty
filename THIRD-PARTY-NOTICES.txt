@@ -26,7 +26,7 @@ DockPanelSuite.ThemeVS2015 3.1.1
   Note: SuperPuTTY's shaped-tab renderer is derived from DockPanelSuite code
         and remains covered by the same MIT notice.
 
-Apache log4net 3.4.0
+Apache log4net 3.5.0
   License: Apache License 2.0
   Role: Logging framework in log4net.dll.
   Copyright The Apache Software Foundation.

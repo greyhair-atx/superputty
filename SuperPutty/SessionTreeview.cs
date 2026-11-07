@@ -1013,11 +1013,8 @@ namespace SuperPutty
 
         public void resetFoldersChildrenPaths(TreeNode nodePayload)
         {
-            // Reset folders children nodes sessionId (path)
-            foreach (TreeNode node in nodePayload.Nodes)
-            {
-                UpdateSessionId(node, (SessionData)node.Tag);
-            }
+            // Walk all descendants so nested folders retain their new location after saving.
+            UpdateSessionId(nodePayload);
         }
 
         private void timerDelayedSave_Tick(object sender, EventArgs e)
