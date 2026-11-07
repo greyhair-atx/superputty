@@ -454,10 +454,9 @@ namespace SuperPutty
                     if (!TryBuildCurrentSessionId(editedSession.SessionId, name, out candidateId, out error))
                         return false;
 
-                    SessionData conflict = SuperPuTTY.GetSessionById(candidateId);
-                    if (conflict != null && !Object.ReferenceEquals(conflict, activeSession))
+                    if (SuperPuTTY.SessionPathConflicts(candidateId, activeSession))
                     {
-                        error = "Session with same name exists";
+                        error = "A session or folder with that path already exists";
                         return false;
                     }
                     return true;
@@ -467,33 +466,18 @@ namespace SuperPutty
                     return;
             }
 
-            SessionData finalConflict = SuperPuTTY.GetSessionById(editedSession.SessionId);
-            if (finalConflict != null && !Object.ReferenceEquals(finalConflict, activeSession))
+            try
             {
-                MessageBox.Show(
-                    this,
-                    "A session with that name already exists.",
-                    "Could Not Save Session",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
+                SuperPuTTY.SaveSessionChanges(activeSession, editedSession, SuperPuTTY.SaveSessions);
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException ||
+                ex is InvalidDataException || ex is IOException || ex is UnauthorizedAccessException)
+            {
+                Log.Warn("Could not save the current session; its changes were rolled back.", ex);
+                MessageBox.Show(this, "The session could not be saved.\n\n" + ex.Message,
+                    "Could Not Save Session", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-
-            activeSession.CopyFrom(editedSession);
-            if (!isSavedSession && !SuperPuTTY.AddSession(activeSession))
-            {
-                MessageBox.Show(
-                    this,
-                    "A session with that name already exists.",
-                    "Could Not Save Session",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                return;
-            }
-
-            // GetSessionById also rebuilds the index after an existing session is renamed.
-            SuperPuTTY.GetSessionById(activeSession.SessionId);
-            SuperPuTTY.SaveSessions();
 
             activeDocument.Text = activeSession.SessionName;
             activeDocument.TabText = activeSession.SessionName;
@@ -752,39 +736,36 @@ namespace SuperPutty
 
         private void switchSessionToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            QuickSelector q = new QuickSelector();
-            QuickSelectorData data = new QuickSelectorData
+            using (QuickSelectorData data = BuildSwitchSessionData(this.tabSwitcher.Documents))
+            using (QuickSelector dialog = new QuickSelector())
             {
-                CaseSensitive = SuperPuTTY.Settings.QuickSelectorCaseSensitiveSearch
-            };
-
-            foreach (ToolWindow content in this.tabSwitcher.Documents)
-            {
-                ctlPuttyPanel panel = content as ctlPuttyPanel;
-                if (content != null)
+                QuickSelectorOptions options = new QuickSelectorOptions
                 {
-                    SessionData sd = panel.Session;
-                    data.ItemData.AddItemDataRow(
-                        panel.Text,
-                        sd.SessionId,
-                        sd.Proto == ConnectionProtocol.Cygterm || sd.Proto == ConnectionProtocol.Mintty ? Color.Blue : Color.Black,
-                        panel);
+                    Sort = data.ItemData.DetailColumn.ColumnName,
+                    BaseText = "Switch Session",
+                    ShowNameColumn = true
+                };
+                if (dialog.ShowDialog(this, data, options) == DialogResult.OK)
+                {
+                    ToolWindowDocument document = dialog.SelectedItem.Tag as ToolWindowDocument;
+                    if (document != null && !document.IsDisposed && !document.Disposing) document.Activate();
                 }
             }
+        }
 
-            QuickSelectorOptions opt = new QuickSelectorOptions
+        internal static QuickSelectorData BuildSwitchSessionData(IEnumerable<IDockContent> documents)
+        {
+            var data = new QuickSelectorData { CaseSensitive = SuperPuTTY.Settings.QuickSelectorCaseSensitiveSearch };
+            foreach (ToolWindowDocument document in documents.OfType<ToolWindowDocument>())
             {
-                Sort = data.ItemData.DetailColumn.ColumnName,
-                BaseText = "Switch Session",
-                ShowNameColumn = true
-            };
-
-            QuickSelector d = new QuickSelector();
-            if (d.ShowDialog(this, data, opt) == DialogResult.OK)
-            {
-                ctlPuttyPanel panel = (ctlPuttyPanel)d.SelectedItem.Tag;
-                panel.Activate();
+                if (document.IsDisposed || document.Disposing) continue;
+                SessionData session = GetDocumentSession(document);
+                if (session == null) continue;
+                data.ItemData.AddItemDataRow(document.Text, session.SessionId,
+                    session.Proto == ConnectionProtocol.Cygterm || session.Proto == ConnectionProtocol.Mintty ? Color.Blue : Color.Black,
+                    document);
             }
+            return data;
         }
 
         private void editSessionsInNotepadToolStripMenuItem_Click(object sender, EventArgs e)

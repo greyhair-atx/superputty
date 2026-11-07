@@ -1,4 +1,16 @@
 SuperPuTTY Community Edition 1.8.4 (unpublished candidate)
+ - Verify the latest x64 Release source build with 452/452 CI-default regression tests passing without retries; rebuild and revalidate the signed installer before release.
+ - Validate and roll back current-session saves so folder conflicts and write failures cannot discard a saved session.
+ - Flush pending drag-and-drop saves on close/disposal; retain pending changes after a failed save.
+ - Support SCP documents in Switch Session and clear/rebind Session Details after tree selection changes.
+ - Release Session Details subscriptions on close/disposal and when its session tree is disposed.
+ - Reject catalog reloads with mismatched session IDs/names; build repeated-name session menus correctly and dispose replaced menu items.
+ - Apply docking restrictions consistently and restore original permissions when restrictions are disabled.
+ - Preserve the live session catalog after an invalid reload; validate all replacement entries before changing it.
+ - Move, rename and delete complete session folders even while search hides some of their sessions.
+ - Prevent duplicate session event subscriptions and detach them when rebuilding, closing or disposing the tree.
+ - Treat session IDs consistently without case sensitivity; reject session/folder path conflicts and preserve unique import names.
+ - Fix PID-file lifecycle test synchronization; validate published 1.8.3 MSI migration in both scopes and pass 397 signed-build regression tests without retries.
  - Handle standalone launch failures, IPv6 URL ports and quoted session IDs in new-instance commands.
  - Fix literal Quick Selector searches and rapid-save backup collisions; preserve unrelated XML during retention cleanup.
  - Fix portable PuTTY protocol imports and unreadable files; preserve large SCP file sizes and culture-independent dates.

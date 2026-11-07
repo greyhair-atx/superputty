@@ -37,7 +37,8 @@ namespace SuperPutty
         public static event Action<string> StatusEvent;
 
         static BindingList<LayoutData> layouts = new BindingList<LayoutData>();
-        static SortedList<string, SessionData> sessionsMap = new SortedList<string, SessionData>();
+        static SortedList<string, SessionData> sessionsMap = new SortedList<string, SessionData>(StringComparer.OrdinalIgnoreCase);
+        internal static bool IsUpdatingSessionCatalog { get; private set; }
         static BindingList<SessionData> sessionsList = new BindingList<SessionData>();
         static bool? isFirstRun;
 
@@ -366,15 +367,7 @@ namespace SuperPutty
             {
                 if (File.Exists(fileName))
                 {
-                    List<SessionData> sessions = SessionData.LoadSessionsFromFile(fileName);
-                    // remove old
-                    sessionsMap.Clear();
-                    sessionsList.Clear();
-
-                    foreach (SessionData session in sessions)
-                    {
-                        AddSession(session);
-                    }
+                    ReplaceSessionCatalog(SessionData.LoadSessionsFromFile(fileName));
                 }
                 else
                 {
@@ -386,6 +379,171 @@ namespace SuperPutty
             {
                 Log.Error($"Error while loading sessions from {fileName}", ex);
             }
+        }
+
+        private static SortedList<string, SessionData> ValidateSessionCatalog(
+            IEnumerable<SessionData> sessions, IDictionary<SessionData, string> renamed = null)
+        {
+            var staged = new SortedList<string, SessionData>(StringComparer.OrdinalIgnoreCase);
+            foreach (var session in sessions)
+            {
+                string id = session == null ? null : renamed != null && renamed.ContainsKey(session)
+                    ? renamed[session] : session.SessionId;
+                if (session == null || String.IsNullOrWhiteSpace(id) || String.IsNullOrWhiteSpace(session.SessionName) ||
+                    id.Split('/').Any(String.IsNullOrWhiteSpace))
+                    throw new InvalidDataException("Every session requires a valid ID and name.");
+                if (!String.Equals(SessionData.GetSessionNameFromId(id), session.SessionName, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("The session name must match the last part of its ID: " + id);
+                if (staged.ContainsKey(id))
+                    throw new InvalidDataException("Conflicting session IDs (case is ignored): " + id);
+                staged.Add(id, session);
+            }
+            foreach (string id in staged.Keys)
+            {
+                string parent = SessionData.GetSessionParentId(id);
+                while (parent != null)
+                {
+                    if (staged.ContainsKey(parent))
+                        throw new InvalidDataException("A session cannot also be a folder: " + parent);
+                    parent = SessionData.GetSessionParentId(parent);
+                }
+            }
+            return staged;
+        }
+
+        internal static void ReplaceSessionCatalog(IEnumerable<SessionData> sessions)
+        {
+            var replacement = sessions.ToList();
+            var staged = ValidateSessionCatalog(replacement);
+            bool notify = sessionsList.RaiseListChangedEvents;
+            try
+            {
+                sessionsList.RaiseListChangedEvents = false;
+                sessionsMap = staged;
+                sessionsList.Clear();
+                foreach (var session in replacement) sessionsList.Add(session);
+            }
+            finally { sessionsList.RaiseListChangedEvents = notify; }
+            if (notify) sessionsList.ResetBindings();
+        }
+
+        internal static bool SessionPathExists(string id)
+        {
+            return sessionsMap.ContainsKey(id) || sessionsMap.Keys.Any(key =>
+                key.StartsWith(id + "/", StringComparison.OrdinalIgnoreCase));
+        }
+
+        internal static bool SessionPathConflicts(string id, SessionData except = null)
+        {
+            return sessionsMap.Any(pair => !Object.ReferenceEquals(pair.Value, except) &&
+                (String.Equals(pair.Key, id, StringComparison.OrdinalIgnoreCase) ||
+                 pair.Key.StartsWith(id + "/", StringComparison.OrdinalIgnoreCase) ||
+                 id.StartsWith(pair.Key + "/", StringComparison.OrdinalIgnoreCase)));
+        }
+
+        internal static void SaveSessionChanges(SessionData session, SessionData edited, Action persistSessions)
+        {
+            if (session == null || edited == null || persistSessions == null)
+                throw new ArgumentNullException(session == null ? nameof(session) : edited == null ? nameof(edited) : nameof(persistSessions));
+
+            bool saved = sessionsList.Contains(session);
+            var replacement = sessionsList.Where(s => !Object.ReferenceEquals(s, session)).Concat(new[] { edited });
+            ValidateSessionCatalog(replacement);
+            var original = (SessionData)session.Clone();
+            var originalMap = sessionsMap;
+            bool notify = sessionsList.RaiseListChangedEvents;
+            bool updating = IsUpdatingSessionCatalog;
+            try
+            {
+                IsUpdatingSessionCatalog = true;
+                sessionsList.RaiseListChangedEvents = false;
+                session.CopyFrom(edited);
+                if (!String.Equals(session.SessionId, edited.SessionId, StringComparison.Ordinal) ||
+                    !String.Equals(session.SessionName, edited.SessionName, StringComparison.Ordinal))
+                    throw new InvalidOperationException("A session name or ID change was canceled.");
+                if (!saved) sessionsList.Add(session);
+                sessionsMap = ValidateSessionCatalog(sessionsList);
+                persistSessions();
+            }
+            catch
+            {
+                session.CopyFrom(original);
+                if (!saved) sessionsList.Remove(session);
+                sessionsMap = originalMap;
+                throw;
+            }
+            finally
+            {
+                IsUpdatingSessionCatalog = updating;
+                sessionsList.RaiseListChangedEvents = notify;
+                if (notify) sessionsList.ResetBindings();
+            }
+        }
+
+        internal static List<SessionData> GetSessionsInFolder(string folder)
+        {
+            if (String.IsNullOrWhiteSpace(folder)) throw new ArgumentException("A folder path is required.");
+            return GetAllSessions().Where(session => session.SessionId.StartsWith(folder + "/",
+                StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        private static void ChangeSessionIds(IDictionary<SessionData, string> renamed)
+        {
+            var staged = ValidateSessionCatalog(sessionsList, renamed);
+            var original = renamed.Keys.ToDictionary(session => session, session => session.SessionId);
+            IsUpdatingSessionCatalog = true;
+            try
+            {
+                foreach (var pair in renamed)
+                {
+                    pair.Key.SessionId = pair.Value;
+                    if (!String.Equals(pair.Key.SessionId, pair.Value, StringComparison.Ordinal))
+                        throw new InvalidOperationException("A session ID change was canceled.");
+                }
+                sessionsMap = staged;
+            }
+            catch
+            {
+                foreach (var pair in original) pair.Key.SessionId = pair.Value;
+                throw;
+            }
+            finally { IsUpdatingSessionCatalog = false; }
+            sessionsList.ResetBindings();
+        }
+
+        internal static int MoveSessionFolder(string oldPath, string newPath)
+        {
+            if (String.IsNullOrWhiteSpace(oldPath) || String.IsNullOrWhiteSpace(newPath))
+                throw new ArgumentException("Folder paths cannot be empty.");
+            bool same = String.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase);
+            if (!same && (newPath.StartsWith(oldPath + "/", StringComparison.OrdinalIgnoreCase) ||
+                oldPath.StartsWith(newPath + "/", StringComparison.OrdinalIgnoreCase) || SessionPathExists(newPath)))
+                throw new InvalidOperationException("The destination folder already exists or overlaps the source.");
+            var affected = GetSessionsInFolder(oldPath);
+            if (affected.Count > 0)
+                ChangeSessionIds(affected.ToDictionary(session => session,
+                    session => newPath + session.SessionId.Substring(oldPath.Length)));
+            return affected.Count;
+        }
+
+        internal static void MoveSavedSession(SessionData session, string newId)
+        {
+            if (!Object.ReferenceEquals(GetSessionById(session.SessionId), session))
+                throw new InvalidOperationException("The session is not in the catalog.");
+            ChangeSessionIds(new Dictionary<SessionData, string> { { session, newId } });
+        }
+
+        internal static void RemoveSessionFolder(string folder)
+        {
+            var affected = GetSessionsInFolder(folder);
+            bool notify = sessionsList.RaiseListChangedEvents;
+            try
+            {
+                sessionsList.RaiseListChangedEvents = false;
+                foreach (var session in affected) RemoveSession(session.SessionId);
+            }
+            finally { sessionsList.RaiseListChangedEvents = notify; }
+            if (notify) sessionsList.ResetBindings();
         }
 
         /// <summary>Save in-application Session Database to XML File</summary>
@@ -427,15 +585,11 @@ namespace SuperPutty
                     // @TODO: Revisit...this is a work around the sessionId changing in tree
                     foreach (SessionData sd in sessionsList)
                     {
-                        if (sd.SessionId == sessionId)
+                        if (String.Equals(sd.SessionId, sessionId, StringComparison.OrdinalIgnoreCase))
                         {
                             session = sd;
                             // reindex list
-                            sessionsMap.Clear();
-                            foreach (SessionData s in sessionsList)
-                            {
-                                sessionsMap[s.SessionId] = s;
-                            }
+                            sessionsMap = ValidateSessionCatalog(sessionsList);
                             break;
                         }
                     }
@@ -449,8 +603,15 @@ namespace SuperPutty
         /// <returns>true on success, false on failure</returns>
         public static bool AddSession(SessionData session)
         {
+            if (session == null || String.IsNullOrWhiteSpace(session.SessionId) || String.IsNullOrWhiteSpace(session.SessionName) ||
+                session.SessionId.Split('/').Any(String.IsNullOrWhiteSpace))
+                throw new ArgumentException("A session requires a valid ID and name.");
             bool success = false;
-            if (GetSessionById(session.SessionId) == null)
+            bool conflict = GetSessionById(session.SessionId) != null || SessionPathExists(session.SessionId);
+            for (string parent = SessionData.GetSessionParentId(session.SessionId); !conflict && parent != null;
+                parent = SessionData.GetSessionParentId(parent))
+                conflict = sessionsMap.ContainsKey(parent);
+            if (!conflict)
             {
                 Log.InfoFormat($"Added Session, id={session.SessionId}");
                 sessionsMap.Add(session.SessionId, session);
@@ -689,15 +850,19 @@ namespace SuperPutty
         /// <param name="panel">The <seealso cref="DockContent"/> panel to apply the restrictions to</param>
         public static void ApplyDockRestrictions(DockContent panel)
         {
-            if (Settings.RestrictContentToDocumentTabs)
-            {
-                panel.DockAreas = DockAreas.Document | DockAreas.Float;
-            }
+            DockAreas areas = originalDockAreas.GetValue(panel, p => new DockingDefaults(p.DockAreas)).Areas;
+            if (Settings.RestrictContentToDocumentTabs) areas &= DockAreas.Document | DockAreas.Float;
+            if (Settings.DockingRestrictFloatingWindows) areas &= ~DockAreas.Float;
+            panel.DockAreas = areas;
+        }
 
-            if (Settings.DockingRestrictFloatingWindows)
-            {
-                panel.DockAreas = panel.DockAreas ^ DockAreas.Float;
-            }
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<DockContent, DockingDefaults>
+            originalDockAreas = new System.Runtime.CompilerServices.ConditionalWeakTable<DockContent, DockingDefaults>();
+
+        private sealed class DockingDefaults
+        {
+            internal readonly DockAreas Areas;
+            internal DockingDefaults(DockAreas areas) { Areas = areas; }
         }
 
         public static void OpenSession(SessionDataStartInfo ssi)
@@ -866,8 +1031,7 @@ namespace SuperPutty
 
             for (int i = 1; i < 1000; i++)
             {
-                SessionData sessionExisting = GetSessionById(newSessionId);
-                if (sessionExisting == null)
+                if (!SessionPathExists(newSessionId))
                 {
                     break;
                 }                

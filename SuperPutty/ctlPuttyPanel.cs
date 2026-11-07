@@ -164,77 +164,33 @@ namespace SuperPutty
 
         private void InitNewSessionToolStripMenuItems()
         {
-            List<ToolStripMenuItem> tsmi = new List<ToolStripMenuItem>();
+            if (IsDisposed || Disposing) return;
+            // Rebuild controls on the UI thread and release the previous menu tree.
+            foreach (ToolStripItem item in newSessionToolStripMenuItem.DropDownItems.Cast<ToolStripItem>().ToArray())
+                item.Dispose();
             foreach (SessionData session in SuperPuTTY.GetAllSessions())
             {
-                ToolStripMenuItem tsmiParent = null;
-                foreach (string part in SessionData.GetSessionNameParts(session.SessionId))
+                ToolStripItemCollection siblings = newSessionToolStripMenuItem.DropDownItems;
+                string[] parts = SessionData.GetSessionNameParts(session.SessionId);
+                for (int i = 0; i < parts.Length - 1; i++)
                 {
-                    if (part == session.SessionName)
+                    string part = parts[i];
+                    ToolStripMenuItem folder = siblings[part] as ToolStripMenuItem;
+                    if (folder == null)
                     {
-                        ToolStripMenuItem newSessionTSMI = new ToolStripMenuItem
-                        {
-                            Tag = session,
-                            Text = session.SessionName
-                        };
-                        newSessionTSMI.Click += new System.EventHandler(newSessionTSMI_Click);
-                        newSessionTSMI.ToolTipText = session.ToString();
-                        if (tsmiParent == null)
-                            tsmi.Add(newSessionTSMI);
-                        else
-                            tsmiParent.DropDownItems.Add(newSessionTSMI);
+                        folder = new ToolStripMenuItem(part) { Name = part };
+                        siblings.Add(folder);
                     }
-                    else
-                    {
-                        if (tsmiParent == null)
-                        {
-                            tsmiParent = tsmi.FirstOrDefault((item) => string.Equals(item.Name, part));
-                            if (tsmiParent == null)
-                            {
-                                tsmiParent = new ToolStripMenuItem(part) { Name = part };
-                                tsmi.Add(tsmiParent);
-                            }
-                        }
-                        else
-                        {
-                            if (tsmiParent.DropDownItems.ContainsKey(part))
-                            {
-                                tsmiParent = (ToolStripMenuItem)tsmiParent.DropDownItems[part];
-                            }
-                            else
-                            {
-                                ToolStripMenuItem newSessionFolder = new ToolStripMenuItem(part) { Name = part };
-                                tsmiParent.DropDownItems.Add(newSessionFolder);
-                                tsmiParent = newSessionFolder;
-                            }
-                        }
-                    }
+                    siblings = folder.DropDownItems;
                 }
-            }
-
-            if (IsDisposed || Disposing)
-                return;
-
-            if (InvokeRequired)
-            {
-                try
+                var item = new ToolStripMenuItem
                 {
-                    BeginInvoke(new Action(() => {
-                        if (IsDisposed || Disposing)
-                            return;
-
-                        if (newSessionToolStripMenuItem.DropDownItems.Count == 0)
-                            newSessionToolStripMenuItem.DropDownItems.AddRange(tsmi.ToArray());
-                    }));
-                }
-                catch (InvalidOperationException)
-                {
-                    // The panel's window handle can disappear while the app is closing.
-                }
+                    Name = parts[parts.Length - 1], Text = session.SessionName,
+                    Tag = session, ToolTipText = session.ToString()
+                };
+                item.Click += newSessionTSMI_Click;
+                siblings.Add(item);
             }
-            else
-                if (newSessionToolStripMenuItem.DropDownItems.Count == 0)
-                    newSessionToolStripMenuItem.DropDownItems.AddRange(tsmi.ToArray());
         }
 
         void CreateMenu()
@@ -242,13 +198,7 @@ namespace SuperPutty
             this.newSessionToolStripMenuItem.Enabled = SuperPuTTY.Settings.PuttyPanelShowNewSessionMenu;
             if (SuperPuTTY.Settings.PuttyPanelShowNewSessionMenu)
             {
-                newSessionToolStripMenuItem.DropDownItems.Clear();
-
-                new Thread(InitNewSessionToolStripMenuItems)
-                {
-                    IsBackground = true,
-                    Name = "Session menu initialization"
-                }.Start();
+                InitNewSessionToolStripMenuItems();
             }
 
             DockPane pane = GetDockPane();

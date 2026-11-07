@@ -9,7 +9,7 @@ The latest published stable release is [1.8.3](https://github.com/greyhair-atx/s
 - **Current user:** `%LOCALAPPDATA%\Programs\SuperPuTTY Community Edition`, without administrator rights.
 - **All users:** `%ProgramFiles%\SuperPuTTY Community Edition`, with administrator approval.
 
-Use one scope and retain it for upgrades. Requires Windows x64, Windows 10 build 19041 or later, .NET Framework 4.8, and separately installed connection clients. Windows 10 candidate validation remains pending. Help > About SuperPuTTY CE should show **1.8.4.0**.
+Use one scope and retain it for upgrades. Requires Windows x64, Windows 10 build 19041 or later, .NET Framework 4.8, and separately installed connection clients. Release acceptance testing targets Windows 11 x64; Windows 10 is outside the validation scope. Help > About SuperPuTTY CE should show **1.8.4.0**.
 
 **Existing MSI installations must be explicitly removed before installing Inno.** Back up settings and retain the verified recovery MSI first. Removal and replacement are not atomic; automatic MSI-to-Inno upgrades are not supported.
 

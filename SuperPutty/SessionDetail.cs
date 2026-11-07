@@ -9,6 +9,7 @@ namespace SuperPutty
     {
         private SessionTreeview TreeViewInstance;
         SingletonToolWindowHelper<SessionTreeview> SessionsToolWindowHelper;
+        private bool subscriptionsReleased;
         private SessionDetail()
         {
             InitializeComponent();
@@ -32,6 +33,7 @@ namespace SuperPutty
 
         private void SelectedSessionChanged(SessionData Session)
         {
+            if (subscriptionsReleased) return;
             SessionData OldSession = sessionDetailPropertyGrid.SelectedObject as SessionData;
             if (OldSession != null)
             {
@@ -46,7 +48,7 @@ namespace SuperPutty
 
         private void SessionTreeviewInstanceChanged(SessionTreeview TreeViewInstance)
         {
-            if (this.TreeViewInstance == TreeViewInstance)
+            if (subscriptionsReleased || this.TreeViewInstance == TreeViewInstance)
                 return;
 
             Attach(TreeViewInstance);
@@ -54,7 +56,7 @@ namespace SuperPutty
 
         private void OnPropertyChanged(SessionData Session, String AttributeName)
         {
-            if (Session == null)
+            if (Session == null || subscriptionsReleased || IsDisposed || Disposing)
                 return;
 
             sessionDetailPropertyGrid.Refresh();
@@ -67,6 +69,7 @@ namespace SuperPutty
             if (SessionTreeView != null)
             {
                 this.TreeViewInstance.FormClosed += SessionTreeView_FormClosed;
+                this.TreeViewInstance.Disposed += SessionTreeView_Disposed;
                 SessionTreeView.SelectionChanged += SelectedSessionChanged;
                 SelectedSessionChanged(SessionTreeView.SelectedSession);
             }
@@ -77,6 +80,7 @@ namespace SuperPutty
             if (this.TreeViewInstance != null)
             {
                 TreeViewInstance.FormClosed -= SessionTreeView_FormClosed;
+                TreeViewInstance.Disposed -= SessionTreeView_Disposed;
                 TreeViewInstance.SelectionChanged -= SelectedSessionChanged;
             }
             this.TreeViewInstance = null;
@@ -90,11 +94,25 @@ namespace SuperPutty
 
         private void SessionDetail_FormClosed(object sender, FormClosedEventArgs e)
         {
+            ReleaseSubscriptions();
+        }
+
+        private void SessionTreeView_Disposed(object sender, EventArgs e)
+        {
+            Detach();
+        }
+
+        private void ReleaseSubscriptions()
+        {
+            if (subscriptionsReleased) return;
             Detach();
             if (SessionsToolWindowHelper != null)
             {
                 SessionsToolWindowHelper.InstanceChanged -= SessionTreeviewInstanceChanged;
+                SessionsToolWindowHelper = null;
             }
+            FormClosed -= SessionDetail_FormClosed;
+            subscriptionsReleased = true;
         }
 
         private void sessionDetailPropertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)

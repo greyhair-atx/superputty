@@ -136,7 +136,7 @@ namespace SuperPuttyUnitTests
                     var options = new CompilerParameters { GenerateExecutable = true, OutputAssembly = executable };
                     options.ReferencedAssemblies.Add("System.dll");
                     var compiled = compiler.CompileAssemblyFromSource(options,
-                        "class FakePscp { static void Main() { System.IO.File.WriteAllText(System.IO.Path.ChangeExtension(System.Environment.GetCommandLineArgs()[0], \".pid\"), System.Diagnostics.Process.GetCurrentProcess().Id.ToString()); System.Threading.Thread.Sleep(60000); } }");
+                        "class FakePscp { static void Main() { string marker = System.IO.Path.ChangeExtension(System.Environment.GetCommandLineArgs()[0], \".pid\"); System.IO.File.WriteAllText(marker + \".tmp\", System.Diagnostics.Process.GetCurrentProcess().Id.ToString()); System.IO.File.Move(marker + \".tmp\", marker); System.Threading.Thread.Sleep(60000); } }");
                     Assert.IsFalse(compiled.Errors.HasErrors);
                 }
                 var optionsPscp = new PscpOptions { PscpLocation = executable, TimeoutMs = 30000 };
@@ -183,6 +183,7 @@ namespace SuperPuttyUnitTests
                 }
                 SynchronizationContext.SetSynchronizationContext(previous);
                 File.Delete(marker);
+                File.Delete(marker + ".tmp");
                 File.Delete(executable);
                 Directory.Delete(directory);
             }

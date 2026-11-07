@@ -54,9 +54,13 @@ namespace SuperPutty
 
         private DockPanel m_DockPanel;
         private bool isRenamingNode;
+        private bool rebuildingTree;
+        private bool sessionSavePending;
+        private string sessionSaveError;
         TreeNode nodeRoot;
         ImageList imgIcons = new ImageList();
         Func<SessionData, bool> filter;
+        private readonly HashSet<SessionData> subscribedSessions = new HashSet<SessionData>();
 
         public SessionData SelectedSession
         {
@@ -137,30 +141,75 @@ namespace SuperPutty
 
         protected override void OnClosed(EventArgs e)
         {
-            SuperPuTTY.Sessions.ListChanged -= new ListChangedEventHandler(Sessions_ListChanged);
-            SuperPuTTY.Settings.SettingsSaving -= new SettingsSavingEventHandler(Settings_SettingsSaving);
+            ReleaseSessionSubscriptions();
             base.OnClosed(e);
         }
 
-        /// <summary>
-        /// Load the sessions from the registry and populate the treeview control
-        /// </summary>
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            base.OnFormClosing(e);
+            if (!e.Cancel && !FlushPendingSessionSave())
+            {
+                e.Cancel = true;
+                MessageBox.Show(this, "The moved sessions could not be saved.\n\n" + sessionSaveError,
+                    "Could Not Save Sessions", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void SubscribeSession(SessionData session)
+        {
+            if (!subscribedSessions.Add(session)) return;
+            session.OnPropertyChanged += SessionPropertyChanged;
+            session.OnPropertyChanging += SessionPropertyChanging;
+        }
+
+        private void DetachSessionEvents()
+        {
+            foreach (var session in subscribedSessions)
+            {
+                session.OnPropertyChanged -= SessionPropertyChanged;
+                session.OnPropertyChanging -= SessionPropertyChanging;
+            }
+            subscribedSessions.Clear();
+        }
+
+        private void ReleaseSessionSubscriptions()
+        {
+            DetachSessionEvents();
+            SuperPuTTY.Sessions.ListChanged -= Sessions_ListChanged;
+            SuperPuTTY.Settings.SettingsSaving -= Settings_SettingsSaving;
+        }
+
         void LoadSessions()
         {
-            treeView1.Nodes.Clear();
-
-            this.nodeRoot = treeView1.Nodes.Add("root", "PuTTY Sessions", ImageKeyFolder, ImageKeyFolder);
-            this.nodeRoot.ContextMenuStrip = this.contextMenuStripFolder;
-
-            foreach (SessionData session in SuperPuTTY.GetAllSessions())
+            string selectedId = SelectedSession == null
+                ? treeView1.SelectedNode == null ? null : GetNodePath(treeView1.SelectedNode)
+                : SelectedSession.SessionId;
+            var expandedPaths = GetExpandedPaths(nodeRoot).ToList();
+            rebuildingTree = true;
+            treeView1.BeginUpdate();
+            try
             {
-                TryAddSessionNode(session);
+                DetachSessionEvents();
+                treeView1.Nodes.Clear();
+                this.nodeRoot = treeView1.Nodes.Add("root", "PuTTY Sessions", ImageKeyFolder, ImageKeyFolder);
+                this.nodeRoot.ContextMenuStrip = this.contextMenuStripFolder;
+                foreach (SessionData session in SuperPuTTY.GetAllSessions()) TryAddSessionNode(session);
+                ResortNodes();
+                RestoreExpandedPaths(expandedPaths);
+                if (selectedId != null) treeView1.SelectedNode = FindNode(selectedId);
             }
-            ResortNodes();
+            finally
+            {
+                treeView1.EndUpdate();
+                rebuildingTree = false;
+            }
+            SelectionChanged?.Invoke(SelectedSession);
         }
 
         private void TryAddSessionNode(SessionData session)
         {
+            SubscribeSession(session);
             TreeNode nodeParent = this.nodeRoot;
             if (this.filter == null || this.filter(session))
             {
@@ -175,7 +224,7 @@ namespace SuperPutty
 
         public void SessionPropertyChanged(SessionData Session, String PropertyName)
         {
-            if (Session == null)
+            if (Session == null || IsDisposed || Disposing || SuperPuTTY.IsUpdatingSessionCatalog)
                 return;
 
             if (PropertyName == "SessionName" || PropertyName == "ImageKey")
@@ -205,7 +254,7 @@ namespace SuperPutty
                     treeView1.SelectedNode = Node;
                 }
             }
-            else if (PropertyName == "SessionId")
+            else if (PropertyName == "SessionId" && !SuperPuTTY.IsUpdatingSessionCatalog)
             {
                 TreeNode Node = FindSessionNode(Session.OldSessionId);
                 if (Node == null)
@@ -234,7 +283,7 @@ namespace SuperPutty
 
         public void SessionPropertyChanging(SessionData Session, String AttributeName, Object NewValue, ref bool CancelChange)
         {
-            if (Session == null)
+            if (Session == null || IsDisposed || Disposing || SuperPuTTY.IsUpdatingSessionCatalog)
                 return;
 
             if (AttributeName == "SessionName")
@@ -265,22 +314,15 @@ namespace SuperPutty
                 SessionData session = sessions[e.NewIndex];
                 TryAddSessionNode(session);
             }
-            else if (e.ListChangedType == ListChangedType.Reset)
+            else if (e.ListChangedType == ListChangedType.Reset || e.ListChangedType == ListChangedType.ItemDeleted)
             {
-                // clear
-                List<TreeNode> nodesToRemove = nodeRoot.Nodes.Cast<TreeNode>().ToList();
-
-                foreach (TreeNode node in nodesToRemove)
-                {
-                    node.Remove();
-                }
+                LoadSessions();
             }
-            // @TODO: implement more later, note delete will be tricky...need a copy of the list
         }
 
         private void treeView1_AfterSelect(object sender, TreeViewEventArgs e)
         {
-            if (this.SelectionChanged != null)
+            if (!rebuildingTree && this.SelectionChanged != null)
             {
                 this.SelectionChanged(this.SelectedSession);
             }
@@ -389,6 +431,11 @@ namespace SuperPutty
 
         private bool ValidateSessionNameChange(TreeNode ParentNode, TreeNode Node, String NewName, out String Error)
         {
+            if (String.IsNullOrWhiteSpace(NewName))
+            {
+                Error = "Empty name";
+                return false;
+            }
             bool IsEdit = Node != null;
             Error = String.Empty;
             bool IsDupeNode;
@@ -397,17 +444,16 @@ namespace SuperPutty
             else
                 IsDupeNode = ParentNode.Nodes.ContainsKey(NewName);
 
-            if (IsDupeNode)
+            string path = CombineNodePath(ParentNode, NewName);
+            var session = Node == null ? null : Node.Tag as SessionData;
+            bool sameSession = session != null && String.Equals(session.SessionId, path, StringComparison.OrdinalIgnoreCase);
+            if (IsDupeNode || (!sameSession && SuperPuTTY.SessionPathExists(path)))
             {
                 Error = "Session with same name exists";
             }
             else if (NewName.Contains(SessionIdDelim))
             {
                 Error = "Invalid character ( " + SessionIdDelim + " ) in name";
-            }
-            else if (string.IsNullOrEmpty(NewName) || NewName.Trim() == String.Empty)
-            {
-                Error = "Empty name";
             }
             return string.IsNullOrEmpty(Error);
         }
@@ -517,7 +563,7 @@ namespace SuperPutty
                     ItemNameValidator = delegate(string txt, out string error)
                     {
                         error = String.Empty;
-                        if (node.Nodes.ContainsKey(txt))
+                        if (node.Nodes.ContainsKey(txt) || SuperPuTTY.SessionPathExists(CombineNodePath(node, txt)))
                         {
                             error = "Node with same name exists";
                         }
@@ -553,7 +599,10 @@ namespace SuperPutty
                     ItemNameValidator = delegate(string txt, out string error)
                     {
                         error = String.Empty;
-                        if (node.Parent.Nodes.ContainsKey(txt) && txt != node.Text)
+                        if (String.IsNullOrWhiteSpace(txt))
+                            error = "Empty folder name";
+                        else if ((node.Parent.Nodes.ContainsKey(txt) && !String.Equals(txt, node.Text, StringComparison.OrdinalIgnoreCase)) ||
+                            (!String.Equals(txt, node.Text, StringComparison.OrdinalIgnoreCase) && SuperPuTTY.SessionPathExists(CombineNodePath(node.Parent, txt))))
                         {
                             error = "Node with same name exists";
                         }
@@ -566,44 +615,31 @@ namespace SuperPutty
                 };
                 if (dialog.ShowDialog(this) == DialogResult.OK && node.Text != dialog.ItemName)
                 {
-                    node.Text = dialog.ItemName;
-                    node.Name = dialog.ItemName;
-                    UpdateSessionId(node);
-                    SuperPuTTY.SaveSessions();
-                    ResortNodes();
+                    try
+                    {
+                        RenameFolderNode(node, dialog.ItemName);
+                        SuperPuTTY.SaveSessions();
+                    }
+                    catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException || ex is System.IO.IOException || ex is UnauthorizedAccessException)
+                    {
+                        MessageBox.Show(this, ex.Message, "Rename Folder", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
                 }
             }
         }
 
         private void removeFolderToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            TreeNode node = this.treeView1.SelectedNode;
-            if (node != null)
-            {
-                if (node.Nodes.Count > 0)
-                {
-                    List<SessionData> sessions = new List<SessionData>();
-                    GetAllSessions(node, sessions);
-                    if (DialogResult.Yes == MessageBox.Show(
-                        "Remove Folder [" + node.Text + "] and [" + sessions.Count + "] sessions?",
-                        "Remove Folder?", 
-                        MessageBoxButtons.YesNo))
-                    {
-                        foreach (SessionData session in sessions)
-                        {
-                            SuperPuTTY.RemoveSession(session.SessionId);
-                        }
-                        node.Remove();
-                        SuperPuTTY.ReportStatus("Removed Folder, {0} and {1} sessions", node.Text, sessions.Count);
-                        SuperPuTTY.SaveSessions();
-                    }
-                }
-                else
-                {
-                    node.Remove();
-                    SuperPuTTY.ReportStatus("Removed Folder, {0}", node.Text);
-                }
-            }
+            TreeNode node = treeView1.SelectedNode;
+            if (node == null || node == nodeRoot) return;
+            string folder = GetNodePath(node);
+            var sessions = SuperPuTTY.GetSessionsInFolder(folder);
+            if (sessions.Count == 0) { node.Remove(); return; }
+            if (MessageBox.Show("Remove Folder [" + node.Text + "] and [" + sessions.Count + "] sessions?",
+                "Remove Folder?", MessageBoxButtons.YesNo) != DialogResult.Yes) return;
+            SuperPuTTY.RemoveSessionFolder(folder);
+            SuperPuTTY.SaveSessions();
+            SuperPuTTY.ReportStatus("Removed Folder, {0} and {1} sessions", folder, sessions.Count);
         }
 
         private void connectAllToolStripMenuItem_Click(object sender, EventArgs e)
@@ -707,9 +743,6 @@ namespace SuperPutty
                 }
             }
 
-            session.OnPropertyChanged += SessionPropertyChanged;
-            session.OnPropertyChanging += SessionPropertyChanging;
-
             return addedNode;
         }
 
@@ -736,7 +769,7 @@ namespace SuperPutty
 
         bool IsFolderNode(TreeNode node)
         {
-            return !IsSessionNode(node);
+            return node != null && !IsSessionNode(node);
         }
 
         private void UpdateSessionId(TreeNode parentNode)
@@ -803,6 +836,7 @@ namespace SuperPutty
             TreeNode CurrentNode = this.nodeRoot;
             TreeNode NodeToReturn = null;
 
+            if (String.IsNullOrEmpty(SessionId)) return null;
             string[] Parts = SessionId.Split(SessionIdDelim.ToCharArray());
             if (Parts.Length > 0)
             {
@@ -943,11 +977,12 @@ namespace SuperPutty
 
                 TreeNode node = tree.GetNodeAt(pt);
                 // Is the mouse over a valid node?
-                if (node != null && node != nodePayload && nodePayload.Nodes.Find(node.Text, true).Length == 0)
+                if (node != null && node != nodePayload && !IsDescendantOf(node, nodePayload))
                 {
                     tree.SelectedNode = node;
                     // folder that is not the same parent and new node name is not already present
-                    if (IsFolderNode(node) && node != nodePayload.Parent && !node.Nodes.ContainsKey(nodePayload.Text))
+                    if (IsFolderNode(node) && node != nodePayload.Parent && !node.Nodes.ContainsKey(nodePayload.Text) &&
+                        !SuperPuTTY.SessionPathExists(CombineNodePath(node, nodePayload.Text)))
                     {
                         e.Effect = DragDropEffects.Copy;
                     }
@@ -969,62 +1004,163 @@ namespace SuperPutty
             // Get the node underneath the mouse.
             TreeNode node = tree.GetNodeAt(pt);
 
-            if (IsFolderNode(node))
+            TreeNode payload = e.Data.GetData(typeof(TreeNode)) as TreeNode;
+            try
             {
-                Log.DebugFormat("Drag drop");
-
-                TreeNode nodePayload = (TreeNode)e.Data.GetData(typeof(TreeNode));
-                TreeNode nodeNew = (TreeNode)nodePayload.Clone();
-
-                // If node was expanded before, ensure new node is also expanded when moved
-                if (nodePayload.IsExpanded)
+                if (MoveSessionNode(payload, node))
                 {
-                    nodeNew.Expand();
+                    ScheduleSessionSave();
                 }
-
-                // remove old
-                nodePayload.Remove();
-
-                // add new
-                node.Nodes.Add(nodeNew);
-                UpdateSessionId(nodeNew, (SessionData)nodeNew.Tag); //
-
-                // If this a folder, reset it's childrens sessionIds
-                if (IsFolderNode(nodeNew))
-                {
-                    resetFoldersChildrenPaths(nodeNew);
-                    
-                }
-
-                // remove old
-                nodePayload.Remove();
-
-                // Show the newly added node if it is not already visible.
-                node.Expand();
-
-                // auto save settings...use timer to prevent excessive saves while dragging and dropping nodes
-                timerDelayedSave.Stop();
-                timerDelayedSave.Start();
-                //SuperPuTTY.SaveSessions();
             }
+            catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException)
+            {
+                MessageBox.Show(this, ex.Message, "Move Session", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private static bool IsDescendantOf(TreeNode node, TreeNode ancestor)
+        {
+            for (var current = node; current != null; current = current.Parent)
+                if (Object.ReferenceEquals(current, ancestor)) return true;
+            return false;
+        }
+
+        private static string GetNodePath(TreeNode node)
+        {
+            var parts = new List<string>();
+            for (var current = node; current != null && current.Parent != null; current = current.Parent)
+                parts.Insert(0, current.Text);
+            return String.Join("/", parts);
+        }
+
+        private static string CombineNodePath(TreeNode parent, string name)
+        {
+            string prefix = GetNodePath(parent);
+            return prefix.Length == 0 ? name : prefix + "/" + name;
+        }
+
+        private TreeNode FindNode(string path)
+        {
+            TreeNode node = nodeRoot;
+            if (String.IsNullOrEmpty(path)) return node;
+            foreach (string part in path.Split('/'))
+            {
+                node = node.Nodes[part];
+                if (node == null) return null;
+            }
+            return node;
+        }
+
+        private static IEnumerable<string> GetExpandedPaths(TreeNode node)
+        {
+            if (node == null) yield break;
+            if (node.IsExpanded) yield return GetNodePath(node);
+            foreach (TreeNode child in node.Nodes)
+                foreach (string path in GetExpandedPaths(child)) yield return path;
+        }
+
+        private void RestoreExpandedPaths(IEnumerable<string> paths)
+        {
+            foreach (string path in paths) FindNode(path)?.Expand();
+        }
+
+        internal void RenameFolderNode(TreeNode node, string name)
+        {
+            if (!IsFolderNode(node) || node == nodeRoot || String.IsNullOrWhiteSpace(name) || name.Contains("/"))
+                throw new ArgumentException("A valid folder name is required.");
+            if (node.Parent.Nodes.ContainsKey(name) && node.Parent.Nodes[name] != node)
+                throw new InvalidOperationException("A node with the same name exists.");
+            string path = CombineNodePath(node.Parent, name);
+            string oldPath = GetNodePath(node);
+            var expandedPaths = GetExpandedPaths(node).Select(p => path + p.Substring(oldPath.Length)).ToList();
+            if (SuperPuTTY.MoveSessionFolder(oldPath, path) == 0)
+            {
+                node.Text = name; node.Name = name;
+            }
+            RestoreExpandedPaths(expandedPaths);
+            treeView1.SelectedNode = FindNode(path);
+            ResortNodes();
+        }
+
+        internal bool MoveSessionNode(TreeNode payload, TreeNode target)
+        {
+            if (payload == null || payload == nodeRoot || !IsFolderNode(target) ||
+                payload.Parent == target || IsDescendantOf(target, payload)) return false;
+            string path = CombineNodePath(target, payload.Text);
+            if (target.Nodes.ContainsKey(payload.Text) || SuperPuTTY.SessionPathExists(path))
+                throw new InvalidOperationException("A node with the same name exists at the destination.");
+            string oldPath = GetNodePath(payload);
+            var expandedPaths = GetExpandedPaths(payload).Select(p => path + p.Substring(oldPath.Length)).ToList();
+            if (IsSessionNode(payload))
+                SuperPuTTY.MoveSavedSession((SessionData)payload.Tag, path);
+            else if (SuperPuTTY.MoveSessionFolder(oldPath, path) == 0)
+            {
+                payload.Remove(); target.Nodes.Add(payload);
+            }
+            RestoreExpandedPaths(expandedPaths);
+            treeView1.SelectedNode = FindNode(path);
+            treeView1.SelectedNode?.EnsureVisible();
+            return true;
         }
 
         #endregion
 
         public void resetFoldersChildrenPaths(TreeNode nodePayload)
         {
-            // Walk all descendants so nested folders retain their new location after saving.
+            // A caller may already have moved the displayed folder. Recover its old
+            // model prefix from a descendant, including siblings hidden by filtering.
+            var leaves = new List<TreeNode>();
+            GetAllNodes(nodePayload, leaves);
+            var leaf = leaves.FirstOrDefault(IsSessionNode);
+            string path = GetNodePath(nodePayload);
+            if (leaf != null)
+            {
+                var session = (SessionData)leaf.Tag;
+                string suffix = GetNodePath(leaf).Substring(path.Length);
+                if (suffix.Length > 0 && session.SessionId.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) &&
+                    Object.ReferenceEquals(SuperPuTTY.GetSessionById(session.SessionId), session))
+                {
+                    SuperPuTTY.MoveSessionFolder(session.SessionId.Substring(0, session.SessionId.Length - suffix.Length), path);
+                    return;
+                }
+            }
             UpdateSessionId(nodePayload);
         }
 
         private void timerDelayedSave_Tick(object sender, EventArgs e)
         {
-            // stop timer
             timerDelayedSave.Stop();
+            if (FlushPendingSessionSave())
+                SuperPuTTY.ReportStatus("Saved Sessions after Drag-Drop @ {0}", DateTime.Now);
+            else
+                SuperPuTTY.ReportStatus("Moved sessions have not been saved: {0}", sessionSaveError);
+        }
 
-            // do save
-            SuperPuTTY.SaveSessions();
-            SuperPuTTY.ReportStatus("Saved Sessions after Drag-Drop @ {0}", DateTime.Now);
+        internal void ScheduleSessionSave()
+        {
+            sessionSavePending = true;
+            timerDelayedSave.Stop();
+            timerDelayedSave.Start();
+        }
+
+        internal bool FlushPendingSessionSave()
+        {
+            if (!sessionSavePending) return true;
+            try
+            {
+                SuperPuTTY.SaveSessions();
+                sessionSavePending = false;
+                timerDelayedSave.Stop();
+                sessionSaveError = null;
+                return true;
+            }
+            catch (Exception ex) when (ex is System.IO.IOException || ex is UnauthorizedAccessException ||
+                ex is ArgumentException || ex is InvalidOperationException || ex is System.Security.SecurityException)
+            {
+                sessionSaveError = ex.Message;
+                Log.Warn("Moved sessions could not be saved; changes remain pending.", ex);
+                return false;
+            }
         }
 
         #region Icon
