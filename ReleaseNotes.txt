@@ -1,11 +1,15 @@
 SuperPuTTY Community Edition 1.8.4 (unpublished candidate)
- - Remove the standalone MFA lab from the build tree; it is not required by the application, regression tests or release packaging. Preserve the helper locally under artifacts; final signed packaging, Windows 11 verification and remaining visual acceptance are deferred to the next release-preparation session.
+ - Prepare a clean signed release candidate from 36dc25e: installer, signed uninstaller, portable ZIP, checksums, build manifest and exact 57-file runtime SBOM. Publication remains pending approval.
+ - Pass 490 signed-build regressions locally and under each Windows 11 test account, 40 interactive UI and five console cases, and both-scope lifecycle, published-MSI migration and recovery checks. Record rendering-review scope and retained manual acceptance in docs/releases/1.8.4-VALIDATION-20261108.md.
+ - Match name validation to the value each editor stores; reject trimmed-name conflicts and apply tree-editor changes transactionally to preserve sessions on failed saves.
+ - Preserve empty folders, expansion and selection during editor and File > Save Current Session saves, including failed writes, without restoring intentionally removed folders.
+ - Remove the standalone MFA lab from the build tree; it is not required by the application, regression tests or release packaging. Preserve the helper locally under artifacts.
  - Close the real-server PSCP MFA acceptance gate after maintainer-confirmed password/token challenge responses and SSH connection sharing. Document explicit usernames and sharing setup; separate PSCP connections still prompt per operation without sharing.
  - Recognize PSCP's configured-password rejection as an authentication failure, including when the preceding Access denied text is split; provide guidance for additional prompts. Pass 465/465 CI-default regressions.
- - Fix Help > Diagnostics > Log Window Locations with SCP or other managed tabs; report unavailable child windows safely. Pass 460/460 CI-default regressions; a new signed candidate is required to include this fix.
+ - Fix Help > Diagnostics > Log Window Locations with SCP or other managed tabs; report unavailable child windows safely. Included in the final clean signed candidate.
  - Record maintainer-confirmed scaling/session continuity at 125%, 150% and 200%, including returns to 100%, plus usable RDP recovery after network disconnect/reconnect.
- - Build a fresh signed test installer from 4afb85d; pass 452/452 signed-build regressions without retries and verify all 57 runtime files.
- - Validate both Windows 11 installation scopes: 55 session/UI checks each, Inno upgrade, published MSI migration, recovery and live RDP reconnect; any unconfirmed theme/dialog/tab visual inspections remain pending.
+ - Earlier 4afb85d candidate: pass 452/452 signed-build regressions without retries and verify all 57 runtime files.
+ - Earlier Windows 11 validation: 55 session/UI checks in each scope, Inno upgrade, published MSI migration, recovery and live RDP reconnect. Superseded by the November 8 clean candidate results above.
  - Validate and roll back current-session saves so folder conflicts and write failures cannot discard a saved session.
  - Flush pending drag-and-drop saves on close/disposal; retain pending changes after a failed save.
  - Support SCP documents in Switch Session and clear/rebind Session Details after tree selection changes.

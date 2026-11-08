@@ -13,7 +13,7 @@ SuperPuTTY Community Edition is an actively maintained, independently published 
 **Latest stable release: [1.8.3](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.3).** Adds dark themes, protocol dropdown preferences, Copy IP/Hostname and temporary ping tools, plus terminal/SCP reliability fixes. Download signed Windows x64 installers or the no-install ZIP, with checksums, a runtime SBOM and validation results. Version 1.8.1 remains withdrawn. [Release notes](docs/releases/1.8.3.md) · [Validation results](docs/RELEASE-1.8.3-RESULTS.md).
 
 
-**In development: [1.8.4 candidate](docs/releases/1.8.4.md).** Includes tab/session reliability fixes and a single Inno installer for both scopes. It is unpublished and requires [candidate testing](docs/releases/1.8.4-TEST-PLAN.md). Existing MSI users need [explicit migration](docs/manual/upgrading.md).
+**Prepared for approval: [1.8.4 candidate](docs/releases/1.8.4.md).** Includes tab/session reliability fixes and a single Inno installer for both scopes. The clean signed candidate passed 490 regressions locally and under each Windows 11 test account, plus both-scope installer, migration and recovery checks. It remains unpublished; see [validation results and acceptance scope](docs/releases/1.8.4-VALIDATION-20261108.md). Existing MSI users need [explicit migration](docs/manual/upgrading.md).
 
 ## See the workspace
 
