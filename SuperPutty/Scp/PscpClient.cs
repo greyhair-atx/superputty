@@ -56,6 +56,7 @@ namespace SuperPutty.Scp
         private const string PUTTY_BATCH_INTERACTIVE = "Cannot answer interactive prompts in batch mode";
         private const string PUTTY_ACCESS_DENIED = "Access denied";
         private const string PUTTY_AUTHENTICATION_FAILED = "Authentication failed";
+        private const string PUTTY_CONFIGURED_PASSWORD_REJECTED = "Configured password was not accepted";
         /// <summary>
         /// Returned when a bad arg is sent
         /// </summary>
@@ -588,8 +589,12 @@ namespace SuperPutty.Scp
                         else if (outputStr.IndexOf(PUTTY_ACCESS_DENIED, StringComparison.OrdinalIgnoreCase) >= 0 ||
                             errorStr.IndexOf(PUTTY_ACCESS_DENIED, StringComparison.OrdinalIgnoreCase) >= 0 ||
                             outputStr.IndexOf(PUTTY_AUTHENTICATION_FAILED, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                            errorStr.IndexOf(PUTTY_AUTHENTICATION_FAILED, StringComparison.OrdinalIgnoreCase) >= 0)
+                            errorStr.IndexOf(PUTTY_AUTHENTICATION_FAILED, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            outputStr.IndexOf(PUTTY_CONFIGURED_PASSWORD_REJECTED, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            errorStr.IndexOf(PUTTY_CONFIGURED_PASSWORD_REJECTED, StringComparison.OrdinalIgnoreCase) >= 0)
                         {
+                            result.ErrorMsg = "PSCP could not complete authentication. Check the username/password; enable " +
+                                "Interactive SCP authentication (MFA) if the server requires additional prompts.";
                             result.StatusCode = ResultStatusCode.RetryAuthentication;
                             Log.Debug("PSCP rejected the supplied credentials");
                         }

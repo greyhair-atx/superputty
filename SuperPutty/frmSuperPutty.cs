@@ -2206,21 +2206,32 @@ namespace SuperPutty
 
         private void logWindowLocationsToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            foreach (IDockContent c in this.DockPanel.Documents)
+            LogWindowLocations(this.DockPanel);
+        }
+
+        internal static void LogWindowLocations(DockPanel dockPanel)
+        {
+            if (dockPanel == null || dockPanel.IsDisposed || dockPanel.Disposing)
+                return;
+
+            foreach (IDockContent content in dockPanel.DocumentsToArray())
             {
-                ctlPuttyPanel panel = c as ctlPuttyPanel;
-                if (c != null)
-                {
-                    NativeMethods.RECT rect = new NativeMethods.RECT();
-                    NativeMethods.GetWindowRect(panel.AppPanel.AppWindowHandle, ref rect);
-                    Point p = panel.PointToScreen(new Point());
-                    Log.InfoFormat(
-                        "[{0,-20} {1,8}] WindowLocations: panel={2}, putty={3}, x={4}, y={5}",
-                        panel.Text + (panel == panel.DockPanel.ActiveDocument ? "*" : ""),
-                        panel.AppPanel.AppWindowHandle,
-                        panel.DisplayRectangle,
-                        rect, p.X, p.Y);
-                }
+                Control panel = content as Control;
+                if (panel == null || panel.IsDisposed || panel.Disposing || !panel.IsHandleCreated)
+                    continue;
+
+                // SCP and other managed documents have no hosted application.
+                ApplicationPanel application = (content as ctlPuttyPanel)?.AppPanel;
+                IntPtr window = application != null && !application.IsDisposed && !application.Disposing
+                    ? application.AppWindowHandle : IntPtr.Zero;
+                NativeMethods.RECT rect = new NativeMethods.RECT();
+                string applicationBounds = window != IntPtr.Zero && NativeMethods.GetWindowRect(window, ref rect)
+                    ? rect.ToString() : "unavailable";
+                Point p = panel.PointToScreen(Point.Empty);
+                Log.InfoFormat(
+                    "[{0,-20} {1,8}] WindowLocations: panel={2}, app={3}, x={4}, y={5}, type={6}",
+                    panel.Text + (content == dockPanel.ActiveDocument ? "*" : ""),
+                    window, panel.DisplayRectangle, applicationBounds, p.X, p.Y, panel.GetType().Name);
             }
         }
 

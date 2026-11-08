@@ -25,9 +25,30 @@ These are external SFTP clients and do not use SuperPuTTY's protected PSCP named
 
 ## Authentication order
 
-PSCP can authenticate using a configured private key, Pageant, GSSAPI, or a password. SuperPuTTY first allows non-password authentication to succeed. If the server requires a password, SuperPuTTY asks for it after PSCP begins the connection and retries securely.
+In ordinary non-interactive mode, PSCP can authenticate using a configured private key, Pageant, GSSAPI, or a password. SuperPuTTY first allows non-password authentication to succeed. If the server requires a password, SuperPuTTY asks for it after PSCP begins the connection and retries securely.
 
 When a password is required, the default implementation sends it to PSCP through a user-restricted, one-use Windows named pipe used with `-pwfile`. The password is not placed in a temporary disk file or persisted in the session database. Plain-text `-pw` arguments remain an explicit compatibility option and are not recommended.
+
+## Interactive password and MFA prompts
+
+Edit the saved session and enable **Interactive SCP authentication (MFA)** above **File Transfer Options**, save, then close and reopen the file-transfer tab. This also applies to an SSH session opened through its **File Transfer** context-menu item.
+
+PSCP then presents its own console for passwords, token codes and subsequent challenge/response prompts. This option removes `-batch` and supplied password arguments. Use it whenever a fresh connection requires multiple prompts, including a password followed by another PAM password prompt; the checkbox does not require an OTP provider.
+
+Without connection sharing, each directory listing or transfer creates a new SSH connection and can prompt again. A completed upload can trigger a directory refresh and another login. SuperPuTTY does not retain the console responses for later operations.
+
+## Reuse an open SSH connection
+
+PuTTY connection sharing allows PSCP to open file-transfer channels over an already authenticated SSH connection:
+
+1. Set the **Username** explicitly in the SuperPuTTY saved session. Entering a username only at PuTTY's terminal prompt does not populate this field. A blank PSCP username can fail to match the shared connection.
+2. In the selected saved PuTTY profile, enable **Connection > SSH > Share SSH connections if possible**, leaving upstream and downstream sharing enabled, then save the profile.
+3. Select that profile in the SuperPuTTY session. If the SSH connection was opened before sharing was enabled, close and reconnect that SSH tab and complete all authentication challenges.
+4. Keep the SSH terminal open and choose **File Transfer** for the saved session. A separate SCP entry can share it too when its host, port, username and profile settings match. Keep interactive authentication enabled for a server requiring additional prompts if a fresh connection becomes necessary.
+
+Both clients must run as the same Windows user at a compatible elevation level. Use the same host spelling and port. `-share` in Extra Arguments explicitly enables sharing and is accepted by PuTTY and PSCP. For a shared SSH entry, avoid PSCP-only switches such as `-sftp` in Extra Arguments, because that field also goes to PuTTY; use a separate SCP entry if PSCP-specific arguments are needed.
+
+PSCP still starts a process for each operation, so the console can appear briefly. While the shared connection remains available, the operation should not require another password or token. Closing the upstream SSH connection or losing the network means a fresh connection must authenticate again. This behavior is described in the [PuTTY connection sharing documentation](https://the.earth.li/~sgtatham/putty/0.84/htmldoc/Chapter4.html#config-ssh-sharing).
 
 ## Private keys
 

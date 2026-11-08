@@ -1,5 +1,11 @@
 SuperPuTTY Community Edition 1.8.4 (unpublished candidate)
- - Verify the latest x64 Release source build with 452/452 CI-default regression tests passing without retries; rebuild and revalidate the signed installer before release.
+ - Remove the standalone MFA lab from the build tree; it is not required by the application, regression tests or release packaging. Preserve the helper locally under artifacts; final signed packaging, Windows 11 verification and remaining visual acceptance are deferred to the next release-preparation session.
+ - Close the real-server PSCP MFA acceptance gate after maintainer-confirmed password/token challenge responses and SSH connection sharing. Document explicit usernames and sharing setup; separate PSCP connections still prompt per operation without sharing.
+ - Recognize PSCP's configured-password rejection as an authentication failure, including when the preceding Access denied text is split; provide guidance for additional prompts. Pass 465/465 CI-default regressions.
+ - Fix Help > Diagnostics > Log Window Locations with SCP or other managed tabs; report unavailable child windows safely. Pass 460/460 CI-default regressions; a new signed candidate is required to include this fix.
+ - Record maintainer-confirmed scaling/session continuity at 125%, 150% and 200%, including returns to 100%, plus usable RDP recovery after network disconnect/reconnect.
+ - Build a fresh signed test installer from 4afb85d; pass 452/452 signed-build regressions without retries and verify all 57 runtime files.
+ - Validate both Windows 11 installation scopes: 55 session/UI checks each, Inno upgrade, published MSI migration, recovery and live RDP reconnect; any unconfirmed theme/dialog/tab visual inspections remain pending.
  - Validate and roll back current-session saves so folder conflicts and write failures cannot discard a saved session.
  - Flush pending drag-and-drop saves on close/disposal; retain pending changes after a failed save.
  - Support SCP documents in Switch Session and clear/rebind Session Details after tree selection changes.
