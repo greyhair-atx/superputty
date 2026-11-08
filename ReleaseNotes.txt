@@ -1,5 +1,7 @@
-SuperPuTTY Community Edition 1.8.4 (unpublished candidate)
- - Prepare a clean signed release candidate from 36dc25e: installer, signed uninstaller, portable ZIP, checksums, build manifest and exact 57-file runtime SBOM. Publication remains pending approval.
+SuperPuTTY Community Edition 1.8.4
+ - New installer, new look: one signed modern setup can install for the current user or all users on the machine. Existing MSI users must explicitly uninstall their MSI before installing Inno in the same scope.
+ - Released November 8, 2026 from frozen source 36dc25e on GitHub and Gitea. Ten VirusTotal analyses completed with zero malicious/suspicious detections; all 11 assets downloaded from each host and hash-verified.
+ - Include the signed uninstaller, portable ZIP, source archive, checksums, build manifest, exact 57-file runtime SBOM, validation and VirusTotal reports.
  - Pass 490 signed-build regressions locally and under each Windows 11 test account, 40 interactive UI and five console cases, and both-scope lifecycle, published-MSI migration and recovery checks. Record rendering-review scope and retained manual acceptance in docs/releases/1.8.4-VALIDATION-20261108.md.
  - Match name validation to the value each editor stores; reject trimmed-name conflicts and apply tree-editor changes transactionally to preserve sessions on failed saves.
  - Preserve empty folders, expansion and selection during editor and File > Save Current Session saves, including failed writes, without restoring intentionally removed folders.

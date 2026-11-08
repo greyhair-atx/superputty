@@ -1,12 +1,12 @@
 # SuperPuTTY Community Edition User Manual
 
-This manual applies to the 64-bit Windows SuperPuTTY Community Edition 1.8.0 maintained at [greyhair-atx/superputty](https://github.com/greyhair-atx/superputty).
+This manual applies to the 64-bit Windows SuperPuTTY Community Edition 1.8.4 maintained at [greyhair-atx/superputty](https://github.com/greyhair-atx/superputty). Its redesigned installer has a new look and offers current-user or all-users installation in one signed setup.
 
 SuperPuTTY is a Windows workspace for organizing PuTTY terminals and related tools in tabs. PuTTY performs the SSH connection and terminal emulation; SuperPuTTY manages sessions, tabs, layouts, file transfers, and supporting tools.
 
 ## Manual contents
 
-- [1.8.0 release notes and validation](../releases/1.8.0.md)
+- [1.8.4 release notes](../releases/1.8.4.md) and [validation/scan results](../RELEASE-1.8.4-RESULTS.md)
 - [Historical 1.7.5 release validation](../releases/1.7.5.md)
 - [Installation](installation.md)
 - [Upgrading and coexistence](upgrading.md)
@@ -24,7 +24,7 @@ SuperPuTTY is a Windows workspace for organizing PuTTY terminals and related too
 
 ## Requirements
 
-- Tested on Windows 11 x64. Windows 10 x64 compatibility is expected with .NET Framework 4.8 or later, but has not been tested for 1.8.0.
+- Tested on Windows 11 x64. Windows 10 x64 compatibility is expected with .NET Framework 4.8 or later, but has not been tested for 1.8.4.
 - Microsoft .NET Framework 4.8
 - 64-bit PuTTY for SSH terminals
 - PSCP for the integrated SCP browser

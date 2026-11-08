@@ -1,6 +1,6 @@
 # Installation
 
-The latest published stable release is [1.8.3](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.3). **1.8.4 is an unpublished release candidate.** These instructions describe its Inno installer; use the assets and instructions supplied with older releases when installing them.
+The latest stable release is [SuperPuTTY Community Edition 1.8.4](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.4). **New installer, new look:** one signed Inno setup supports either the current user or all users on the machine. Use the assets and instructions supplied with older releases when installing them.
 
 ## Package and scope
 

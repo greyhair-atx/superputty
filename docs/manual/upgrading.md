@@ -2,13 +2,13 @@
 
 [Back to the manual](README.md) · [Installation and recovery](installation.md)
 
-## 1.8.4 candidate: explicit MSI migration
+## 1.8.4: new installer and explicit MSI migration
 
-1.8.4 is an unpublished Inno candidate. The published 1.8.3 uses MSI. Automatic MSI-to-Inno replacement is not supported. Back up active preferences and the entire configured settings folder, close applications/clients, and retain a verified recovery MSI before removal.
+1.8.4 introduces a new Inno installer with a modern look and a choice of current-user or machine-wide installation. Version 1.8.3 used MSI. Automatic MSI-to-Inno replacement is not supported. Back up active preferences and the entire configured settings folder, close applications/clients, and retain a verified recovery MSI before removal.
 
 Use the actual installed ProductCode with `winget uninstall --product-code "{PRODUCT-CODE}" --exact` or `msiexec /x {PRODUCT-CODE}`. Do not pass a scope filter to WinGet removal: catalog matching can omit current-user MSI registration. Elevate for machine scope, wait, inspect the exit code and confirm removal. Then install the signed Inno EXE in the original scope. See the installation guide for commands.
 
-Removal and installation are separate, non-atomic operations. If replacement cannot complete, preserve logs and backups and restore the matching verified MSI. Never claim an Inno installer is MSI in a WinGet manifest. The withdrawn package submission stays closed while release validation is completed.
+Removal and installation are separate, non-atomic operations. If replacement cannot complete, preserve logs and backups and restore the matching verified MSI. Never claim an Inno installer is MSI in a WinGet manifest. WinGet catalog submission remains separate from the 1.8.4 release; use its signed setup download.
 
 ## Inno-to-Inno upgrades
 
@@ -16,7 +16,7 @@ Use the same signed EXE for either scope, selecting `/CURRENTUSER` or `/ALLUSERS
 
 Install a strictly newer version in the same scope. Immutable `versions/<version>` directories retain the previous payload while registration and shortcuts activate. Same-version reinstall, downgrade, running/locked files, conflicting MSI registration and unsafe recovery data are rejected. Scope changes require deliberate uninstall/install after backups. Avoid concurrent installations sharing a profile.
 
-After interruption, close setup and retry the **same installer and scope**. Preserve logs and `.upgrade-recovery`; do not edit/delete recovery data or registration. Missing, corrupt or locked backups require investigation. Recovery protects Inno activation, not earlier independent MSI removal. Repeat normal upgrade, deliberate failure and interruption tests on the release candidate.
+After interruption, close setup and retry the **same installer and scope**. Preserve logs and `.upgrade-recovery`; do not edit/delete recovery data or registration. Missing, corrupt or locked backups require investigation. Recovery protects Inno activation, not earlier independent MSI removal. The 1.8.4 upgrade and recovery tests passed in both scopes; see the [validation record](../releases/1.8.4-VALIDATION-20261108.md).
 
 ## Settings and compatibility
 
