@@ -180,12 +180,15 @@ namespace SuperPutty
             SuperPuTTY.Settings.SettingsSaving -= Settings_SettingsSaving;
         }
 
-        void LoadSessions()
+        void LoadSessions(bool preserveEmptyFolders = false)
         {
             string selectedId = SelectedSession == null
                 ? treeView1.SelectedNode == null ? null : GetNodePath(treeView1.SelectedNode)
                 : SelectedSession.SessionId;
             var expandedPaths = GetExpandedPaths(nodeRoot).ToList();
+            var leaves = new List<TreeNode>();
+            if (preserveEmptyFolders) GetAllNodes(nodeRoot, leaves);
+            var emptyFolders = leaves.Where(IsFolderNode).Select(GetNodePath).ToList();
             rebuildingTree = true;
             treeView1.BeginUpdate();
             try
@@ -195,6 +198,7 @@ namespace SuperPutty
                 this.nodeRoot = treeView1.Nodes.Add("root", "PuTTY Sessions", ImageKeyFolder, ImageKeyFolder);
                 this.nodeRoot.ContextMenuStrip = this.contextMenuStripFolder;
                 foreach (SessionData session in SuperPuTTY.GetAllSessions()) TryAddSessionNode(session);
+                RestoreEmptyFolders(emptyFolders);
                 ResortNodes();
                 RestoreExpandedPaths(expandedPaths);
                 if (selectedId != null) treeView1.SelectedNode = FindNode(selectedId);
@@ -316,7 +320,7 @@ namespace SuperPutty
             }
             else if (e.ListChangedType == ListChangedType.Reset || e.ListChangedType == ListChangedType.ItemDeleted)
             {
-                LoadSessions();
+                LoadSessions(e is SuperPuTTY.SessionSaveResetEventArgs);
             }
         }
 
@@ -396,37 +400,47 @@ namespace SuperPutty
             
             if (form.ShowDialog(this) == DialogResult.OK)
             {
-                /* "node" will only be assigned if we're editing an existing session entry */
-                if (node == null)
+                SessionData savedSession = node == null ? session : (SessionData)node.Tag;
+                // A new session's parent is selected in the tree, rather than in the editor.
+                if (node == null && nodeRoot != nodeRef)
                 {
-                    // get the path up to the ref (parent) node
-                    if (nodeRoot != nodeRef)
-                    {
-                        UpdateSessionId(nodeRef, session);
-                        session.SessionId = SessionData.CombineSessionIds(session.SessionId, session.SessionName);
-                    }
-                    SuperPuTTY.AddSession(session);
-
-                    // find new node and select it
-                    TreeNode nodeNew = nodeRef.Nodes[session.SessionName];
-                    if (nodeNew != null)
-                    {
-                        this.treeView1.SelectedNode = nodeNew;
-                    }
-                }
-                else
-                {
-
-                    SessionData RealSession = (SessionData)treeView1.SelectedNode.Tag;
-                    RealSession.CopyFrom(session);
-                    RealSession.SessionName = session.SessionName;
-                    this.treeView1.SelectedNode = node;
+                    UpdateSessionId(nodeRef, session);
+                    session.SessionId = SessionData.CombineSessionIds(session.SessionId, session.SessionName);
                 }
 
-                //treeView1.ExpandAll();
-                SuperPuTTY.SaveSessions();
+                try
+                {
+                    SuperPuTTY.SaveSessionChanges(savedSession, session, SuperPuTTY.SaveSessions);
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException ||
+                    ex is System.IO.IOException || ex is UnauthorizedAccessException)
+                {
+                    Log.Warn("Could not save the edited session; its changes were rolled back.", ex);
+                    MessageBox.Show(this, "The session could not be saved.\n\n" + ex.Message,
+                        "Could Not Save Session", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // Saving rebuilds the tree; select the replacement node by its final ID.
+                this.treeView1.SelectedNode = FindSessionNode(savedSession.SessionId);
             }
             
+        }
+
+        private void RestoreEmptyFolders(IEnumerable<string> paths)
+        {
+            // Empty folders exist only in the tree and are retained across session-save resets.
+            foreach (string path in paths)
+            {
+                TreeNode parent = nodeRoot;
+                string prefix = String.Empty;
+                foreach (string part in path.Split('/'))
+                {
+                    prefix = prefix.Length == 0 ? part : prefix + "/" + part;
+                    if (SuperPuTTY.GetSessionById(prefix) != null) break;
+                    parent = parent.Nodes[part] ?? AddFolderNode(parent, part);
+                }
+            }
         }
 
         private bool ValidateSessionNameChange(TreeNode ParentNode, TreeNode Node, String NewName, out String Error)

@@ -39,8 +39,21 @@ namespace SuperPutty
         static BindingList<LayoutData> layouts = new BindingList<LayoutData>();
         static SortedList<string, SessionData> sessionsMap = new SortedList<string, SessionData>(StringComparer.OrdinalIgnoreCase);
         internal static bool IsUpdatingSessionCatalog { get; private set; }
-        static BindingList<SessionData> sessionsList = new BindingList<SessionData>();
+        static SessionCatalogList sessionsList = new SessionCatalogList();
         static bool? isFirstRun;
+
+        internal sealed class SessionSaveResetEventArgs : ListChangedEventArgs
+        {
+            internal SessionSaveResetEventArgs() : base(ListChangedType.Reset, -1) { }
+        }
+
+        private sealed class SessionCatalogList : BindingList<SessionData>
+        {
+            internal void ResetAfterSave()
+            {
+                OnListChanged(new SessionSaveResetEventArgs());
+            }
+        }
 
         public static void Initialize(string[] args)
         {
@@ -476,7 +489,7 @@ namespace SuperPutty
             {
                 IsUpdatingSessionCatalog = updating;
                 sessionsList.RaiseListChangedEvents = notify;
-                if (notify) sessionsList.ResetBindings();
+                if (notify) sessionsList.ResetAfterSave();
             }
         }
 

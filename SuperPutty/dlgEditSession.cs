@@ -313,7 +313,7 @@ namespace SuperPutty
             if (this.SessionNameValidator != null)
             {
                 string error;
-                if (!this.SessionNameValidator(this.textBoxSessionName.Text, out error))
+                if (!this.SessionNameValidator(this.textBoxSessionName.Text.Trim(), out error))
                 {
                     e.Cancel = true;
                     this.SetError(this.textBoxSessionName, error ?? "Invalid Session Name");

@@ -57,6 +57,28 @@ namespace SuperPuttyUnitTests
             return session.OnPropertyChanged == null ? 0 : session.OnPropertyChanged.GetInvocationList().Count(d => ReferenceEquals(d.Target, view));
         }
 
+        private static bool ValidateEditorName(SessionTreeview view, TreeNode parent, TreeNode node, string text)
+        {
+            var session = node == null ? new SessionData() : (SessionData)((SessionData)node.Tag).Clone();
+            using (var icons = new ImageList())
+            using (var editor = new dlgEditSession(session, icons))
+            {
+                var name = (TextBox)typeof(dlgEditSession).GetField("textBoxSessionName", Private).GetValue(editor);
+                name.Text = text;
+                editor.SessionNameValidator = delegate(string value, out string error)
+                {
+                    object[] parameters = { parent, node, value, null };
+                    bool valid = (bool)typeof(SessionTreeview).GetMethod("ValidateSessionNameChange", Private).Invoke(view, parameters);
+                    error = (string)parameters[3];
+                    return valid;
+                };
+                var args = new System.ComponentModel.CancelEventArgs();
+                typeof(dlgEditSession).GetMethod("textBoxSessionName_Validating", Private)
+                    .Invoke(editor, new object[] { name, args });
+                return !args.Cancel;
+            }
+        }
+
         [TestCase("<SessionData/>")]
         [TestCase("<SessionData SessionId='MissingName'/>")]
         [TestCase("<SessionData SessionId='Folder//Child' SessionName='Child'/>")]
@@ -262,6 +284,196 @@ namespace SuperPuttyUnitTests
                 Assert.IsNotEmpty((string)args[3]);
                 args = new object[] { folder, folder.Nodes["Visible"], "visible", null };
                 Assert.IsTrue((bool)typeof(SessionTreeview).GetMethod("ValidateSessionNameChange", Private).Invoke(view, args));
+            }
+        }
+
+        [TestCase("", false, false)]
+        [TestCase("", false, true)]
+        [TestCase("", true, false)]
+        [TestCase("", true, true)]
+        [TestCase("Folder/", false, false)]
+        [TestCase("Folder/", false, true)]
+        [TestCase("Folder/", true, false)]
+        [TestCase("Folder/", true, true)]
+        public void PaddedDuplicateNamesAreRejectedForNewAndEditedSessions(string prefix, bool filtered, bool creating)
+        {
+            var originalSession = Session(prefix + "Original");
+            var taken = Session(prefix + "Taken");
+            App.ReplaceSessionCatalog(new[] { originalSession, taken });
+            App.SaveSessions();
+            string before = File.ReadAllText(Path.Combine(directory, "Sessions.XML"));
+            using (var dock = new DockPanel())
+            using (var view = new SessionTreeview(dock))
+            {
+                if (filtered) Filter(view, "Original");
+                var parent = prefix.Length == 0 ? Root(view) : Root(view).Nodes["Folder"];
+                Assert.IsFalse(ValidateEditorName(view, parent, creating ? null : parent.Nodes["Original"], " \ttAkEn \t"));
+                Assert.AreSame(originalSession, App.GetSessionById(prefix + "Original"));
+                Assert.AreSame(taken, App.GetSessionById(prefix + "Taken"));
+                Assert.AreEqual(2, App.GetAllSessions().Count);
+                Assert.AreEqual(before, File.ReadAllText(Path.Combine(directory, "Sessions.XML")));
+
+                // Trimming must still allow keeping the current name and using a unique name.
+                Assert.IsTrue(ValidateEditorName(view, parent, parent.Nodes["Original"], " Original "));
+                Assert.IsTrue(ValidateEditorName(view, parent, creating ? null : parent.Nodes["Original"], " New Name "));
+            }
+        }
+
+        [TestCase("", false)]
+        [TestCase("", true)]
+        [TestCase("Folder/", false)]
+        [TestCase("Folder/", true)]
+        public void PropertyGridValidationChecksTheUntrimmedNameItStores(string prefix, bool filtered)
+        {
+            var originalSession = Session(prefix + "Original");
+            var taken = Session(prefix + " Taken ");
+            App.ReplaceSessionCatalog(new[] { originalSession, taken });
+            App.SaveSessions();
+            string file = Path.Combine(directory, "Sessions.XML");
+            string before = File.ReadAllText(file);
+            using (var dock = new DockPanel())
+            using (var view = new SessionTreeview(dock))
+            {
+                if (filtered) Filter(view, "Original");
+                var parent = prefix.Length == 0 ? Root(view) : Root(view).Nodes["Folder"];
+                var node = parent.Nodes["Original"];
+                object[] args = { parent, node, " Taken ", null };
+                Assert.IsFalse((bool)typeof(SessionTreeview).GetMethod("ValidateSessionNameChange", Private).Invoke(view, args));
+                Assert.IsNotEmpty((string)args[3]);
+                Assert.AreSame(originalSession, App.GetSessionById(prefix + "Original"));
+                Assert.AreSame(taken, App.GetSessionById(prefix + " Taken "));
+                Assert.AreEqual(before, File.ReadAllText(file));
+
+                // A distinct padded name is supported by the property grid and must round-trip.
+                originalSession.SessionName = " Unique ";
+                originalSession.SessionId = prefix + originalSession.SessionName;
+                App.SaveSessions();
+                App.ReplaceSessionCatalog(SessionData.LoadSessionsFromFile(file));
+                Assert.AreEqual(2, App.GetAllSessions().Count);
+                Assert.AreEqual(" Unique ", App.GetSessionById(prefix + " Unique ").SessionName);
+                Assert.AreEqual(" Taken ", App.GetSessionById(prefix + " Taken ").SessionName);
+            }
+        }
+
+        [TestCase(false, false, "Folder/Renamed")]
+        [TestCase(false, true, "Folder/Renamed")]
+        [TestCase(true, false, "Folder/New")]
+        [TestCase(true, true, "Folder/New")]
+        [TestCase(false, false, "Folder/Original")]
+        [TestCase(false, true, "Folder/Original")]
+        [TestCase(true, false, "New")]
+        [TestCase(true, true, "New")]
+        public void SessionSavesPreserveEmptyFoldersAndTheirExpansionEvenOnFailure(bool creating, bool fail, string targetId)
+        {
+            var originalSession = Session("Folder/Original");
+            App.AddSession(originalSession);
+            App.SaveSessions();
+            string file = Path.Combine(directory, "Sessions.XML");
+            string before = File.ReadAllText(file);
+            using (var dock = new DockPanel())
+            using (var view = new SessionTreeview(dock))
+            {
+                var root = Root(view);
+                root.Nodes["Folder"].Nodes.Add("EmptySibling", "EmptySibling");
+                root.Nodes.Add("EmptyParent", "EmptyParent").Nodes.Add("EmptyChild", "EmptyChild");
+                var tree = (TreeView)typeof(SessionTreeview).GetField("treeView1", Private).GetValue(view);
+                var handle = tree.Handle;
+                root.ExpandAll();
+                tree.SelectedNode = root.Nodes["EmptyParent"].Nodes["EmptyChild"];
+
+                var edited = Session(targetId);
+                edited.Host = "changed.invalid";
+                var saved = creating ? edited : originalSession;
+                using (var locked = fail ? new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read) : null)
+                {
+                    if (fail) Assert.Throws<IOException>(() => App.SaveSessionChanges(saved, edited, App.SaveSessions));
+                    else App.SaveSessionChanges(saved, edited, App.SaveSessions);
+                }
+
+                root = Root(view);
+                Assert.IsNotNull(root.Nodes["Folder"].Nodes["EmptySibling"]);
+                Assert.IsNotNull(root.Nodes["EmptyParent"].Nodes["EmptyChild"]);
+                Assert.IsTrue(root.Nodes["EmptyParent"].IsExpanded);
+                Assert.AreSame(root.Nodes["EmptyParent"].Nodes["EmptyChild"], tree.SelectedNode);
+                if (fail)
+                {
+                    Assert.AreEqual(before, File.ReadAllText(file));
+                    Assert.AreSame(originalSession, App.GetSessionById("Folder/Original"));
+                    Assert.AreEqual(1, App.GetAllSessions().Count);
+                }
+                else
+                {
+                    Assert.AreSame(saved, App.GetSessionById(edited.SessionId));
+                    Assert.AreEqual(creating ? 2 : 1, App.GetAllSessions().Count);
+                    Assert.AreEqual("changed.invalid", SessionData.LoadSessionsFromFile(file)
+                        .Single(s => s.SessionId == edited.SessionId).Host);
+                }
+            }
+        }
+
+        [TestCase("delete")]
+        [TestCase("move")]
+        [TestCase("replace")]
+        public void NonSaveCatalogResetsDoNotRestoreRemovedFolders(string operation)
+        {
+            var session = Session("Folder/Original");
+            App.ReplaceSessionCatalog(new[] { session, Session("Target/Anchor") });
+            using (var dock = new DockPanel())
+            using (var view = new SessionTreeview(dock))
+            {
+                Root(view).Nodes["Folder"].Nodes.Add("Empty", "Empty").Nodes.Add("Child", "Child");
+                App.SaveSessionChanges(session, (SessionData)session.Clone(), App.SaveSessions);
+                Assert.IsNotNull(Root(view).Nodes["Folder"].Nodes["Empty"].Nodes["Child"]);
+
+                if (operation == "delete") App.RemoveSessionFolder("Folder");
+                else if (operation == "move") App.MoveSessionFolder("Folder", "Moved");
+                else App.ReplaceSessionCatalog(new[] { Session("Replacement") });
+
+                Assert.IsNull(Root(view).Nodes["Folder"]);
+                if (operation == "move") Assert.IsNotNull(Root(view).Nodes["Moved"].Nodes["Original"]);
+                if (operation == "replace") Assert.IsNotNull(Root(view).Nodes["Replacement"]);
+            }
+        }
+
+        [Test]
+        public void SaveDoesNotRestoreEmptyFoldersOverANewSessionAtTheSamePath()
+        {
+            App.AddSession(Session("Original"));
+            using (var dock = new DockPanel())
+            using (var view = new SessionTreeview(dock))
+            {
+                Root(view).Nodes.Add("Vacant", "Vacant").Nodes.Add("Child", "Child");
+                var session = Session("Vacant");
+                App.SaveSessionChanges(session, session, App.SaveSessions);
+
+                Assert.AreSame(session, Root(view).Nodes["Vacant"].Tag);
+                Assert.AreEqual(0, Root(view).Nodes["Vacant"].Nodes.Count);
+                Assert.AreSame(session, App.GetSessionById("Vacant"));
+            }
+        }
+
+        [Test]
+        public void EditorValidatesTheSameTrimmedNameThatItSaves()
+        {
+            var session = Session("Original");
+            using (var icons = new ImageList())
+            using (var editor = new dlgEditSession(session, icons))
+            {
+                var name = (TextBox)typeof(dlgEditSession).GetField("textBoxSessionName", Private).GetValue(editor);
+                name.Text = " \tTaken \t";
+                string validated = null;
+                editor.SessionNameValidator = delegate(string value, out string error)
+                {
+                    validated = value;
+                    error = "Duplicate name";
+                    return false;
+                };
+                var args = new System.ComponentModel.CancelEventArgs();
+                typeof(dlgEditSession).GetMethod("textBoxSessionName_Validating", Private)
+                    .Invoke(editor, new object[] { name, args });
+                Assert.AreEqual("Taken", validated);
+                Assert.IsTrue(args.Cancel);
+                Assert.AreEqual("Original", session.SessionName);
             }
         }
 
