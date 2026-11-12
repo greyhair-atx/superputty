@@ -218,7 +218,8 @@ namespace SuperPuttyUnitTests
                 using (var detail = new SessionDetail(helper))
                 {
                     Select(view, Root(view).Nodes["Folder"].Nodes["Selected"]);
-                    Assert.AreSame(session, Grid(detail).SelectedObject);
+                    Assert.AreNotSame(session, Grid(detail).SelectedObject, "The grid must edit a draft.");
+                    Assert.AreEqual(session.SessionId, ((SessionData)Grid(detail).SelectedObject).SessionId);
                     if (deleted) App.RemoveSession(session.SessionId);
                     else typeof(SessionTreeview).GetMethod("ApplySearch", Private).Invoke(view, new object[] { "NoResults" });
                     Assert.IsNull(view.SelectedSession);
@@ -241,7 +242,9 @@ namespace SuperPuttyUnitTests
                     Select(view, Root(view).Nodes["Selected"]);
                     var replacement = Session("Selected");
                     App.ReplaceSessionCatalog(new[] { replacement });
-                    Assert.AreSame(replacement, Grid(detail).SelectedObject);
+                    Assert.AreNotSame(replacement, Grid(detail).SelectedObject, "The replacement must also be edited as a draft.");
+                    Assert.AreEqual(replacement.SessionId, ((SessionData)Grid(detail).SelectedObject).SessionId);
+                    Assert.AreSame(replacement, Field<SessionData>(detail, "selectedSession"));
                     Assert.AreEqual(0, Callbacks(session.OnPropertyChanged, detail));
                     view.Dispose();
                     Assert.IsNull(Grid(detail).SelectedObject);

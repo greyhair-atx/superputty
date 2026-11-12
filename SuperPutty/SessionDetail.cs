@@ -1,6 +1,7 @@
 using SuperPutty.Data;
 using SuperPutty.Utils;
 using System;
+using System.IO;
 using System.Windows.Forms;
 
 namespace SuperPutty
@@ -10,6 +11,8 @@ namespace SuperPutty
         private SessionTreeview TreeViewInstance;
         SingletonToolWindowHelper<SessionTreeview> SessionsToolWindowHelper;
         private bool subscriptionsReleased;
+        private SessionData selectedSession;
+        private bool saving;
         private SessionDetail()
         {
             InitializeComponent();
@@ -34,12 +37,13 @@ namespace SuperPutty
         private void SelectedSessionChanged(SessionData Session)
         {
             if (subscriptionsReleased) return;
-            SessionData OldSession = sessionDetailPropertyGrid.SelectedObject as SessionData;
+            SessionData OldSession = selectedSession;
             if (OldSession != null)
             {
                 OldSession.OnPropertyChanged -= OnPropertyChanged;
             }
-            sessionDetailPropertyGrid.SelectedObject = Session;
+            selectedSession = Session;
+            sessionDetailPropertyGrid.SelectedObject = Session == null ? null : Session.Clone();
             if (Session != null)
             {
                 Session.OnPropertyChanged += OnPropertyChanged;
@@ -56,10 +60,10 @@ namespace SuperPutty
 
         private void OnPropertyChanged(SessionData Session, String AttributeName)
         {
-            if (Session == null || subscriptionsReleased || IsDisposed || Disposing)
+            if (Session == null || saving || subscriptionsReleased || IsDisposed || Disposing)
                 return;
 
-            sessionDetailPropertyGrid.Refresh();
+            sessionDetailPropertyGrid.SelectedObject = Session.Clone();
         }
 
         private void Attach(SessionTreeview SessionTreeView)
@@ -145,9 +149,9 @@ namespace SuperPutty
                 if (e.ChangedItem.PropertyDescriptor.Name == ExtraArgsPropertyName)
                 {
                     
-                    if (!String.IsNullOrEmpty(CommandLineOptions.getcommand(Session.ExtraArgs, "-pw")))
+                    if (CommandLineOptions.HasSensitiveArguments(Session.ExtraArgs))
                     {
-                        if (MessageBox.Show("SuperPuTTY CE saves the password in Sessions.xml file in plain text.\nUse a password in 'Extra PuTTY Arguments' is very insecure.\nFor a secure connection use SSH authentication with Pageant. \nSelect yes, if you want save the password", "Are you sure that you want to save the password?",
+                        if (MessageBox.Show("Passwords in Extra Arguments are kept only for this running session and removed when saving session XML.\nPlain-text password arguments can be visible to local process-inspection tools when the compatibility option is enabled.\nUse a private key or Pageant for repeat authentication.\nKeep these arguments for this session?", "Password in Extra Arguments",
                             MessageBoxButtons.OKCancel,
                             MessageBoxIcon.Warning,
                             MessageBoxDefaultButton.Button1) == DialogResult.Cancel)
@@ -163,7 +167,33 @@ namespace SuperPutty
 
                 Session.SessionId = SessionData.CombineSessionIds(SessionData.GetSessionParentId(Session.SessionId), Session.SessionName);
             }
-            SuperPuTTY.SaveSessions();
+            CommitChanges(SuperPuTTY.SaveSessions);
+        }
+
+        internal bool CommitChanges(Action persist)
+        {
+            var session = selectedSession;
+            var edited = sessionDetailPropertyGrid.SelectedObject as SessionData;
+            if (session == null || edited == null) return false;
+            try
+            {
+                saving = true;
+                SuperPuTTY.SaveSessionChanges(session, edited, persist);
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException ||
+                ex is System.Security.SecurityException || ex is InvalidOperationException || ex is ArgumentException)
+            {
+                sessionDetailPropertyGrid.SelectedObject = session.Clone();
+                ShowSaveError("The session could not be saved. The edit was reverted.\n\n" + ex.Message);
+                return false;
+            }
+            finally { saving = false; }
+        }
+
+        protected virtual void ShowSaveError(string message)
+        {
+            MessageBox.Show(this, message, "Unable to Save Session", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 }

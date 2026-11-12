@@ -49,7 +49,6 @@ namespace SuperPutty
 
         private static bool RefocusOnVisChanged = Convert.ToBoolean(ConfigurationManager.AppSettings["SuperPuTTY.RefocusOnVisChanged"] ?? "False");
         private static bool LoopWaitForHandle = Convert.ToBoolean(ConfigurationManager.AppSettings["SuperPuTTY.LoopWaitForHandle"] ?? "False");
-        private static int ClosePuttyWaitTimeMs = Convert.ToInt32(ConfigurationManager.AppSettings["SuperPuTTY.ClosePuttyWaitTimeMs"] ?? "100");
         private static string ActivatorTypeName = ConfigurationManager.AppSettings["SuperPuTTY.ActivatorTypeName"] ?? typeof(KeyEventWindowActivator).FullName;
 
         private Process m_Process;
@@ -58,8 +57,8 @@ namespace SuperPutty
         private bool startupInProgress;
         private bool m_Created = false;
         private IntPtr m_AppWin;
-        private List<IntPtr> m_hWinEventHooks = new List<IntPtr>();
-        private List<NativeMethods.WinEventDelegate> lpfnWinEventProcs = new List<NativeMethods.WinEventDelegate>();
+        private readonly List<NativeHookRegistration> windowEventHooks = new List<NativeHookRegistration>();
+        private bool windowEventHooksDisabled;
         private WindowActivator m_windowActivator = null;
         private SuperPutty.Data.ConnectionProtocol proto;
         private int suppressNextForegroundActivation;
@@ -172,12 +171,16 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             {
                 SuperPuTTY.WindowEvents.SystemSwitch -= new EventHandler<GlobalWindowEventArgs>(OnSystemSwitch);
             }
-            this.m_hWinEventHooks.ForEach(delegate(IntPtr hook) {
-                NativeMethods.UnhookWinEvent(hook);
-            });
-            this.m_hWinEventHooks.Clear();
-            this.lpfnWinEventProcs.Clear();
+            ReleaseWindowEventHooks();
             Captured = null;
+        }
+
+        internal void ReleaseWindowEventHooks()
+        {
+            this.windowEventHooksDisabled = true;
+            // Retain failed registrations so their callbacks cannot be collected
+            // and the installing thread can retry cleanup.
+            this.windowEventHooks.RemoveAll(hook => hook.TryRemove());
         }
 
         void SuperPuTTY_LayoutChanged(object sender, Data.LayoutChangedEventArgs e)
@@ -450,10 +453,9 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                     NativeMethods.SetWindowLong(m_AppWin, NativeMethods.GWL_STYLE, unchecked((int)lStyle));
                 }
                 // Hooks are process-scoped and remain valid when VNC replaces its window.
-                if (this.lpfnWinEventProcs.Count == 0)
+                if (this.windowEventHooks.Count == 0)
                 {
                     NativeMethods.WinEventDelegate lpfnWinEventProc = new NativeMethods.WinEventDelegate(WinEventProc);
-                    this.lpfnWinEventProcs.Add(lpfnWinEventProc);
                     RegisterWinEventHook(NativeMethods.WinEvents.EVENT_OBJECT_NAMECHANGE, lpfnWinEventProc);
                     RegisterWinEventHook(NativeMethods.WinEvents.EVENT_SYSTEM_FOREGROUND, lpfnWinEventProc);
                     if (UsesPuttyFrame)
@@ -506,7 +508,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         internal static IntPtr FindTigerVncDesktopWindow(uint processId)
         {
             IntPtr result = IntPtr.Zero;
-            NativeMethods.EnumDesktopWindows(IntPtr.Zero, delegate(IntPtr window, int parameter)
+            NativeMethods.EnumDesktopWindows(IntPtr.Zero, delegate(IntPtr window, IntPtr parameter)
             {
                 uint owner;
                 NativeMethods.GetWindowThreadProcessId(window, out owner);
@@ -596,6 +598,12 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
         void WinEventProc(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
         {
+            NativeCallbackGuard.WindowEvent(() => !this.windowEventHooksDisabled && !IsDisposed && !Disposing,
+                () => HandleWindowEvent(eventType, hwnd, idObject, idChild), ReportWindowEventFailure);
+        }
+
+        private void HandleWindowEvent(uint eventType, IntPtr hwnd, int idObject, int idChild)
+        {
             if (m_AppWin != hwnd)
                 return;
 
@@ -666,17 +674,16 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         private void RegisterWinEventHook(NativeMethods.WinEvents eventType, NativeMethods.WinEventDelegate callback)
         {
             uint eventId = (uint)eventType;
-            IntPtr hook = NativeMethods.SetWinEventHook(eventId, eventId, IntPtr.Zero, callback,
-                (uint)m_Process.Id, 0, NativeMethods.WINEVENT_OUTOFCONTEXT);
-            if (hook == IntPtr.Zero)
-            {
-                Log.WarnFormat("Unable to register {0} for process {1}. Win32Error={2}",
-                    eventType, m_Process.Id, System.Runtime.InteropServices.Marshal.GetLastWin32Error());
-            }
-            else
-            {
-                this.m_hWinEventHooks.Add(hook);
-            }
+            uint processId = (uint)m_Process.Id;
+            this.windowEventHooks.Add(new NativeHookRegistration(callback,
+                () => NativeMethods.SetWinEventHook(eventId, eventId, IntPtr.Zero, callback,
+                    processId, 0, NativeMethods.WINEVENT_OUTOFCONTEXT), NativeMethods.UnhookWinEvent,
+                eventType + " for process " + processId));
+        }
+
+        private static void ReportWindowEventFailure(Exception failure)
+        {
+            Log.Error("Error handling a hosted-window notification", failure);
         }
 
         private void RunOnUiThread(Action action)
@@ -694,13 +701,15 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                     {
                         if (!IsDisposed && !Disposing)
                         {
-                            action();
+                            NativeCallbackGuard.WindowEvent(() => !this.windowEventHooksDisabled,
+                                action, ReportWindowEventFailure);
                         }
                     }));
                 }
                 else
                 {
-                    action();
+                    NativeCallbackGuard.WindowEvent(() => !this.windowEventHooksDisabled,
+                        action, ReportWindowEventFailure);
                 }
             }
             catch (InvalidOperationException)
@@ -916,8 +925,6 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 } else {
                     NativeMethods.PostMessage(m_AppWin, NativeMethods.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
                 }
-
-                System.Threading.Thread.Sleep(ClosePuttyWaitTimeMs);
 
                 m_AppWin = IntPtr.Zero;
             }

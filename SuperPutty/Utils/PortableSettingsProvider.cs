@@ -46,6 +46,22 @@ namespace SuperPutty.Utils
 
         private XmlDocument settingsXML;
 
+        internal sealed class SettingsRecoveryNotification
+        {
+            internal SettingsRecoveryNotification(string settingsFilePath, string backupFilePath, string preservedFilePath)
+            {
+                SettingsFilePath = settingsFilePath;
+                BackupFilePath = backupFilePath;
+                PreservedFilePath = preservedFilePath;
+            }
+
+            internal string SettingsFilePath { get; private set; }
+            internal string BackupFilePath { get; private set; }
+            internal string PreservedFilePath { get; private set; }
+        }
+
+        internal SettingsRecoveryNotification RecoveryNotification { get; private set; }
+
         public override void Initialize(string name, System.Collections.Specialized.NameValueCollection config)
         {
             base.Initialize(this.ApplicationName, config);
@@ -100,19 +116,40 @@ namespace SuperPutty.Utils
             foreach (string dir in paths)
             {
                 string filePath = Path.Combine(dir, fileName);
-                if (File.Exists(filePath))
+                if (SettingsPathExists(filePath))
                 {
                     path = filePath;
                     break;
                 }
             }
+
+            // A backup-only profile should recover in its original location.
+            if (!SettingsPathExists(path))
+            {
+                foreach (string dir in paths)
+                {
+                    string filePath = Path.Combine(dir, fileName);
+                    if (SettingsPathExists(filePath + ".bak")) return filePath;
+                }
+            }
             return path;
+        }
+
+        private static bool SettingsPathExists(string path)
+        {
+            // File.Exists also returns false for access failures, which could silently
+            // select a different profile or allow defaults to replace an unreadable file.
+            try { File.GetAttributes(path); return true; }
+            catch (FileNotFoundException) { return false; }
+            catch (DirectoryNotFoundException) { return false; }
         }
 
         public string SettingsFilePath { get; private set; }
 
         public override void SetPropertyValues(SettingsContext context, SettingsPropertyValueCollection collection)
         {
+            // Load before mutating anything, and propagate unrecoverable load failures.
+            XmlDocument document = SettingsXML;
             foreach (SettingsPropertyValue propVal in collection)
             {
                 SetValue(propVal);
@@ -120,7 +157,7 @@ namespace SuperPutty.Utils
 
             try
             {             
-                SaveAtomically(SettingsXML, GetAppSettingsFilePath());
+                SaveAtomically(document, SettingsFilePath);
             }
             catch(Exception ex){
                 Log.Error("Error saving settings", ex);
@@ -181,27 +218,20 @@ namespace SuperPutty.Utils
         {
             get
             {
-                // If we dont hold an xml document, try opening one.
-                // If it doesnt exist then create a new one ready.
                 if (this.settingsXML == null)
                 {
-                    this.settingsXML = new XmlDocument();             
-                    string settingsFile = GetAppSettingsFilePath();
-                    this.SettingsFilePath = settingsFile;
                     try
                     {
-                        this.settingsXML.Load( settingsFile );
-                        Log.InfoFormat("Loaded settings from {0}", settingsFile);
+                        SettingsFilePath = GetAppSettingsFilePath();
+                        this.settingsXML = LoadSettingsDocument(SettingsFilePath);
                     }
-                    catch (Exception)
+                    catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException ||
+                        ex is System.Security.SecurityException || ex is XmlException)
                     {
-                        Log.InfoFormat("Could not load file ({0}), creating settings file", settingsFile);
-                        // Create new document
-                        XmlDeclaration declaration = this.settingsXML.CreateXmlDeclaration("1.0", "utf-8", String.Empty);
-                        this.settingsXML.AppendChild(declaration);
-
-                        XmlNode nodeRoot = this.settingsXML.CreateNode(XmlNodeType.Element, SettingsRoot, String.Empty);
-                        this.settingsXML.AppendChild(nodeRoot);
+                        Log.Error("Could not load application preferences; the existing files were not replaced with defaults.", ex);
+                        throw new ConfigurationErrorsException(
+                            "Unable to load application preferences. Check access to the settings file and restore a valid backup if necessary. " +
+                            "Existing preferences have not been replaced with defaults. File: " + SettingsFilePath, ex);
                     }
                 }
 
@@ -209,27 +239,119 @@ namespace SuperPutty.Utils
             }
         }
 
+        private XmlDocument LoadSettingsDocument(string settingsFile)
+        {
+            bool primaryMissing = false;
+            Exception primaryFailure;
+            try
+            {
+                using (var stream = File.OpenRead(settingsFile))
+                {
+                    XmlDocument document = ReadSettingsDocument(stream);
+                    Log.InfoFormat("Loaded settings from {0}", settingsFile);
+                    return document;
+                }
+            }
+            catch (FileNotFoundException ex) { primaryMissing = true; primaryFailure = ex; }
+            catch (DirectoryNotFoundException ex) { primaryMissing = true; primaryFailure = ex; }
+            catch (XmlException ex) { primaryFailure = ex; }
+
+            if (!primaryMissing) Log.Warn("Application preferences are invalid; checking the backup: " + settingsFile, primaryFailure);
+            string backupFile = settingsFile + ".bak";
+            byte[] backupBytes;
+            try { backupBytes = File.ReadAllBytes(backupFile); }
+            catch (FileNotFoundException)
+            {
+                if (!primaryMissing) throw new XmlException("Application preferences are invalid and no backup exists.", primaryFailure);
+                return CreateSettingsDocument();
+            }
+            catch (DirectoryNotFoundException)
+            {
+                if (!primaryMissing) throw new XmlException("Application preferences are invalid and no backup exists.", primaryFailure);
+                return CreateSettingsDocument();
+            }
+
+            XmlDocument recovered;
+            try
+            {
+                using (var stream = new MemoryStream(backupBytes, false))
+                    recovered = ReadSettingsDocument(stream);
+            }
+            catch (XmlException ex)
+            {
+                Log.Error("The application preference backup is also invalid: " + backupFile, ex);
+                throw new XmlException("No valid application preference file or backup could be loaded.", primaryFailure);
+            }
+
+            string preservedFile = primaryMissing ? null : settingsFile + ".corrupt." + Guid.NewGuid().ToString("N");
+            string temporaryFile = settingsFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                using (var stream = new FileStream(temporaryFile, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    stream.Write(backupBytes, 0, backupBytes.Length);
+                    stream.Flush(true);
+                }
+
+                // Never put the damaged primary into .bak. Restore the exact validated
+                // backup bytes and preserve the damaged original under a unique name.
+                if (primaryMissing) File.Move(temporaryFile, settingsFile);
+                else File.Replace(temporaryFile, settingsFile, preservedFile);
+            }
+            finally
+            {
+                try { File.Delete(temporaryFile); }
+                catch (IOException ex) { Log.Warn("Could not remove temporary recovery file", ex); }
+                catch (UnauthorizedAccessException ex) { Log.Warn("Could not remove temporary recovery file", ex); }
+            }
+
+            RecoveryNotification = new SettingsRecoveryNotification(settingsFile, backupFile, preservedFile);
+            Log.WarnFormat("Recovered preferences from {0}. Preserved original: {1}", backupFile, preservedFile ?? "primary file was missing");
+            return recovered;
+        }
+
+        private static XmlDocument ReadSettingsDocument(Stream stream)
+        {
+            var document = new XmlDocument { XmlResolver = null };
+            var readerSettings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };
+            using (XmlReader reader = XmlReader.Create(stream, readerSettings)) document.Load(reader);
+            if (document.DocumentElement == null || document.DocumentElement.Name != SettingsRoot ||
+                document.DocumentElement.NamespaceURI.Length != 0)
+                throw new XmlException("Application preferences must have a Settings root element without a namespace.");
+            return document;
+        }
+
+        private static XmlDocument CreateSettingsDocument()
+        {
+            var document = new XmlDocument { XmlResolver = null };
+            document.AppendChild(document.CreateXmlDeclaration("1.0", "utf-8", String.Empty));
+            document.AppendChild(document.CreateElement(SettingsRoot));
+            return document;
+        }
+
         private string GetValue(SettingsProperty setting)
         {
+            // A load failure must escape the fallback for individual missing values.
+            XmlDocument document = SettingsXML;
             string value = setting.DefaultValue.ToString();
 
             try
             {
                 if (UseRoamingSettings(setting))
                 {
-                    XmlNode node = SettingsXML.SelectSingleNode(SettingsRoot + "/" + setting.Name);
+                    XmlNode node = document.SelectSingleNode(SettingsRoot + "/" + setting.Name);
                     
                     if (node == null)
                     {
                         // try go by host...backwards compatibility
-                        node = SettingsXML.SelectSingleNode(SettingsRoot + "/" + GetHostName() + "/" + setting.Name);
+                        node = document.SelectSingleNode(SettingsRoot + "/" + GetHostName() + "/" + setting.Name);
                     }
 
                     value = node != null ? (node.InnerText ?? String.Empty) : setting.DefaultValue.ToString();
                 }
                 else
                 {
-                    value = SettingsXML.SelectSingleNode(SettingsRoot + "/" + GetHostName() + "/" + setting.Name).InnerText;
+                    value = document.SelectSingleNode(SettingsRoot + "/" + GetHostName() + "/" + setting.Name).InnerText;
                 }
             }
             catch (Exception)

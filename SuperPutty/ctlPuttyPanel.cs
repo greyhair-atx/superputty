@@ -48,6 +48,7 @@ namespace SuperPutty
         private static int RefocusAttempts = Convert.ToInt32(ConfigurationManager.AppSettings["SuperPuTTY.RefocusAttempts"] ?? "3");
         private static int RefocusIntervalMs = Convert.ToInt32(ConfigurationManager.AppSettings["SuperPuTTY.RefocusIntervalMs"] ?? "40");
         private bool closeWithoutConfirmation;
+        private readonly ChildFocusRetry focusRetry;
 
         private PuttyStartInfo m_puttyStartInfo;
         private PuttyClosedCallback m_ApplicationExit;
@@ -65,6 +66,8 @@ namespace SuperPutty
             }
 
             InitializeComponent();
+            focusRetry = new ChildFocusRetry();
+            components.Add(focusRetry);
 
             this.Text = session.SessionName;
             this.TabText = session.SessionName;
@@ -349,27 +352,32 @@ namespace SuperPutty
         /// </summary>
         internal void SetFocusToChildApplication(string caller)
         {
-            if (!this.AppPanel.ExternalProcessCaptured) { return; }
-
-            bool success = false;
-            for (int i = 0; i < RefocusAttempts; i++)
+            if (IsDisposed || Disposing || !IsHandleCreated) return;
+            if (InvokeRequired)
             {
-                Thread.Sleep(RefocusIntervalMs);
-                if (this.AppPanel.ReFocusPuTTY(caller))
-                {
-                    if (i > 0)
-                    {
-                        Log.DebugFormat("SetFocusToChildApplication success after {0} attempts", i + 1);
-                    }
-                    success = true;
-                    break;
-                }
+                try { BeginInvoke((Action)(() => SetFocusToChildApplication(caller))); }
+                catch (InvalidOperationException) { }
+                return;
             }
+            focusRetry.Request(
+                () => !IsDisposed && !Disposing && Visible && AppPanel.ExternalProcessCaptured &&
+                    (DockPanel == null || DockPanel.ActiveContent == this) &&
+                    (SuperPuTTY.MainForm == null || SuperPuTTY.MainForm.IsForegroundWindow(true)),
+                () => NativeMethods.GetForegroundWindow() == AppPanel.AppWindowHandle || AppPanel.ReFocusPuTTY(caller),
+                () => Log.WarnFormat("Unable to SetFocusToChildApplication, {0}", Text),
+                RefocusAttempts, RefocusIntervalMs);
+        }
 
-            if (!success)
-            {
-                Log.WarnFormat("Unable to SetFocusToChildApplication, {0}", this.Text);
-            }
+        protected override void OnDeactivate(EventArgs e)
+        {
+            focusRetry?.Stop();
+            base.OnDeactivate(e);
+        }
+
+        protected override void OnHandleDestroyed(EventArgs e)
+        {
+            focusRetry?.Stop();
+            base.OnHandleDestroyed(e);
         }
 
         protected override string GetPersistString()
@@ -505,11 +513,11 @@ namespace SuperPutty
                 Log.DebugFormat("Sending Putty Command: menu={2}, tag={0}, command={1}", tags[i], commands[i], menuItem.Text);
             }
 
+            this.SetFocusToChildApplication("MenuHandler");
             ThreadPool.QueueUserWorkItem(delegate
             {
                 try
                 {
-                    this.SetFocusToChildApplication("MenuHandler");
                     for (int i = 0; i < commands.Length; ++i)
                     {
                         NativeMethods.SendMessage(AppPanel.AppWindowHandle, (uint)NativeMethods.WM.SYSCOMMAND, commands[i], 0);

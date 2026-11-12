@@ -29,6 +29,7 @@ namespace SuperPutty
 
         private readonly ConnectionProtocol protocol;
         private readonly CancellationTokenSource captureCancellation = new CancellationTokenSource();
+        private readonly object launchProcessLock = new object();
         private Process launchProcess;
         private Process consoleProcess;
         private Thread captureThread;
@@ -159,15 +160,14 @@ namespace SuperPutty
             if (disposing)
             {
                 this.CloseConsole();
-                bool sameProcess = Object.ReferenceEquals(this.consoleProcess, this.launchProcess);
-                this.DisposeProcess(ref this.consoleProcess);
-                if (sameProcess)
+                lock (this.launchProcessLock)
                 {
-                    this.launchProcess = null;
-                }
-                else
-                {
-                    this.DisposeProcess(ref this.launchProcess);
+                    bool sameProcess = Object.ReferenceEquals(this.consoleProcess, this.launchProcess);
+                    this.DisposeProcess(ref this.consoleProcess);
+                    if (sameProcess)
+                        this.launchProcess = null;
+                    else
+                        this.DisposeProcess(ref this.launchProcess);
                 }
             }
 
@@ -232,35 +232,44 @@ namespace SuperPutty
         private void CaptureConsoleWindow(CaptureRequest request)
         {
             CaptureResult result = null;
-            while (!this.captureCancellation.IsCancellationRequested && DateTime.UtcNow < request.DeadlineUtc)
+            try
             {
-                result = FindNewConsoleWindow(request);
-                if (result != null)
+                while (!this.captureCancellation.IsCancellationRequested && DateTime.UtcNow < request.DeadlineUtc)
                 {
-                    break;
+                    result = FindNewConsoleWindow(request);
+                    if (result != null)
+                    {
+                        break;
+                    }
+
+                    if (this.HasLaunchProcessExited())
+                    {
+                        break;
+                    }
+
+                    if (this.captureCancellation.Token.WaitHandle.WaitOne(50))
+                    {
+                        return;
+                    }
                 }
 
-                if (this.HasLaunchProcessExited())
+                if (this.captureCancellation.IsCancellationRequested)
                 {
-                    break;
-                }
-
-                if (this.captureCancellation.Token.WaitHandle.WaitOne(50))
-                {
+                    if (result != null)
+                    {
+                        result.Process.Dispose();
+                    }
                     return;
                 }
-            }
 
-            if (this.captureCancellation.IsCancellationRequested)
+                this.RunOnUiThread(() => this.CompleteCapture(result), () => result?.Process.Dispose());
+            }
+            catch (Exception ex) when (ex is Win32Exception || ex is InvalidOperationException)
             {
-                if (result != null)
-                {
-                    result.Process.Dispose();
-                }
-                return;
+                result?.Process.Dispose();
+                Log.Warn("Unable to discover the console window.", ex);
+                this.RunOnUiThread(() => this.CompleteCapture(null));
             }
-
-            this.RunOnUiThread(() => this.CompleteCapture(result));
         }
 
         private void CompleteCapture(CaptureResult result)
@@ -289,21 +298,40 @@ namespace SuperPutty
 
             this.consoleProcess = result.Process;
             this.consoleWindow = result.WindowHandle;
-            this.consoleProcess.EnableRaisingEvents = true;
-            this.consoleProcess.Exited += this.ConsoleProcessExited;
-
-            if (!this.AttachConsoleWindow())
+            try
             {
-                this.CloseConsole();
-                this.NotifyClosed(true);
+                this.consoleProcess.Exited += this.ConsoleProcessExited;
+                this.consoleProcess.EnableRaisingEvents = true;
+                if (this.consoleProcess.HasExited || !this.AttachConsoleWindow() ||
+                    this.closing || this.IsDisposed || this.Disposing || this.consoleProcess.HasExited)
+                {
+                    this.FailCapture();
+                    return;
+                }
+
+                Log.InfoFormat("Captured {0} console window. Handle={1}",
+                    this.protocol, this.consoleWindow);
+                this.MoveConsoleWindow();
+                this.BeginInvoke(new MethodInvoker(delegate { this.ReFocusPuTTY("ConsoleCaptureCompleted"); }));
+            }
+            catch (Exception ex) when (ex is Win32Exception || ex is InvalidOperationException)
+            {
+                Log.Warn("The console process became unavailable during capture.", ex);
+                this.FailCapture();
                 return;
             }
-
-            Log.InfoFormat("Captured {0} console window. Process={1}, Handle={2}",
-                this.protocol, this.consoleProcess.ProcessName, this.consoleWindow);
-            this.MoveConsoleWindow();
-            this.BeginInvoke(new MethodInvoker(delegate { this.ReFocusPuTTY("ConsoleCaptureCompleted"); }));
             this.NotifyWindowCaptured();
+        }
+
+        private void FailCapture()
+        {
+            this.CloseConsole();
+            if (this.consoleProcess != null)
+            {
+                this.consoleProcess.Exited -= this.ConsoleProcessExited;
+                this.DisposeProcess(ref this.consoleProcess);
+            }
+            this.NotifyClosed(true);
         }
 
         private bool AttachConsoleWindow()
@@ -379,10 +407,11 @@ namespace SuperPutty
 
         private void ConsoleProcessExited(object sender, EventArgs e)
         {
-            if (!this.closing)
+            this.RunOnUiThread(() =>
             {
-                this.NotifyClosed(true);
-            }
+                if (!this.closing)
+                    this.NotifyClosed(true);
+            });
         }
 
         private void NotifyClosed(bool error)
@@ -395,20 +424,25 @@ namespace SuperPutty
 
         private bool HasLaunchProcessExited()
         {
-            try
+            // Disposal must not invalidate the Process while the capture worker reads it.
+            lock (this.launchProcessLock)
             {
-                return this.launchProcess == null || this.launchProcess.HasExited;
-            }
-            catch (InvalidOperationException)
-            {
-                return true;
+                try
+                {
+                    return this.launchProcess == null || this.launchProcess.HasExited;
+                }
+                catch (Exception ex) when (ex is InvalidOperationException || ex is Win32Exception)
+                {
+                    return true;
+                }
             }
         }
 
-        private void RunOnUiThread(Action action)
+        private void RunOnUiThread(Action action, Action discarded = null)
         {
             if (this.IsDisposed || this.Disposing || !this.IsHandleCreated)
             {
+                discarded?.Invoke();
                 return;
             }
 
@@ -420,11 +454,14 @@ namespace SuperPutty
                     {
                         action();
                     }
+                    else
+                        discarded?.Invoke();
                 }));
             }
             catch (InvalidOperationException)
             {
                 // The panel was destroyed after capture completed.
+                discarded?.Invoke();
             }
         }
 
@@ -484,7 +521,7 @@ namespace SuperPutty
                     }
                     return true;
                 }
-                catch (InvalidOperationException)
+                catch (Exception ex) when (ex is InvalidOperationException || ex is Win32Exception)
                 {
                     if (process != null)
                     {

@@ -49,7 +49,9 @@ The application also creates timestamped session backups when replacing the sess
 
 Application preferences are saved to a temporary file beside `SuperPuTTY.settings`, flushed to disk, and then published with an atomic replacement. After replacing an existing file, `SuperPuTTY.settings.bak` contains the previous save; each successful replacement refreshes this single backup. The first save creates the settings file without a backup. If writing or replacement fails, the application logs the error and does not fall back to overwriting the original file directly.
 
-To restore the preference backup, close SuperPuTTY CE, keep a copy of the current settings file, and copy `SuperPuTTY.settings.bak` over `SuperPuTTY.settings`. Restoration is manual. This preference backup does not include sessions or layouts; keep backing those up separately.
+If the preference file is missing or contains invalid XML, SuperPuTTY validates `SuperPuTTY.settings.bak` and restores it automatically. Recovery preserves a damaged original beside the settings file as `SuperPuTTY.settings.corrupt.<unique identifier>`, leaves the backup intact, and displays a startup notice with the file locations. Later saves continue to keep the previous valid save in `.bak`. Preference XML must have a `Settings` root without a namespace; document type declarations are not supported.
+
+If the existing file cannot be read, neither file is valid, or recovery cannot safely preserve and replace the original, startup reports the problem instead of saving default preferences over the files. Close SuperPuTTY, check file permissions, and keep copies of the existing files before repairing the XML or restoring a known-good backup. To restore a backup manually, copy `SuperPuTTY.settings.bak` over `SuperPuTTY.settings` while the application is closed. The preference backup does not include sessions or layouts; keep backing those up separately.
 
 ## Logging
 

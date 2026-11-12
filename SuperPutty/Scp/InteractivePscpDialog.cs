@@ -42,6 +42,7 @@ namespace SuperPutty.Scp
         private readonly int timeoutMs;
         private readonly CancellationToken cancellation;
         private readonly Func<string, bool> outputHandler;
+        private readonly ScpOutputCapture output;
         private NamedPipeServerStream pipe;
         private SafeFileHandle job;
         private Process host;
@@ -52,13 +53,14 @@ namespace SuperPutty.Scp
         internal InteractivePscpResult Result { get; } = new InteractivePscpResult();
 
         internal InteractivePscpDialog(string executable, string arguments, int timeoutMs,
-            CancellationToken cancellation, Func<string, bool> outputHandler)
+            CancellationToken cancellation, Func<string, bool> outputHandler, bool preserveAllOutput = true)
         {
             this.executable = executable;
             this.arguments = arguments;
             this.timeoutMs = timeoutMs;
             this.cancellation = cancellation;
             this.outputHandler = outputHandler;
+            this.output = new ScpOutputCapture(preserveAllOutput);
             Text = "SCP authentication and transfer";
             Size = DpiUtils.ScaleSize(new System.Drawing.Size(850, 500));
             StartPosition = FormStartPosition.CenterParent;
@@ -146,19 +148,31 @@ namespace SuperPutty.Scp
                     Interlocked.Exchange(ref lastActivity, DateTime.UtcNow.Ticks);
                     if (kind == 0)
                     {
-                        string line = reader.ReadString();
-                        Result.Output.Add(line);
+                        string line = ScpOutputCapture.ReadString(reader);
+                        output.Add(line);
                         if (outputHandler != null) outputHandler(line);
                     }
                     else if (kind == 1)
                     {
                         int exitCode = reader.ReadInt32();
-                        Post(() => Complete(exitCode, null));
+                        string[] captured = output.ToArray();
+                        Post(() =>
+                        {
+                            Result.Output.AddRange(captured);
+                            Complete(exitCode, null);
+                        });
                         return;
                     }
+                    else if (kind == 2)
+                        throw new ScpOutputLimitException();
                     else
                         throw new IOException("The PSCP console host stopped unexpectedly.");
                 }
+            }
+            catch (ScpOutputLimitException)
+            {
+                StopOperation();
+                Post(() => Complete(-1, ScpOutputLimitException.SafeMessage));
             }
             catch (Exception ex) when (ex is IOException || ex is Win32Exception ||
                 ex is InvalidOperationException || ex is OperationCanceledException || ex is TimeoutException)
@@ -311,8 +325,8 @@ namespace SuperPutty.Scp
                     var writer = new BinaryWriter(connection, Encoding.UTF8, true);
                     writer.Write(Native.GetConsoleWindow().ToInt64());
                     writer.Flush();
-                    string executable = reader.ReadString();
-                    string arguments = reader.ReadString();
+                    string executable = ScpOutputCapture.ReadString(reader);
+                    string arguments = ScpOutputCapture.ReadString(reader);
                     using (var child = Process.Start(new ProcessStartInfo
                     {
                         FileName = executable,
@@ -325,17 +339,26 @@ namespace SuperPutty.Scp
                         // authentication uses CONIN$/CONOUT$ directly; older versions use these handles.
                     }))
                     {
-                        string line;
-                        while ((line = child.StandardOutput.ReadLine()) != null)
+                        try
                         {
-                            writer.Write((byte)0);
-                            writer.Write(line);
+                            string line;
+                            while ((line = ScpOutputCapture.ReadLine(child.StandardOutput)) != null)
+                            {
+                                writer.Write((byte)0);
+                                writer.Write(line);
+                                writer.Flush();
+                            }
+                            child.WaitForExit();
+                            writer.Write((byte)1);
+                            writer.Write(child.ExitCode);
                             writer.Flush();
                         }
-                        child.WaitForExit();
-                        writer.Write((byte)1);
-                        writer.Write(child.ExitCode);
-                        writer.Flush();
+                        catch (ScpOutputLimitException)
+                        {
+                            // A fixed status crosses the pipe; no oversized content is forwarded.
+                            writer.Write((byte)2);
+                            writer.Flush();
+                        }
                     }
                     // Keep failures visible until the user closes the dialog. The parent job
                     // terminates this helper when the dialog closes, including on app shutdown.
@@ -349,34 +372,11 @@ namespace SuperPutty.Scp
 
         internal static string SanitizeExtraArguments(string arguments)
         {
-            if (String.IsNullOrWhiteSpace(arguments)) return String.Empty;
-            int count;
-            IntPtr argv = Native.CommandLineToArgvW("pscp.exe " + arguments, out count);
-            if (argv == IntPtr.Zero) throw new Win32Exception();
-            try
-            {
-                var safe = new List<string>();
-                for (int i = 1; i < count; i++)
-                {
-                    string arg = Marshal.PtrToStringUni(Marshal.ReadIntPtr(argv, i * IntPtr.Size));
-                    string lower = arg.ToLowerInvariant();
-                    if (lower == "-batch") continue;
-                    if (lower == "-pw" || lower == "-pwfile" || lower == "-password" || lower == "/password" || lower == "/p")
-                    { i++; continue; }
-                    if (lower.StartsWith("-pw=") || lower.StartsWith("-pwfile=") || lower.StartsWith("/password:") || lower.StartsWith("/p:"))
-                        continue;
-                    safe.Add(CommandLineOptions.QuoteArgument(arg));
-                }
-                return String.Join(" ", safe);
-            }
-            finally { Native.LocalFree(argv); }
+            return WindowsCommandLine.RewriteSensitive(arguments, null, true, true);
         }
 
         private static class Native
         {
-            [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-            internal static extern IntPtr CommandLineToArgvW(string command, out int count);
-            [DllImport("kernel32.dll")] internal static extern IntPtr LocalFree(IntPtr memory);
             [StructLayout(LayoutKind.Sequential)] internal struct BasicLimits
             {
                 internal long ProcessTime, JobTime;

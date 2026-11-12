@@ -55,6 +55,163 @@ namespace SuperPuttyUnitTests
             return document.SelectSingleNode("/Settings/UpdateChannel").InnerText;
         }
 
+        private static SettingsPropertyCollection ChannelProperties(PortableSettingsProvider provider)
+        {
+            var metadata = new SuperPutty.Properties.Settings().Properties["UpdateChannel"];
+            return new SettingsPropertyCollection { new SettingsProperty(metadata) { Provider = provider } };
+        }
+
+        private static SettingsPropertyValueCollection ChannelValues(PortableSettingsProvider provider, string value)
+        {
+            return new SettingsPropertyValueCollection
+            {
+                new SettingsPropertyValue(ChannelProperties(provider)["UpdateChannel"]) { PropertyValue = value }
+            };
+        }
+
+        [TestCase("<Settings><UpdateChannel>")]
+        [TestCase("<NotSettings/>")]
+        [TestCase("<Settings xmlns='urn:unexpected'/>")]
+        [TestCase("<!DOCTYPE Settings [<!ENTITY value 'unexpected'>]><Settings>&value;</Settings>")]
+        public void InvalidPrimaryRecoversValidatedBackupAndPreservesOriginal(string damaged)
+        {
+            File.WriteAllText(settingsPath, damaged);
+            File.WriteAllText(settingsPath + ".bak", Document(UpdateChannel.OfficialUpstream).OuterXml);
+            byte[] original = File.ReadAllBytes(settingsPath);
+            byte[] backup = File.ReadAllBytes(settingsPath + ".bak");
+            var provider = new TestProvider { DirectoryPath = directory };
+
+            var values = provider.GetPropertyValues(new SettingsContext(), ChannelProperties(provider));
+
+            Assert.AreEqual(UpdateChannel.OfficialUpstream, values["UpdateChannel"].PropertyValue);
+            Assert.IsNotNull(provider.RecoveryNotification);
+            Assert.AreEqual(settingsPath, provider.RecoveryNotification.SettingsFilePath);
+            Assert.AreEqual(settingsPath + ".bak", provider.RecoveryNotification.BackupFilePath);
+            StringAssert.StartsWith(settingsPath + ".corrupt.", provider.RecoveryNotification.PreservedFilePath);
+            CollectionAssert.AreEqual(original, File.ReadAllBytes(provider.RecoveryNotification.PreservedFilePath));
+            CollectionAssert.AreEqual(backup, File.ReadAllBytes(settingsPath));
+            CollectionAssert.AreEqual(backup, File.ReadAllBytes(settingsPath + ".bak"));
+
+            values["UpdateChannel"].PropertyValue = UpdateChannel.CommunityFork;
+            provider.SetPropertyValues(new SettingsContext(), values);
+            CollectionAssert.AreEqual(backup, File.ReadAllBytes(settingsPath + ".bak"));
+            Assert.AreEqual(UpdateChannel.CommunityFork, ReadChannel(settingsPath));
+            values["UpdateChannel"].PropertyValue = UpdateChannel.OfficialUpstream;
+            provider.SetPropertyValues(new SettingsContext(), values);
+            Assert.AreEqual(UpdateChannel.CommunityFork, ReadChannel(settingsPath + ".bak"));
+            CollectionAssert.AreEqual(original, File.ReadAllBytes(provider.RecoveryNotification.PreservedFilePath));
+            Assert.IsEmpty(Directory.GetFiles(directory, "*.tmp"));
+        }
+
+        [Test]
+        public void MissingPrimaryRecoversBackupWithoutCreatingDamagedFile()
+        {
+            File.WriteAllText(settingsPath + ".bak", Document(UpdateChannel.OfficialUpstream).OuterXml);
+            byte[] backup = File.ReadAllBytes(settingsPath + ".bak");
+            var provider = new TestProvider { DirectoryPath = directory };
+
+            var values = provider.GetPropertyValues(new SettingsContext(), ChannelProperties(provider));
+
+            Assert.AreEqual(UpdateChannel.OfficialUpstream, values["UpdateChannel"].PropertyValue);
+            Assert.IsNotNull(provider.RecoveryNotification);
+            Assert.IsNull(provider.RecoveryNotification.PreservedFilePath);
+            CollectionAssert.AreEqual(backup, File.ReadAllBytes(settingsPath));
+            CollectionAssert.AreEqual(backup, File.ReadAllBytes(settingsPath + ".bak"));
+            Assert.IsEmpty(Directory.GetFiles(directory, "*.corrupt.*"));
+        }
+
+        [TestCase(null)]
+        [TestCase("<Settings>")]
+        [TestCase("<NotSettings/>")]
+        public void InvalidPrimaryWithoutValidBackupNeverFallsBackToOrSavesDefaults(string backupText)
+        {
+            File.WriteAllText(settingsPath, "<Settings><UpdateChannel>");
+            if (backupText != null) File.WriteAllText(settingsPath + ".bak", backupText);
+            byte[] original = File.ReadAllBytes(settingsPath);
+            var provider = new TestProvider { DirectoryPath = directory };
+
+            Assert.Throws<ConfigurationErrorsException>(() => provider.GetPropertyValues(new SettingsContext(), ChannelProperties(provider)));
+            // A second access and an attempted save must not use a partially cached document.
+            Assert.Throws<ConfigurationErrorsException>(() => { var document = provider.SettingsXML; });
+            Assert.Throws<ConfigurationErrorsException>(() => provider.SetPropertyValues(new SettingsContext(),
+                ChannelValues(provider, UpdateChannel.CommunityFork)));
+
+            CollectionAssert.AreEqual(original, File.ReadAllBytes(settingsPath));
+            if (backupText != null) Assert.AreEqual(backupText, File.ReadAllText(settingsPath + ".bak"));
+            else Assert.False(File.Exists(settingsPath + ".bak"));
+            Assert.IsNull(provider.RecoveryNotification);
+            Assert.IsEmpty(Directory.GetFiles(directory, "*.tmp"));
+            Assert.IsEmpty(Directory.GetFiles(directory, "*.corrupt.*"));
+        }
+
+        [Test]
+        public void UnreadablePrimaryDoesNotUseBackupOrCacheDefaults()
+        {
+            File.WriteAllText(settingsPath, Document(UpdateChannel.CommunityFork).OuterXml);
+            File.WriteAllText(settingsPath + ".bak", Document(UpdateChannel.OfficialUpstream).OuterXml);
+            var provider = new TestProvider { DirectoryPath = directory };
+            using (var locked = new FileStream(settingsPath, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                Assert.Throws<ConfigurationErrorsException>(() => provider.GetPropertyValues(new SettingsContext(), ChannelProperties(provider)));
+                Assert.Throws<ConfigurationErrorsException>(() => provider.SetPropertyValues(new SettingsContext(),
+                    ChannelValues(provider, UpdateChannel.OfficialUpstream)));
+                Assert.IsNull(provider.RecoveryNotification);
+            }
+
+            var values = provider.GetPropertyValues(new SettingsContext(), ChannelProperties(provider));
+            Assert.AreEqual(UpdateChannel.CommunityFork, values["UpdateChannel"].PropertyValue);
+            Assert.AreEqual(UpdateChannel.CommunityFork, ReadChannel(settingsPath));
+            Assert.AreEqual(UpdateChannel.OfficialUpstream, ReadChannel(settingsPath + ".bak"));
+            Assert.IsEmpty(Directory.GetFiles(directory, "*.corrupt.*"));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void UnreadableBackupDoesNotReplaceMissingOrInvalidPrimary(bool primaryExists)
+        {
+            const string damaged = "<Settings>";
+            if (primaryExists) File.WriteAllText(settingsPath, damaged);
+            File.WriteAllText(settingsPath + ".bak", Document(UpdateChannel.OfficialUpstream).OuterXml);
+            var provider = new TestProvider { DirectoryPath = directory };
+
+            using (var locked = new FileStream(settingsPath + ".bak", FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                Assert.Throws<ConfigurationErrorsException>(() => provider.GetPropertyValues(new SettingsContext(), ChannelProperties(provider)));
+                Assert.Throws<ConfigurationErrorsException>(() => provider.SetPropertyValues(new SettingsContext(),
+                    ChannelValues(provider, UpdateChannel.CommunityFork)));
+                Assert.IsNull(provider.RecoveryNotification);
+                Assert.AreEqual(primaryExists, File.Exists(settingsPath));
+                if (primaryExists) Assert.AreEqual(damaged, File.ReadAllText(settingsPath));
+            }
+
+            Assert.AreEqual(UpdateChannel.OfficialUpstream, ReadChannel(settingsPath + ".bak"));
+            Assert.IsEmpty(Directory.GetFiles(directory, "*.tmp"));
+            Assert.IsEmpty(Directory.GetFiles(directory, "*.corrupt.*"));
+        }
+
+        [Test]
+        public void FailedRecoveryReplacementPreservesBothFilesAndCanBeRetried()
+        {
+            const string damaged = "<Settings><UpdateChannel>";
+            File.WriteAllText(settingsPath, damaged);
+            File.WriteAllText(settingsPath + ".bak", Document(UpdateChannel.OfficialUpstream).OuterXml);
+            byte[] backup = File.ReadAllBytes(settingsPath + ".bak");
+            var provider = new TestProvider { DirectoryPath = directory };
+            using (var locked = new FileStream(settingsPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                Assert.Throws<ConfigurationErrorsException>(() => provider.GetPropertyValues(new SettingsContext(), ChannelProperties(provider)));
+                Assert.IsNull(provider.RecoveryNotification);
+                Assert.AreEqual(damaged, File.ReadAllText(settingsPath));
+                CollectionAssert.AreEqual(backup, File.ReadAllBytes(settingsPath + ".bak"));
+                Assert.IsEmpty(Directory.GetFiles(directory, "*.tmp"));
+                Assert.IsEmpty(Directory.GetFiles(directory, "*.corrupt.*"));
+            }
+
+            var values = provider.GetPropertyValues(new SettingsContext(), ChannelProperties(provider));
+            Assert.AreEqual(UpdateChannel.OfficialUpstream, values["UpdateChannel"].PropertyValue);
+            Assert.AreEqual(damaged, File.ReadAllText(provider.RecoveryNotification.PreservedFilePath));
+        }
+
         [Test]
         public void FirstSaveCreatesReadablePreferencesWithoutTemporaryFiles()
         {

@@ -102,13 +102,20 @@ namespace SuperPuttyUnitTests
             finally { File.Delete(path); }
         }
 
-        [Test]
+        [Test, Category("RegistryIntegrationTest")]
         public void RegistryImportSkipsInvalidSessionsAndKeepsValidOnes()
         {
             string path = @"Software\SuperPuttyTests\" + Guid.NewGuid();
+            RegistryKey testRoot;
+            try { testRoot = Registry.CurrentUser.CreateSubKey(path); }
+            catch (Exception ex) when (ex is UnauthorizedAccessException || ex is System.Security.SecurityException)
+            {
+                Assert.Ignore("Registry integration requires HKCU write access: " + ex.Message);
+                return;
+            }
             try
             {
-                using (var root = Registry.CurrentUser.CreateSubKey(path))
+                using (var root = testRoot)
                 {
                     using (var valid = root.CreateSubKey("Valid"))
                     {

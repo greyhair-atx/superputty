@@ -27,7 +27,13 @@ SuperPuTTY is a session manager, not a credential vault. Protect the Windows acc
 
 Remote SPSL scripts and remote session collections accept HTTPS only. Requests reject embedded URI credentials and redirects, use a ten-second timeout, and limit responses to 1 MiB. Session collection expansion also detects cycles and limits nesting to 16 levels.
 
+Session collection loads have a shared thirty-second deadline and limits of 128 collections and 100,000 expanded sessions. Failed or canceled loads do not publish a partial catalog. Reload and XML import can be canceled from the Reload Sessions menu. If the initial saved catalog cannot be read, saving and importing remain blocked until a successful reload.
+
 Only load scripts and session collections from locations you trust. HTTPS protects transport but does not make untrusted script content safe.
+
+## Process output
+
+PSCP output lines are limited to 64 Ki characters. Directory listings must fit within 8 Mi characters and 100,000 lines; exceeding either limit fails the operation without publishing a partial listing. Transfers retain a diagnostic tail of at most 256 Ki characters and 1,000 lines. These limits also apply to interactive SCP output.
 
 ## Remote Desktop certificates
 

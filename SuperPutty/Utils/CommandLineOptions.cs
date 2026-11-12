@@ -35,9 +35,6 @@ namespace SuperPutty.Utils
     public class CommandLineOptions
     {
         private static readonly ILog Log = LogManager.GetLogger(typeof(CommandLineOptions));
-        private static readonly Regex SensitiveArgumentRegex = new Regex(
-            @"(?ix)(?<prefix>(?:^|\s)(?:-pw|-password|/password|/p)(?:\s+|=|:))(?<value>""(?:\\.|[^""\\])*""|\S+)",
-            RegexOptions.Compiled);
         private static readonly Regex UriPasswordRegex = new Regex(
             @"(?i)(?<prefix>\b[a-z][a-z0-9+.-]*://[^\s/:@]+:)[^\s]*(?<suffix>@)",
             RegexOptions.Compiled);
@@ -51,7 +48,10 @@ namespace SuperPutty.Utils
                     // special case for ssh links in browser
                     // ssh://localhost:22%20-l%20beau/
                     string cmdLine = HttpUtility.UrlDecode(args[0].TrimEnd('/'));
-                    args = cmdLine.Split(' ');
+                    var tokens = WindowsCommandLine.Parse(cmdLine);
+                    args = tokens.Select(token => token.Value).ToArray();
+                    if (tokens.Any(token => !token.Complete))
+                        throw new ArgumentException("The encoded command line contains an unclosed quote.");
                 }
                 if (args.Length > 0)
                 {
@@ -149,20 +149,7 @@ namespace SuperPutty.Utils
         public static String getcommand(String allCommands, String command)
         {
 
-            if (String.IsNullOrEmpty(allCommands))
-            {
-                return "";
-            }
-            string strRegex = command + @"[=:\s](?:""([^""]*)""|([^""\s]+))";
-            Regex myRegex = new Regex(strRegex, RegexOptions.Compiled);
-            foreach (Match myMatch in myRegex.Matches(allCommands))
-            {
-                if (myMatch.Success)
-                {
-                    return String.IsNullOrEmpty(myMatch.Groups[1].Value) ? myMatch.Groups[2].Value : myMatch.Groups[1].Value;
-                }
-            }
-            return "";
+            return WindowsCommandLine.GetOptionValue(allCommands, command);
         }
 
 
@@ -173,22 +160,8 @@ namespace SuperPutty.Utils
         /// <param name="text"></param>
         /// <returns></returns>
         public static String replacePassword(String allCommands, String text)
-        {            
-            if (String.IsNullOrEmpty(allCommands))
-            {
-                return "";
-            }
-            string strRegex = @"(-pw[=:\s])(""[^""]*""|[^""\s]+)";
-            Regex myRegex = new Regex(strRegex, RegexOptions.Compiled);
-
-            foreach (Match myMatch in myRegex.Matches(allCommands))
-            {
-                if (myMatch.Success)
-                {
-                    allCommands = Regex.Replace(allCommands, strRegex, String.IsNullOrEmpty(text) ? "" : "${1}" + text);                                       
-                }
-            }
-            return allCommands;
+        {
+            return WindowsCommandLine.RewriteSensitive(allCommands, String.IsNullOrEmpty(text) ? null : text);
         }
 
         /// <summary>Remove credentials from a command line before it is logged.</summary>
@@ -199,9 +172,7 @@ namespace SuperPutty.Utils
                 return commandLine ?? String.Empty;
             }
 
-            string redacted = SensitiveArgumentRegex.Replace(
-                commandLine,
-                match => match.Groups["prefix"].Value + "XXXXX");
+            string redacted = WindowsCommandLine.RewriteSensitive(commandLine, "XXXXX");
             return UriPasswordRegex.Replace(
                 redacted,
                 match => match.Groups["prefix"].Value + "XXXXX" + match.Groups["suffix"].Value);
@@ -212,40 +183,20 @@ namespace SuperPutty.Utils
             if (args == null)
                 return String.Empty;
 
-            List<string> redacted = new List<string>();
-            bool redactNext = false;
-            foreach (string argument in args)
-            {
-                string value = argument ?? String.Empty;
-                if (redactNext)
-                {
-                    redacted.Add("XXXXX");
-                    redactNext = false;
-                    continue;
-                }
-
-                if (String.Equals(value, "-pw", StringComparison.OrdinalIgnoreCase) ||
-                    String.Equals(value, "-password", StringComparison.OrdinalIgnoreCase) ||
-                    String.Equals(value, "/password", StringComparison.OrdinalIgnoreCase) ||
-                    String.Equals(value, "/p", StringComparison.OrdinalIgnoreCase))
-                {
-                    redacted.Add(value);
-                    redactNext = true;
-                }
-                else
-                {
-                    redacted.Add(RedactSensitiveArguments(value));
-                }
-            }
-            return String.Join(" ", redacted);
+            return String.Join(" ", WindowsCommandLine.RedactDecoded(args, "XXXXX").Select(value =>
+                UriPasswordRegex.Replace(value,
+                    match => match.Groups["prefix"].Value + "XXXXX" + match.Groups["suffix"].Value)));
         }
 
         /// <summary>Remove password-bearing switches before forwarding user-supplied extra arguments.</summary>
         public static string RemoveSensitiveArguments(string commandLine)
         {
-            return String.IsNullOrEmpty(commandLine)
-                ? String.Empty
-                : SensitiveArgumentRegex.Replace(commandLine, " ").Trim();
+            return WindowsCommandLine.RewriteSensitive(commandLine, null);
+        }
+
+        internal static bool HasSensitiveArguments(string commandLine)
+        {
+            return WindowsCommandLine.ContainsSensitiveOption(commandLine);
         }
 
         /// <summary>Quote one argument according to the Windows CommandLineToArgvW rules.</summary>

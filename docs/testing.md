@@ -34,6 +34,12 @@ dotnet vstest .\SuperPuttyUnitTests\bin\x64\Release\SuperPuttyUnitTests.exe --Te
 
 The isolated suite covers TigerVNC argument generation, renamed executable recognition, early process exits, and desktop discovery across login and reconnect transitions using local test windows. It also covers active-tab close confirmation and restart-shortcut configuration. These checks do not establish a live VNC connection; run the manual checks below to verify authentication and embedding with the installed viewer.
 
+Regression coverage also exercises automatic preference-backup recovery and preservation of damaged originals, owner-thread window-hook disposal, pointer-sized native messaging, escaped-password log redaction, bounded PSCP output and carriage-return progress, cancellable session loads, stale-load rejection, and timer-based focus retries. The SCP overflow tests use local fake processes. Interactive console cases still require an interactive Windows desktop.
+
+Session admission is capped at 200 open terminal/SCP tabs per application window, including docked and floating sessions. Boundary tests cover shared capacity, reuse after closing a tab, and layout preflight at 200/201 sessions. Overflow and selection stress tests exercise 200 tabs.
+
+`TabCloseGestureTests` checks that the desktop cursor can actually move and reports skipped cases when desktop input is unavailable. The `RegistryIntegrationTest` category similarly reports a skip when its temporary HKCU key cannot be created. Options tests use a temporary settings folder. Skips indicate missing integration coverage; run the gesture and registry cases in a suitable Windows session before release. The 200-tab stress cases can take over a minute as a group; use `--logger:"console;verbosity=normal"` to see progress before treating a quiet run as stalled.
+
 Branding regressions cover the rendered About dialog, lineage and MIT attribution, executable and assembly identity, legacy profile/portable preferences, and existing session XML. The shutdown script also checks the real main-window title and loads the fixed `Fixtures/LegacyLayout.xml` through the application's named-layout path. This fixture uses the retained DockPanel 1.0 format and `SuperPutty.SessionTreeview` identifier.
 
 The Windows integration scripts require an interactive desktop and an existing Release build:

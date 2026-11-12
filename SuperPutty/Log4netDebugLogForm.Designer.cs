@@ -13,6 +13,7 @@
         /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
         protected override void Dispose(bool disposing)
         {
+            if (disposing) DisposeLogger();
             if (disposing && (components != null))
             {
                 components.Dispose();
@@ -56,7 +57,6 @@
             this.Controls.Add(this.richTextBoxLogMessages);
             this.Name = "Log4netLogViewer";
             this.Text = "Log Viewer";
-            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Log4netLogViewer_FormClosing);
             this.ResumeLayout(false);
 
         }

@@ -50,40 +50,20 @@ namespace SuperPuttyUnitTests
 
         }
 
-        [Test]
-        public void getcommandTest()
+        [TestCase("-pw 12sa12 -we aasd", "12sa12")]
+        [TestCase(" -pw \"12sa12\" -we aasd", "12sa12")]
+        [TestCase("  -pw  \"12sa12\" -we aasd", "12sa12")]
+        [TestCase("\t-pw\t\"12sa12\"", "12sa12")]
+        [TestCase("-pw=\"12sa12\" -we aasd", "12sa12")]
+        [TestCase("-pw:\"12sa12\" -we aasd", "12sa12")]
+        [TestCase("-pw: \"12sa12\" -we aasd", "")]
+        [TestCase("-pw -pw \"12sa12\"", "-pw")]
+        [TestCase("-pw \"12sa12 -we aasd", "")]
+        public void CommandValuesFollowWindowsQuotingAndConsumeOneArgument(string arguments, string expected)
         {
-            String command = CommandLineOptions.getcommand("-pw 12sa12 -we aasd", "-pw");
-            Assert.AreEqual("12sa12", command);
-
-            command = CommandLineOptions.getcommand(" -pw 12sa12 -we aasd", "-pw");
-            Assert.AreEqual("12sa12", command);
-
-            command = CommandLineOptions.getcommand("-pw \"12sa12\" -we aasd", "-pw");
-            Assert.AreEqual("12sa12", command);
-
-            command = CommandLineOptions.getcommand(" -pw  -pw \"12sa12\" -we aasd", "-pw");
-            Assert.AreEqual("12sa12", command);
-
-
-            command = CommandLineOptions.getcommand("-pw \"12sa12\" -we aasd", "-pw");
-            Assert.AreEqual("12sa12", command);
-
-            command = CommandLineOptions.getcommand("  -pw  \"12sa12\" -we aasd", "-pw");
-            Assert.AreEqual("", command);
-
-            command = CommandLineOptions.getcommand("  -pw: \"12sa12\" -we aasd", "-pw");
-            Assert.AreEqual("", command);
-
-            command = CommandLineOptions.getcommand(" -pw  -pw \"12sa12 -we aasd", "-pw");
-            Assert.AreEqual("", command);
-
-            command = CommandLineOptions.getcommand(" -pw  -pw \"12sa12 -we aasd\"", "-pw");
-            Assert.AreEqual("12sa12 -we aasd", command);
-
-            command = CommandLineOptions.getcommand(@" -pw  -pw \+**jioi12sa12'k*+/\ -we aasd'""", "-pw");
-            Assert.AreEqual(@"\+**jioi12sa12'k*+/\", command);
-
+            // Extra spaces now work; an option-looking value remains a value. An attached empty
+            // value remains empty instead of consuming the next switch or inventing a shorthand.
+            Assert.AreEqual(expected, CommandLineOptions.getcommand(arguments, "-pw"));
         }
 
         [Test]

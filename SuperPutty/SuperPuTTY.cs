@@ -40,7 +40,15 @@ namespace SuperPutty
         static SortedList<string, SessionData> sessionsMap = new SortedList<string, SessionData>(StringComparer.OrdinalIgnoreCase);
         internal static bool IsUpdatingSessionCatalog { get; private set; }
         static SessionCatalogList sessionsList = new SessionCatalogList();
+        private static readonly ISessionStorage sessionStorage = new SessionStorage();
+        private static long sessionCatalogVersion;
+        internal static bool IsSessionCatalogReady { get; private set; } = true;
         static bool? isFirstRun;
+
+        static SuperPuTTY()
+        {
+            sessionsList.ListChanged += delegate { sessionCatalogVersion++; };
+        }
 
         internal sealed class SessionSaveResetEventArgs : ListChangedEventArgs
         {
@@ -79,7 +87,7 @@ namespace SuperPutty
 
                 // load data                
                 LoadLayouts();
-                LoadSessions();                
+                LoadInitialSessions();
 
                 // determine starting layout, if any.  CLI has priority
                 if (CommandLine.IsValid)
@@ -160,6 +168,8 @@ namespace SuperPutty
         /// <summary>Called when application is shutting down, sends message to log.</summary>
         public static void Shutdown()
         {
+            WindowEvents?.Dispose();
+            WindowEvents = null;
             Log.Info("Shutting down...");
         }
 
@@ -202,6 +212,7 @@ namespace SuperPutty
                 if (deleteFile)
                 {
                     File.Delete(layout.FilePath);
+                    File.Delete(layout.FilePath + ".bak");
                 }
                 layouts.Remove(layout);
             }
@@ -230,7 +241,7 @@ namespace SuperPutty
 
             string oldDefault = Settings.DefaultLayoutName;
             bool wasDefault = string.Equals(oldDefault, layout.Name, StringComparison.OrdinalIgnoreCase);
-            File.Move(fileOld, fileNew);
+            LayoutStorage.MoveFiles(fileOld, fileNew);
             if (wasDefault)
             {
                 try
@@ -241,7 +252,7 @@ namespace SuperPutty
                 catch
                 {
                     Settings.DefaultLayoutName = oldDefault;
-                    File.Move(fileNew, fileOld);
+                    LayoutStorage.MoveFiles(fileNew, fileOld);
                     throw;
                 }
             }
@@ -269,7 +280,7 @@ namespace SuperPutty
                 layouts.Add(autoRestore);
                 if (Directory.Exists(LayoutsDir))
                 {
-                    List<LayoutData> newLayouts = Directory.GetFiles(LayoutsDir).Select(file => new LayoutData(file)).ToList();
+                    List<LayoutData> newLayouts = LayoutStorage.Discover(LayoutsDir).Select(file => new LayoutData(file)).ToList();
 
                     foreach (LayoutData layout in newLayouts)
                     {
@@ -315,10 +326,11 @@ namespace SuperPutty
                 IsLayoutChanging = false;
             }
 
+            if (args.Cancel) return;
 
+            CurrentLayout = args.New;
             if (LayoutChanged != null)
             {
-                CurrentLayout = layout;
                 LayoutChanged(typeof(SuperPuTTY), args);
             }
         }
@@ -370,6 +382,21 @@ namespace SuperPutty
         /// <summary>Returns A string containing the path to the saved sessions database on disk</summary>
         private static string SessionsFileName { get { return Path.Combine(Settings.SettingsFolder, "Sessions.XML"); } }
 
+        internal static void LoadInitialSessions()
+        {
+            IsSessionCatalogReady = false;
+            LoadSessions();
+        }
+
+        private static bool SessionCatalogFileExists(string fileName)
+        {
+            // Treat only genuinely missing paths as a new catalog. File.Exists also
+            // reports false for access errors and directories at the expected path.
+            try { using (File.OpenRead(fileName)) { } return true; }
+            catch (FileNotFoundException) { return false; }
+            catch (DirectoryNotFoundException) { return false; }
+        }
+
         /// <summary>Load sessions database from file into the application</summary>
         public static void LoadSessions()
         {
@@ -378,13 +405,15 @@ namespace SuperPutty
 
             try
             {
-                if (File.Exists(fileName))
+                if (SessionCatalogFileExists(fileName))
                 {
-                    ReplaceSessionCatalog(SessionData.LoadSessionsFromFile(fileName));
+                    ReplaceSessionCatalog(sessionStorage.LoadAsync(fileName, CancellationToken.None).GetAwaiter().GetResult());
+                    IsSessionCatalogReady = true;
                 }
                 else
                 {
                     Log.WarnFormat($"Sessions file does not exist, nothing loaded.  file={fileName}");
+                    IsSessionCatalogReady = true;
                 }
 
             }
@@ -392,6 +421,19 @@ namespace SuperPutty
             {
                 Log.Error($"Error while loading sessions from {fileName}", ex);
             }
+        }
+
+        internal static async Task LoadSessionsAsync(CancellationToken cancellation, ISessionStorage storage = null)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            string fileName = SessionsFileName;
+            long version = sessionCatalogVersion;
+            var replacement = await (storage ?? sessionStorage).LoadAsync(fileName, cancellation);
+            cancellation.ThrowIfCancellationRequested();
+            if (version != sessionCatalogVersion || !String.Equals(fileName, SessionsFileName, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Sessions changed while loading. Reload again to replace the current catalog.");
+            ReplaceSessionCatalog(replacement);
+            IsSessionCatalogReady = true;
         }
 
         private static SortedList<string, SessionData> ValidateSessionCatalog(
@@ -456,6 +498,7 @@ namespace SuperPutty
 
         internal static void SaveSessionChanges(SessionData session, SessionData edited, Action persistSessions)
         {
+            EnsureSessionCatalogReady();
             if (session == null || edited == null || persistSessions == null)
                 throw new ArgumentNullException(session == null ? nameof(session) : edited == null ? nameof(edited) : nameof(persistSessions));
 
@@ -562,8 +605,15 @@ namespace SuperPutty
         /// <summary>Save in-application Session Database to XML File</summary>
         public static void SaveSessions()
         {
+            EnsureSessionCatalogReady();
             Log.InfoFormat("Saving all sessions");
-            SessionData.SaveSessionsToFile(GetAllSessions(), SessionsFileName);
+            sessionStorage.Save(GetAllSessions(), SessionsFileName);
+        }
+
+        private static void EnsureSessionCatalogReady()
+        {
+            if (!IsSessionCatalogReady)
+                throw new InvalidOperationException("Saved sessions could not be loaded. Reload Sessions successfully before saving or importing changes.");
         }
 
         /// <summary>
@@ -652,6 +702,21 @@ namespace SuperPutty
             OpenProtoSession(GetSessionById(sessionId));
         }
 
+        internal const int MaximumOpenSessions = 200;
+
+        internal static bool HasSessionCapacity(DockPanel panel)
+        {
+            return panel != null && !panel.IsDisposed && panel.Contents.OfType<ToolWindowDocument>()
+                .Count(content => !content.IsDisposed) < MaximumOpenSessions;
+        }
+
+        private static bool CanOpenAnotherSession()
+        {
+            if (MainForm != null && HasSessionCapacity(MainForm.DockPanel)) return true;
+            ReportStatus("The maximum of {0} open session tabs has been reached. Close a tab before opening another.", MaximumOpenSessions);
+            return false;
+        }
+
         /// <summary>Open a new putty window with its settings being passed in a <seealso cref="SessionData"/> object</summary>
         /// <param name="session">The <seealso cref="SessionData"/> object containing the settings</param>
         public static ctlPuttyPanel OpenProtoSession(SessionData session)
@@ -661,6 +726,8 @@ namespace SuperPutty
                 OpenScpSession(session);
                 return null;
             }
+
+            if (session != null && !CanOpenAnotherSession()) return null;
 
             Log.InfoFormat("Opening putty session, id={0}", session == null ? "" : session.SessionId);
             ctlPuttyPanel panel = null;
@@ -689,28 +756,7 @@ namespace SuperPutty
                 // We use this to save the last docking location and to close the panel
                 PuttyClosedCallback callback = delegate
                 {
-                    if (panel != null)
-                    {
-                        // save the last dockstate (if it has been changed)
-                        if (session.LastDockstate != panel.DockState
-                            && panel.DockState != DockState.Unknown
-                            && panel.DockState != DockState.Hidden)
-                        {
-                            session.LastDockstate = panel.DockState;
-                            SaveSessions();
-                        }
-
-                        if (panel.InvokeRequired)
-                        {
-                            panel.BeginInvoke((MethodInvoker)delegate {
-                                panel.CloseWithoutConfirmation();
-                            });
-                        }
-                        else
-                        {
-                            panel.CloseWithoutConfirmation();
-                        }
-                    }
+                    CloseExitedSession(panel, session, SaveSessions);
                 };
 
                 try {
@@ -729,6 +775,39 @@ namespace SuperPutty
                 }
             }
             return panel;
+        }
+
+        internal static void CloseExitedSession(ctlPuttyPanel panel, SessionData session, Action persist)
+        {
+            if (panel == null || panel.IsDisposed || panel.Disposing || !panel.IsHandleCreated) return;
+            if (panel.InvokeRequired)
+            {
+                try { panel.BeginInvoke((Action)(() => CloseExitedSession(panel, session, persist))); }
+                catch (InvalidOperationException) { } // The tab closed before the post.
+                return;
+            }
+            try
+            {
+                if (session.LastDockstate != panel.DockState && panel.DockState != DockState.Unknown &&
+                    panel.DockState != DockState.Hidden)
+                {
+                    var previous = session.LastDockstate;
+                    session.LastDockstate = panel.DockState;
+                    try { persist(); }
+                    catch
+                    {
+                        session.LastDockstate = previous;
+                        throw;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException ||
+                ex is System.Security.SecurityException || ex is InvalidOperationException)
+            {
+                Log.Warn("Unable to save the exited session's docking position.", ex);
+                ReportStatus("The session closed, but its docking position could not be saved.");
+            }
+            finally { if (!panel.IsDisposed && !panel.Disposing) panel.CloseWithoutConfirmation(); }
         }
 
         private static async void StartSessionScript(ctlPuttyPanel panel, string fileName)
@@ -823,6 +902,7 @@ namespace SuperPutty
         /// <param name="session">The <seealso cref="SessionData"/> object containing the settings</param>
         public static void OpenScpSession(SessionData session)
         {
+            if (session != null && !CanOpenAnotherSession()) return;
             Log.InfoFormat("Opening scp session, id={0}", session == null ? "" : session.SessionId);
             if (session == null)
             {
@@ -912,6 +992,13 @@ namespace SuperPutty
             }
         }
 
+        internal static async Task ImportSessionsFromFileAsync(string fileName, CancellationToken cancellation)
+        {
+            var imported = await sessionStorage.LoadAsync(fileName, cancellation);
+            cancellation.ThrowIfCancellationRequested();
+            ImportSessions(imported, "Imported");
+        }
+
         /// <summary>Import sessions from the specified folder into the in-application database</summary>
         /// <param name="folderName">A string containing the path of the folder that holds session configuration files</param>
         public static void ImportSessionsFromFolder(string folderName)
@@ -959,6 +1046,7 @@ namespace SuperPutty
 
         internal static void ImportSessions(List<SessionData> sessions, string folder, Action persistSessions)
         {
+            EnsureSessionCatalogReady();
             if (sessions == null)
             {
                 throw new ArgumentNullException("sessions");

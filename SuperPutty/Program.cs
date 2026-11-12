@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2009 Jim Radford http://www.jimradford.com
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -56,28 +56,27 @@ namespace SuperPutty
             // send log to console
             log4net.Config.BasicConfigurator.Configure();
 
-            bool onlyInstance = false;
-            mutex = new Mutex(true, "SuperPutty", out onlyInstance);
-
-            Log.InfoFormat(
-                "IsFirstRun={0}, SingleInstanceMode={1}, onlyInstance={2}", 
-                SuperPuTTY.IsFirstRun, SuperPuTTY.Settings.SingleInstanceMode, onlyInstance);
-            if ((EnforceSingleInstance  || SuperPuTTY.Settings.SingleInstanceMode) && !SuperPuTTY.IsFirstRun && !onlyInstance)
-            {
-                if (!SingleInstanceHelper.TryLaunchInExistingInstance(args))
-                {
-                    MessageBox.Show("Unable to contact the running SuperPuTTY instance. Wait for it to finish starting or closing, then try again.",
-                        "SuperPuTTY", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    Environment.ExitCode = 1;
-                }
-                return;
-            }
-
-            // open full file
-            log4net.Config.XmlConfigurator.Configure();
-
             try
             {
+                bool onlyInstance = false;
+                mutex = new Mutex(true, "SuperPutty", out onlyInstance);
+
+                Log.InfoFormat(
+                    "IsFirstRun={0}, SingleInstanceMode={1}, onlyInstance={2}",
+                    SuperPuTTY.IsFirstRun, SuperPuTTY.Settings.SingleInstanceMode, onlyInstance);
+                if ((EnforceSingleInstance  || SuperPuTTY.Settings.SingleInstanceMode) && !SuperPuTTY.IsFirstRun && !onlyInstance)
+                {
+                    if (!SingleInstanceHelper.TryLaunchInExistingInstance(args))
+                    {
+                        MessageBox.Show("Unable to contact the running SuperPuTTY instance. Wait for it to finish starting or closing, then try again.",
+                            "SuperPuTTY", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        Environment.ExitCode = 1;
+                    }
+                    return;
+                }
+
+                // open full file
+                log4net.Config.XmlConfigurator.Configure();
 
                 Log.Info("Starting");
                 SuperPuTTY.Initialize(args);
@@ -90,14 +89,17 @@ namespace SuperPutty
                 frmSuperPutty mainForm = new frmSuperPutty();
                 SetDefaultIcon(mainForm);
                 Application.Run(SuperPuTTY.MainForm = mainForm);
-                SuperPuTTY.Shutdown();
             }
             catch (Exception ex)
             {
                 Log.Error("Error in Main", ex);
+                Environment.ExitCode = 1;
+                if (ex is System.Configuration.ConfigurationErrorsException)
+                    MessageBox.Show(ex.Message, "Unable to load preferences", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
+                SuperPuTTY.Shutdown();
                 Log.Info("Shutdown");
             }
         }

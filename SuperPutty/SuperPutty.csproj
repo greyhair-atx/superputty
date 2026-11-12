@@ -93,6 +93,17 @@
       <DependentUpon>AboutBox1.cs</DependentUpon>
     </Compile>
     <Compile Include="Data\HistoryEntry.cs" />
+    <Compile Include="Data\SessionStorage.cs" />
+    <Compile Include="Data\LayoutStorage.cs" />
+    <Compile Include="Utils\NativeHookRegistration.cs" />
+    <Compile Include="Utils\NativeCallbackGuard.cs" />
+    <Compile Include="Utils\WindowsCommandLine.cs" />
+    <Compile Include="Utils\UpdateCheckCoordinator.cs" />
+    <Compile Include="Utils\SingleInstancePipeProtocol.cs" />
+    <Compile Include="Utils\SingleInstancePipeTransport.cs" />
+    <Compile Include="Utils\SingleInstanceCommandQueue.cs" />
+    <Compile Include="Utils\ChildFocusRetry.cs" />
+    <Compile Include="Scp\ScpOutputCapture.cs" />
     <Compile Include="Data\KeyboardShortcut.cs" />
     <Compile Include="dlgScriptEditor.cs">
       <SubType>Form</SubType>

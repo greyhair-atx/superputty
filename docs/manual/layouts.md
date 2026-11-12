@@ -24,4 +24,14 @@ Use the Layouts panel to load, rename, remove, or mark an existing named layout 
 
 ## Recovery
 
-The automatic layout is stored as `AutoRestoreLayout.XML` in the settings folder. Named layouts are stored under its `layouts` subdirectory. If a layout becomes invalid, close SuperPuTTY, back up the file, and rename it so the application can start with its built-in layout.
+The automatic layout is stored as `AutoRestoreLayout.XML` in the settings folder. Named layouts are stored under its `layouts` subdirectory.
+
+Layout saves are validated, flushed, and published with an atomic replacement. The previous valid save is kept beside the layout as `<filename>.bak`. A failed write or replacement leaves the existing layout and backup intact. If an existing file is damaged when you save, the damaged file is preserved as `<filename>.corrupt.<unique identifier>` instead of replacing a valid backup with it.
+
+When loading a missing or damaged layout, SuperPuTTY validates its backup and restores it automatically when possible. Recovery preserves a damaged original and displays the backup and preserved-file locations. A named layout with only its `.xml.bak` file remaining is still listed and can be recovered. Renaming or deleting a named layout also renames or deletes its backup; temporary and preserved corruption files are not listed as layouts.
+
+SuperPuTTY validates the complete layout before closing the current workspace. If the selected layout and backup cannot be loaded, the selection is rejected and the current workspace remains open. At startup, the built-in tool windows provide a fallback. If restoring session contents fails after the old workspace has already closed, SuperPuTTY attempts to open the default workspace and reports the failure. Closed session tabs must be reconnected; this fallback does not restore their connections.
+
+Layout files are limited to 16 MiB, with at most 1,024 entries in each layout collection. Invalid element counts, duplicate singleton tool windows, and unsupported XML are rejected before restoration. The retained DockPanel 1.0 format remains supported.
+
+For manual recovery, close SuperPuTTY and keep copies of the original and backup before replacing the layout with a known-good file. These layout backups do not include session configuration or credentials.

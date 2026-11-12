@@ -118,15 +118,16 @@ namespace SuperPutty.Scp
                     this.Session.ScpInteractiveAuthentication ? null : this.Session.Password,
                     SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg))
                 {
+                    string passwordPipePath = passwordPipe == null ? null : passwordPipe.PipePath;
                     String ArgsPscp = ToArgs(
                         this.Session,
                         this.Session.Password,
                         path.Path,
-                        passwordPipe == null ? null : passwordPipe.PipePath);
+                        passwordPipePath);
                     RunPscp(
                         result,
                         ArgsPscp,
-                        CommandLineOptions.replacePassword(ArgsPscp,"XXXXX"),
+                        ToArgs(this.Session, "XXXXX", path.Path, passwordPipePath),
                         null,
                         null,
                         (lines) =>
@@ -411,9 +412,24 @@ namespace SuperPutty.Scp
                 AsyncStreamReader errReader = null;
                 CancellationTokenRegistration cancellationRegistration = default(CancellationTokenRegistration);
                 int terminalState = 0;
-                bool passwordSubmitted = !String.IsNullOrEmpty(this.Session.Password);
+                // Session.Password may parse ExtraArgs with a compiled regex when empty.
+                // Snapshot authentication inputs once instead of repeating that work for every output line.
+                string operationPassword = this.Session.Password;
+                bool allowPlainTextPasswordArgument = SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg;
+                bool passwordSubmitted = !String.IsNullOrEmpty(operationPassword);
                 object authenticationSync = new object();
                 bool verboseLogging = HasVerboseArgument(args);
+                string unableToOpenError = null;
+                bool interactiveAuthenticationRequired = false, authenticationRejected = false;
+                bool invalidArguments = false, hostDoesNotExist = false;
+                Action<string> outputFailed = message =>
+                {
+                    if (Interlocked.CompareExchange(ref terminalState, 1, 0) == 0)
+                    {
+                        result.SetError(message, null);
+                        SafeKill(proc);
+                    }
+                };
                 try
                 {
                     // Start pscp
@@ -440,13 +456,22 @@ namespace SuperPutty.Scp
                     {
                         lock (authenticationSync)
                         {
+                            // Retain error classification even when older diagnostic lines are evicted.
+                            if (message != null)
+                            {
+                                if (message.Contains(PUTTY_BATCH_INTERACTIVE)) interactiveAuthenticationRequired = true;
+                                if (message.IndexOf(PUTTY_ACCESS_DENIED, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    message.IndexOf(PUTTY_AUTHENTICATION_FAILED, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    message.IndexOf(PUTTY_CONFIGURED_PASSWORD_REJECTED, StringComparison.OrdinalIgnoreCase) >= 0)
+                                    authenticationRejected = true;
+                            }
                             AuthenticationPromptAction action;
                             try
                             {
                                 action = HandleAuthenticationPrompt(
                                     message,
-                                    this.Session.Password,
-                                    SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg,
+                                    operationPassword,
+                                    allowPlainTextPasswordArgument,
                                     passwordSubmitted,
                                     proc.StandardInput);
                             }
@@ -486,6 +511,13 @@ namespace SuperPutty.Scp
                         proc.StandardOutput,
                         strOut =>
                         {
+                            if (strOut != null)
+                            {
+                                int errorIndex = strOut.IndexOf(PUTTY_UNABLE_TO_OPEN, StringComparison.Ordinal);
+                                if (errorIndex >= 0 && unableToOpenError == null)
+                                    unableToOpenError = strOut.Substring(errorIndex);
+                                if (strOut == PUTTY_ARGUMENTS_HELP_HEADER) invalidArguments = true;
+                            }
                             bool keepReading = true;
                             bool completed = false;
                             bool? authenticationResult = handleAuthentication(strOut);
@@ -500,12 +532,13 @@ namespace SuperPutty.Scp
                             SafeChangeTimer(timeoutTimer, completed ? Timeout.Infinite : this.Options.TimeoutMs);
                             return keepReading;
                         },
-                        verboseLogging);
+                        verboseLogging, successOutHandler != null, outputFailed);
                     errReader = new AsyncStreamReader(
                         "ERR",
                         proc.StandardError,
                         strErr =>
                         {
+                            if (strErr == PUTTY_HOST_DOES_NOT_EXIST) hostDoesNotExist = true;
                             bool keepReading = true;
                             bool completed = false;
                             if (strErr != null && strErr.Contains(PUTTY_NO_KEY))
@@ -532,7 +565,7 @@ namespace SuperPutty.Scp
                             SafeChangeTimer(timeoutTimer, completed ? Timeout.Infinite : this.Options.TimeoutMs);
                             return keepReading;
                         },
-                        verboseLogging);
+                        verboseLogging, false, outputFailed);
 
                     // start process and wait for results
                     Log.DebugFormat("WaitingForExit");
@@ -561,13 +594,10 @@ namespace SuperPutty.Scp
                     if (Interlocked.CompareExchange(ref terminalState, 1, 0) != 0)
                         return;
 
-                    string outputStr = String.Join("\r\n", output);
-                    string errorStr = String.Join("\r\n", err);
-                    if (proc.ExitCode == 0 && outputStr.Contains(PUTTY_UNABLE_TO_OPEN))
+                    if (proc.ExitCode == 0 && unableToOpenError != null)
                     {
                         // bad path
-                        int idx = outputStr.IndexOf(PUTTY_UNABLE_TO_OPEN);
-                        result.SetErrorFormat(outputStr.Substring(idx));
+                        result.SetError(unableToOpenError, null);
                     }
                     else if (proc.ExitCode == 0)
                     {
@@ -580,18 +610,12 @@ namespace SuperPutty.Scp
                     else
                     {
                         // some kind of error
-                        if (outputStr.Contains(PUTTY_BATCH_INTERACTIVE) ||
-                            errorStr.Contains(PUTTY_BATCH_INTERACTIVE))
+                        if (interactiveAuthenticationRequired)
                         {
                             result.StatusCode = ResultStatusCode.RetryAuthentication;
                             Log.Debug("PSCP requires interactive authentication");
                         }
-                        else if (outputStr.IndexOf(PUTTY_ACCESS_DENIED, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                            errorStr.IndexOf(PUTTY_ACCESS_DENIED, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                            outputStr.IndexOf(PUTTY_AUTHENTICATION_FAILED, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                            errorStr.IndexOf(PUTTY_AUTHENTICATION_FAILED, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                            outputStr.IndexOf(PUTTY_CONFIGURED_PASSWORD_REJECTED, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                            errorStr.IndexOf(PUTTY_CONFIGURED_PASSWORD_REJECTED, StringComparison.OrdinalIgnoreCase) >= 0)
+                        else if (authenticationRejected)
                         {
                             result.ErrorMsg = "PSCP could not complete authentication. Check the username/password; enable " +
                                 "Interactive SCP authentication (MFA) if the server requires additional prompts.";
@@ -602,11 +626,11 @@ namespace SuperPutty.Scp
                         {
                             Log.Debug("Skipping output check since proactively killed process.");
                         }
-                        else if (output.Contains(PUTTY_ARGUMENTS_HELP_HEADER))
+                        else if (invalidArguments)
                         {
                             result.SetErrorFormat("Invalid arguments sent to pscp, args={0}, output={1}", argsToLog, output);
                         }
-                        else if (err.Contains(PUTTY_HOST_DOES_NOT_EXIST))
+                        else if (hostDoesNotExist)
                         {
                             result.SetErrorFormat("Host does not exist.  {0}:{1}", this.Session.Host, this.Session.Port);
                         }
@@ -661,7 +685,7 @@ namespace SuperPutty.Scp
                 Func<InteractivePscpResult> run = () =>
                 {
                     using (var dialog = new InteractivePscpDialog(this.Options.PscpLocation, args,
-                        Math.Max(this.Options.TimeoutMs, 300000), cancellationToken, outputHandler)
+                        Math.Max(this.Options.TimeoutMs, 300000), cancellationToken, outputHandler, successHandler != null)
                         { Text = "SCP authentication and transfer — " + this.Session.Host })
                     {
                         if (!cancellationToken.IsCancellationRequested) dialog.ShowDialog(owner);
@@ -917,13 +941,16 @@ namespace SuperPutty.Scp
                 string name,
                 StreamReader reader,
                 Func<string, bool> dataUpdated,
-                bool verboseLogging = false)
+                bool verboseLogging = false,
+                bool preserveAllOutput = true,
+                Action<string> errorHandler = null)
             {
                 this.Name = name;
                 this.Reader = reader;
                 this.DataUpdatedHandler = dataUpdated;
                 this.VerboseLogging = verboseLogging;
-                this.Lines = new List<string>();
+                this.Output = new ScpOutputCapture(preserveAllOutput);
+                this.ErrorHandler = errorHandler;
 
                 this.Thread = new Thread(this.ReadAll) {IsBackground = true};
                 this.Thread.Start();
@@ -935,41 +962,48 @@ namespace SuperPutty.Scp
                 {
                     bool keepReading = true;
 
-                    // read char-by-char at first 10 lines
-                    int linesRead = 0;
+                    // Read bounded lines while recognizing prompts and carriage-return progress
+                    // updates immediately. StreamReader buffers the underlying process pipe.
                     StringBuilder sb = new StringBuilder();
-                    while (keepReading && this.Reader.Peek() != -1)
+                    bool skipLineFeed = false;
+                    int value;
+                    while (keepReading && (value = this.Reader.Read()) != -1)
                     {
-                        char c = (char)this.Reader.Read();
+                        char c = (char)value;
+                        if (skipLineFeed)
+                        {
+                            skipLineFeed = false;
+                            if (c == '\n') continue;
+                        }
+                        if (c == '\r' || c == '\n')
+                        {
+                            keepReading = AppendLineAndNotify(sb.ToString());
+                            sb.Clear();
+                            skipLineFeed = c == '\r';
+                            continue;
+                        }
+                        if (sb.Length >= ScpOutputCapture.MaximumLineCharacters)
+                            throw new ScpOutputLimitException();
                         sb.Append(c);
 
                         // Password prompts do not end in a newline. Notify the caller as soon
                         // as the trailing colon arrives, on either stdout or stderr.
-                        bool isPossibleHit =
-                            (c == '\n') ||
-                            (c == ':' && IsPasswordPrompt(sb.ToString()));
-
-                        //Log.InfoFormat("sb={0}, match={1}", sb, c == ':' && sb.Length > 12 && sb.ToString().EndsWith("'s password:"));
+                        bool isPossibleHit = c == ':' && sb.Length >= 9 &&
+                            IsPasswordPrompt(sb.ToString(sb.Length - 9, 9));
                         if (isPossibleHit)
                         {
                             keepReading = AppendLineAndNotify(sb.ToString());
                             sb.Clear();
-                            if (++linesRead > 10)
-                            {
-                                break;
-                            }
                         }
                     }
 
                     if (keepReading && sb.Length > 0)
-                        keepReading = AppendLineAndNotify(sb.ToString());
-
-                    // after reading 1st line, assume we have a normal read and go by line
-                    string line;
-                    while (keepReading && (line = this.Reader.ReadLine()) != null)
-                    {
-                        keepReading = AppendLineAndNotify(line);
-                    }
+                        AppendLineAndNotify(sb.ToString());
+                }
+                catch (ScpOutputLimitException)
+                {
+                    this.ReadError = ScpOutputLimitException.SafeMessage;
+                    if (this.ErrorHandler != null) this.ErrorHandler(this.ReadError);
                 }
                 catch (ObjectDisposedException)
                 {
@@ -979,6 +1013,8 @@ namespace SuperPutty.Scp
                 catch (Exception ex)
                 {
                     Log.Error("Error reading stream", ex);
+                    this.ReadError = "PSCP output could not be read completely. Retry the operation.";
+                    if (this.ErrorHandler != null) this.ErrorHandler(this.ReadError);
                 }
             }
 
@@ -989,7 +1025,7 @@ namespace SuperPutty.Scp
                     bool keepReading = true;
 
                     string cleanLine = line.Trim('\r', '\n');
-                    this.Lines.Add(cleanLine);
+                    this.Output.Add(cleanLine);
 
                     if (this.VerboseLogging || Log.Logger.IsEnabledFor(Level.Trace))
                     {
@@ -1011,6 +1047,8 @@ namespace SuperPutty.Scp
                 {
                     if (!this.Thread.Join(2000))
                     {
+                        this.ReadError = "PSCP output could not be read completely. Retry the operation.";
+                        if (this.ErrorHandler != null) this.ErrorHandler(this.ReadError);
                         this.Reader.Dispose();
                         this.Thread.Join(2000);
                     }
@@ -1018,7 +1056,7 @@ namespace SuperPutty.Scp
 
                 lock (this)
                 {
-                    return this.Lines.ToArray();
+                    return this.Output.ToArray();
                 }
             }
 
@@ -1026,7 +1064,9 @@ namespace SuperPutty.Scp
             StreamReader Reader { get; set; }
             Func<string, bool> DataUpdatedHandler { get; set; }
             bool VerboseLogging { get; set; }
-            List<string> Lines { get; set; }
+            ScpOutputCapture Output { get; set; }
+            Action<string> ErrorHandler { get; set; }
+            internal string ReadError { get; private set; }
             Thread Thread { get; set; }
 
             public void Dispose()

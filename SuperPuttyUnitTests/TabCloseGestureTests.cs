@@ -16,7 +16,19 @@ namespace SuperPuttyUnitTests
     public class TabCloseGestureTests
     {
         private bool original;
-        [SetUp] public void SetUp() { original = SuperPutty.SuperPuTTY.Settings.MiddleClickClosesWithoutConfirmation; }
+        [SetUp] public void SetUp()
+        {
+            original = SuperPutty.SuperPuTTY.Settings.MiddleClickClosesWithoutConfirmation;
+            Point previous = Cursor.Position;
+            Point probe = new Point(Screen.PrimaryScreen.WorkingArea.Left + 80, Screen.PrimaryScreen.WorkingArea.Top + 80);
+            try
+            {
+                Cursor.Position = probe;
+                if (Cursor.Position != probe)
+                    Assert.Ignore("Tab gestures require an interactive desktop that allows cursor movement.");
+            }
+            finally { Cursor.Position = previous; }
+        }
         [TearDown] public void TearDown() { SuperPutty.SuperPuTTY.Settings.MiddleClickClosesWithoutConfirmation = original; }
 
         [Test, Combinatorial]

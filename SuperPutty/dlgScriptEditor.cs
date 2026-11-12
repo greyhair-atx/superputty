@@ -61,8 +61,11 @@ namespace SuperPutty
             DialogResult dlgResult = this.openFileDialog1.ShowDialog();
             if(dlgResult == DialogResult.OK)
             {
-                string script = File.ReadAllText(this.openFileDialog1.FileName);
-                textBoxSript.AppendText(script);
+                TryScriptFileOperation("load", () =>
+                {
+                    string script = File.ReadAllText(this.openFileDialog1.FileName);
+                    textBoxSript.AppendText(script);
+                });
             }
         }
 
@@ -71,8 +74,30 @@ namespace SuperPutty
             DialogResult dlgResult = this.saveFileDialog1.ShowDialog();
             if(dlgResult == DialogResult.OK)
             {
-                File.WriteAllText(this.saveFileDialog1.FileName, textBoxSript.Text);
+                TryScriptFileOperation("save", () =>
+                    File.WriteAllText(this.saveFileDialog1.FileName, textBoxSript.Text));
             }
+        }
+
+        internal bool TryScriptFileOperation(string operation, Action action)
+        {
+            try
+            {
+                action();
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException ||
+                ex is System.Security.SecurityException)
+            {
+                ShowScriptFileError("Unable to " + operation + " the script. Your editor contents have been kept.\n\n" +
+                    "Check the file location and permissions, then try again.\n\n" + ex.Message);
+                return false;
+            }
+        }
+
+        protected virtual void ShowScriptFileError(string message)
+        {
+            MessageBox.Show(this, message, "Script File Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 

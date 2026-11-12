@@ -166,6 +166,36 @@ namespace SuperPuttyUnitTests.Scp
             }
         }
 
+        [TestCase("long-output")]
+        [TestCase("many-lines")]
+        [Category("InteractiveConsoleTest")]
+        public void OversizedConsoleOutputFailsAndTerminatesItsProcessTree(string mode)
+        {
+            int childId = 0;
+            using (var dialog = new InteractivePscpDialog(client, mode, 15000, CancellationToken.None,
+                line => { if (childId == 0) Int32.TryParse(line, out childId); return true; }))
+            using (var watchdog = new System.Windows.Forms.Timer { Interval = 50 })
+            {
+                var elapsed = Stopwatch.StartNew();
+                watchdog.Tick += delegate
+                {
+                    if (dialog.Result.Error != null || elapsed.ElapsedMilliseconds > 20000) dialog.Close();
+                };
+                watchdog.Start();
+                dialog.ShowDialog();
+                Assert.AreNotEqual(0, childId, "The output fixture did not start.");
+                Assert.AreEqual(ScpOutputLimitException.SafeMessage, dialog.Result.Error);
+                Assert.IsFalse(dialog.Result.Cancelled);
+                Assert.IsEmpty(dialog.Result.Output, "Do not publish a partial listing.");
+            }
+            try
+            {
+                using (var process = Process.GetProcessById(childId))
+                    Assert.IsTrue(process.WaitForExit(5000), "Console client survived its output-limit failure.");
+            }
+            catch (ArgumentException) { }
+        }
+
         [Test]
         [Category("InteractiveConsoleTest")]
         public void ClosingTheOwnerCancelsItsAuthenticationConsole()
@@ -213,6 +243,12 @@ class Client {
  [DllImport(""kernel32.dll"",CharSet=CharSet.Unicode)] static extern bool ReadConsole(IntPtr h,char[] data,uint count,out uint read,IntPtr control);
  static int Main(string[] args) {
   if(args[0]==""fail"") { Console.Error.WriteLine(""Authentication rejected""); return 7; }
+  if(args[0]==""long-output"" || args[0]==""many-lines"") {
+   Console.WriteLine(System.Diagnostics.Process.GetCurrentProcess().Id);
+   if(args[0]==""long-output"") Console.Write(new string('x',65540));
+   else Console.Write(new string('\n',100005));
+   Console.Out.Flush(); Thread.Sleep(Timeout.Infinite);
+  }
   var input=CreateFile(""CONIN$"",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
   uint original; if(!GetConsoleMode(input,out original)) return 10;
   if(args[0]==""hang"") { Console.WriteLine(System.Diagnostics.Process.GetCurrentProcess().Id); Console.Error.Write(""Verification code: ""); Thread.Sleep(Timeout.Infinite); }

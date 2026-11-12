@@ -42,6 +42,7 @@ using log4net.Core;
 using System.Text.RegularExpressions;
 using System.Runtime.Serialization.Json;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace SuperPutty
 {
@@ -65,11 +66,14 @@ namespace SuperPutty
         private TextBoxFocusHelper tbFocusHelperPassword;
         private frmDocumentSelector sendCommandsDocumentSelector;
 
-        private NativeMethods.LowLevelKMProc llkp;
+        private NativeHookRegistration keyboardHook;
         //private NativeMethods.LowLevelKMProc llmp;
-        private static IntPtr kbHookID = IntPtr.Zero;
+        private IntPtr KeyboardHookHandle { get { return this.keyboardHook?.Handle ?? IntPtr.Zero; } }
         private static IntPtr mHookID = IntPtr.Zero;
         private bool forceClose;
+        private CancellationTokenSource sessionLoadCancellation;
+        private readonly UpdateCheckCoordinator updateChecks = new UpdateCheckCoordinator();
+        private Action<string> statusHandler;
         private FormWindowState lastNonMinimizedWindowState = FormWindowState.Normal;
         private Rectangle lastNormalDesktopBounds;
         private ChildWindowFocusHelper focusHelper;
@@ -93,6 +97,7 @@ namespace SuperPutty
             dlgFindPutty.PuttyCheck();
 
             InitializeComponent();
+            this.components.Add(updateChecks);
 
             // Modern DockPanelSuite themes render a close button on each
             // document tab instead of a single button at the strip's far edge.
@@ -152,7 +157,8 @@ namespace SuperPutty
             tsCommandHistory.ListChanged += TsCommandHistory_ListChanged;
            
             // Hook into status
-            SuperPuTTY.StatusEvent += new Action<string>(delegate(String msg) { this.toolStripStatusLabelMessage.Text = msg; });
+            statusHandler = msg => this.toolStripStatusLabelMessage.Text = msg;
+            SuperPuTTY.StatusEvent += statusHandler;
             SuperPuTTY.ReportStatus("Ready");
 
 
@@ -163,19 +169,19 @@ namespace SuperPutty
                 Log.Info("Automatic Update Check Disabled in DEBUG mode");
 #else
                 Log.Info("Checking for updates");
-                this.checkForUpdatesToolStripMenuItem_Click(this, new EventArgs());
+                this.Shown += delegate { this.checkForUpdatesToolStripMenuItem_Click(this, EventArgs.Empty); };
 #endif
             }
             // Hook into LayoutChanging/Changed
             SuperPuTTY.LayoutChanging += new EventHandler<LayoutChangedEventArgs>(SuperPuTTY_LayoutChanging);
 
             // Low-Level Mouse and Keyboard hooks
-            llkp = KBHookCallback;
-            kbHookID = SetKBHook(llkp);
-            if (kbHookID == IntPtr.Zero)
-            {
-                Log.ErrorFormat("Unable to install the keyboard hook. Win32Error={0}", Marshal.GetLastWin32Error());
-            }
+            NativeMethods.LowLevelKMProc keyboardCallback = KBHookCallback;
+            this.keyboardHook = new NativeHookRegistration(keyboardCallback,
+                () => SetKBHook(keyboardCallback), NativeMethods.UnhookWindowsHookEx, "the keyboard hook");
+            // Components are disposed even when an unshown form is disposed without
+            // FormClosed. The registration retains failed removals for owner retry.
+            this.components.Add(this.keyboardHook);
             //llmp = MHookCallback;
             //mHookID = SetMHook(llmp);
 
@@ -281,17 +287,74 @@ namespace SuperPutty
 
         private void frmSuperPutty_Load(object sender, EventArgs e)
         {
-            this.BeginInvoke(new Action(this.LoadLayout));            
+            ShowSettingsRecoveryNotification();
+            importSettingsToolStripMenuItem.Enabled = SuperPuTTY.IsSessionCatalogReady;
+            if (!SuperPuTTY.IsSessionCatalogReady)
+                MessageBox.Show(this, "Saved sessions could not be loaded. Check the session file and use Reload Sessions before saving or importing changes.",
+                    "Unable to load sessions", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            this.BeginInvoke(new Action(this.LoadLayout));
+        }
+
+        private void ShowSettingsRecoveryNotification()
+        {
+            foreach (var provider in SuperPuTTY.Settings.Providers.OfType<PortableSettingsProvider>())
+            {
+                var recovery = provider.RecoveryNotification;
+                if (recovery == null) continue;
+                string message = "Your preferences were recovered from the previous-save backup.\n\nSettings: " +
+                    recovery.SettingsFilePath;
+                if (recovery.PreservedFilePath != null)
+                    message += "\n\nThe damaged file was preserved at:\n" + recovery.PreservedFilePath;
+                MessageBox.Show(this, message, "Preferences recovered", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        private async Task RunSessionLoadAsync(Func<CancellationToken, Task> operation)
+        {
+            if (sessionLoadCancellation != null)
+            {
+                SuperPuTTY.ReportStatus("A session load is already running. Use Reload Sessions to cancel it.");
+                return;
+            }
+            var cancellation = new CancellationTokenSource();
+            sessionLoadCancellation = cancellation;
+            string originalText = reloadSessionsToolStripMenuItem.Text;
+            reloadSessionsToolStripMenuItem.Text = "Cancel Session Load";
+            SuperPuTTY.ReportStatus("Loading sessions...");
+            try
+            {
+                await operation(cancellation.Token);
+                if (!IsDisposed && !Disposing) SuperPuTTY.ReportStatus("Sessions loaded.");
+            }
+            catch (OperationCanceledException)
+            {
+                if (!IsDisposed && !Disposing) SuperPuTTY.ReportStatus("Session loading canceled.");
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("Unable to load sessions", ex);
+                if (!IsDisposed && !Disposing && !IsShuttingDown)
+                    MessageBox.Show(this, ex.Message, "Unable to load sessions", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                sessionLoadCancellation = null;
+                cancellation.Dispose();
+                if (!IsDisposed && !Disposing)
+                {
+                    reloadSessionsToolStripMenuItem.Text = originalText;
+                    importSettingsToolStripMenuItem.Enabled = SuperPuTTY.IsSessionCatalogReady;
+                }
+            }
         }
         
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
+            updateChecks.OnClosing(false);
+            sessionLoadCancellation?.Cancel();
+            SuperPuTTY.StatusEvent -= statusHandler;
             // free hooks
-            if (kbHookID != IntPtr.Zero && !NativeMethods.UnhookWindowsHookEx(kbHookID))
-            {
-                Log.WarnFormat("Unable to remove the keyboard hook. Win32Error={0}", Marshal.GetLastWin32Error());
-            }
-            kbHookID = IntPtr.Zero;
+            ReleaseKeyboardHook();
             //NativeMethods.UnhookWindowsHookEx(mHookID);
 
             // save window size and location if not maximized or minimized
@@ -336,6 +399,15 @@ namespace SuperPutty
 
         internal bool IsShuttingDown { get; private set; }
 
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            base.OnFormClosing(e);
+            // All confirmation and FormClosing handlers have had a chance to cancel.
+            IsShuttingDown = !e.Cancel;
+            updateChecks.OnClosing(e.Cancel);
+            if (IsShuttingDown) sessionLoadCancellation?.Cancel();
+        }
+
         private void frmSuperPutty_FormClosing(object sender, FormClosingEventArgs e)
         {
             if (SuperPuTTY.Settings.ExitConfirmation && !forceClose)
@@ -345,7 +417,6 @@ namespace SuperPutty
                     e.Cancel = true;
                 }
             }
-            IsShuttingDown = !e.Cancel;
         }
 
         /// <summary>
@@ -421,7 +492,7 @@ namespace SuperPutty
         {
             SessionData activeSession = GetDocumentSession(this.DockPanel.ActiveDocument as ToolWindowDocument);
             this.saveCurrentSessionToolStripMenuItem.Enabled =
-                activeSession != null && String.IsNullOrEmpty(activeSession.ConsoleCommand);
+                SuperPuTTY.IsSessionCatalogReady && activeSession != null && String.IsNullOrEmpty(activeSession.ConsoleCommand);
         }
 
         private void saveCurrentSessionToolStripMenuItem_Click(object sender, EventArgs e)
@@ -541,7 +612,7 @@ namespace SuperPutty
             }
         }
 
-        private void fromFileToolStripMenuItem_Click(object sender, EventArgs e)
+        private async void fromFileToolStripMenuItem_Click(object sender, EventArgs e)
         {
             OpenFileDialog openDialog = new OpenFileDialog
             {
@@ -552,7 +623,7 @@ namespace SuperPutty
             };
             if (openDialog.ShowDialog(this) == DialogResult.OK)
             {
-                SuperPuTTY.ImportSessionsFromFile(openDialog.FileName);
+                await RunSessionLoadAsync(token => SuperPuTTY.ImportSessionsFromFileAsync(openDialog.FileName, token));
             }
         }
 
@@ -773,9 +844,10 @@ namespace SuperPutty
             Process.Start(XmlEditor ?? "notepad", Path.Combine(SuperPuTTY.Settings.SettingsFolder, "Sessions.XML"));
         }
 
-        private void reloadSessionsToolStripMenuItem_Click(object sender, EventArgs e)
+        private async void reloadSessionsToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            SuperPuTTY.LoadSessions();
+            if (sessionLoadCancellation != null) { sessionLoadCancellation.Cancel(); return; }
+            await RunSessionLoadAsync(token => SuperPuTTY.LoadSessionsAsync(token));
         }
 
         private void toolStripMenuItem2_Click(object sender, EventArgs e)
@@ -904,13 +976,40 @@ namespace SuperPutty
 
         }
 
+        internal sealed class ToolbarPositions
+        {
+            private readonly ToolStrip connection;
+            private readonly ToolStrip commands;
+            private Point connectionLocation;
+            private Point commandLocation;
+
+            internal ToolbarPositions(ToolStrip connection, ToolStrip commands)
+            {
+                this.connection = connection;
+                this.commands = commands;
+            }
+
+            internal void Capture()
+            {
+                connectionLocation = connection.Location;
+                commandLocation = commands.Location;
+            }
+
+            internal void Restore()
+            {
+                connection.Location = connectionLocation;
+                commands.Location = commandLocation;
+            }
+        }
+
         class ViewState
         {
+            private readonly ToolbarPositions toolbarPositions;
+
             public ViewState(frmSuperPutty mainForm)
             {
                 this.MainForm = mainForm;
-                this.ConnectionBarLocation = this.MainForm.tsConnect.Location;
-                this.CommandBarLocation = this.MainForm.tsConnect.Location;
+                this.toolbarPositions = new ToolbarPositions(mainForm.tsConnect, mainForm.tsCommands);
             }
 
             public frmSuperPutty MainForm { get; set; }
@@ -926,13 +1025,11 @@ namespace SuperPutty
             public FormBorderStyle FormBorderStyle { get; set; }
             public FormWindowState FormWindowState { get; set; }
 
-            public Point ConnectionBarLocation { get; set; }
-            public Point CommandBarLocation { get; set; }
-
             public bool IsFullScreen { get; set; }
 
             public void SaveState()
             {
+                this.toolbarPositions.Capture();
                 this.StatusBar = this.MainForm.showStatusBarToolStripMenuItem.Checked;
                 this.MenuBar = this.MainForm.showMenuBarToolStripMenuItem.Checked;
 
@@ -1011,16 +1108,9 @@ namespace SuperPutty
                     if (this.StatusBar) { this.MainForm.statusStrip1.Show(); }
 
                     // toolbars
-                    if (this.CommandBar && this.ConnectionBar)
-                    {
-                        // both visible so set locations
-                        this.MainForm.tsConnect.Visible = true;
-                        this.MainForm.tsConnect.Location = this.ConnectionBarLocation;
-                        this.MainForm.tsCommands.Visible = true;
-                        this.MainForm.tsCommands.Location = this.CommandBarLocation;
-                    }
-                    else if (this.CommandBar) { this.MainForm.tsCommands.Visible = true; }
-                    else if (this.ConnectionBar) { this.MainForm.tsConnect.Visible = true; }
+                    this.MainForm.tsConnect.Visible = this.ConnectionBar;
+                    this.MainForm.tsCommands.Visible = this.CommandBar;
+                    this.toolbarPositions.Restore();
 
                     // menubar
                     if (this.MenuBar) { this.MainForm.menuStrip1.Show(); }
@@ -1070,62 +1160,146 @@ namespace SuperPutty
             if (eventArgs.IsNewLayoutAlreadyActive)
             {
                 toolStripStatusLabelLayout.Text = eventArgs.New.Name;
+                return;
             }
-            else
+
+            if (eventArgs.New == null)
             {
-                // reset old layout (close old putty instances)
-                foreach (DockContent dockContent in this.DockPanel.DocumentsToArray())
-                {
-                    Log.Debug("Unhooking document: " + dockContent);
-                    dockContent.DockPanel = null;
-                    // close old putty
-                    if (dockContent.CloseButtonVisible)
-                    {
-                        dockContent.Close();
-                    }
-                }
-                List<DockContent> contents = this.DockPanel.Contents.Cast<DockContent>().ToList();
-                foreach (DockContent dockContent in contents)
-                {
-                    Log.Debug("Unhooking dock content: " + dockContent);
-                    dockContent.DockPanel = null;
-                    // close non-persistant windows
-                    if (dockContent.CloseButtonVisible)
-                    {
-                        dockContent.Close();
-                    }
-                }
+                ResetLayoutContents();
+                InitDefaultLayout();
+                toolStripStatusLabelLayout.Text = "";
+                SuperPuTTY.ReportStatus("Initialized default layout");
+                return;
+            }
 
-
-                if (eventArgs.New == null)
+            bool hadContents = this.DockPanel.Contents.Count > 0;
+            bool restoreSessionDocuments = ShouldRestoreSessionDocuments(eventArgs.New);
+            LayoutLoadResult prepared;
+            Exception failure;
+            bool teardownStarted;
+            bool loaded = LayoutStorage.TryApply(eventArgs.New.FilePath, ValidateDockLayout, ResetLayoutContents,
+                content =>
                 {
-                    // 1st time or reset
-                    Log.Debug("Initializing default layout");
-                    this.InitDefaultLayout();
+                    using (var stream = new MemoryStream(content, false))
+                        this.DockPanel.LoadFromXml(stream,
+                            persistString => RestoreLayoutFromPersistString(persistString, restoreSessionDocuments));
+                },
+                () => { ResetLayoutContents(); InitDefaultLayout(); }, out prepared, out failure, out teardownStarted);
+            if (!loaded)
+            {
+                Log.Warn("Could not load the selected layout", failure);
+                if (teardownStarted)
+                {
+                    eventArgs.New = null;
                     toolStripStatusLabelLayout.Text = "";
-                    SuperPuTTY.ReportStatus("Initialized default layout");
-                }
-                else if (!File.Exists(eventArgs.New.FilePath))
-                {
-                    // file missing
-                    Log.WarnFormat("Layout file doesn't exist, file={0}", eventArgs.New.FilePath);
-                    this.InitDefaultLayout();
-                    toolStripStatusLabelLayout.Text = eventArgs.New.Name;
-                    SuperPuTTY.ReportStatus("Could not load layout, file missing: {0}", eventArgs.New.FilePath);
+                    SuperPuTTY.ReportStatus("Layout loading failed; the default workspace was requested.");
                 }
                 else
                 {
-                    // load new one
-                    Log.DebugFormat("Loading layout: {0}", eventArgs.New.FilePath);
-                    bool restoreSessionDocuments = ShouldRestoreSessionDocuments(eventArgs.New);
-                    this.DockPanel.LoadFromXml(
-                        eventArgs.New.FilePath,
-                        persistString => RestoreLayoutFromPersistString(persistString, restoreSessionDocuments));
-                    toolStripStatusLabelLayout.Text = eventArgs.New.Name;
-                    SuperPuTTY.ReportStatus("Loaded layout: {0}", eventArgs.New.FilePath);
+                    eventArgs.Cancel = true;
+                    if (!hadContents) InitDefaultLayout();
+                    SuperPuTTY.ReportStatus("The selected layout could not be loaded.");
                 }
+                string message = teardownStarted
+                    ? "The selected layout could not be loaded. SuperPuTTY attempted to open the default workspace. Reconnect any session tabs that were closed."
+                    : "The selected layout could not be loaded. The current workspace was kept.";
+                MessageBox.Show(this, message + "\n\n" + failure.Message, "Unable to load layout",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
-                // after all is done, cause a repaint to 
+            toolStripStatusLabelLayout.Text = eventArgs.New.Name;
+            SuperPuTTY.ReportStatus("Loaded layout: {0}", eventArgs.New.FilePath);
+            if (prepared.BackupFilePath != null)
+            {
+                string message = "The layout was recovered from its previous-save backup:\n" + prepared.BackupFilePath;
+                if (prepared.PreservedFilePath != null) message += "\n\nThe damaged original was preserved at:\n" + prepared.PreservedFilePath;
+                MessageBox.Show(this, message, "Layout recovered", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        private void ResetLayoutContents()
+        {
+            foreach (DockContent content in this.DockPanel.DocumentsToArray())
+            {
+                content.DockPanel = null;
+                if (content.CloseButtonVisible) content.Close();
+            }
+            foreach (DockContent content in this.DockPanel.Contents.Cast<DockContent>().ToList())
+            {
+                content.DockPanel = null;
+                if (content.CloseButtonVisible) content.Close();
+            }
+            foreach (FloatWindow floating in this.DockPanel.FloatWindows.ToArray()) floating.Dispose();
+        }
+
+        internal static void ValidateDockLayout(byte[] content)
+        {
+            ValidateDockLayout(content, null);
+        }
+
+        internal static void ValidateDockLayout(byte[] content, Action<Form> inspectFloatingWindow)
+        {
+            // Let DockPanelSuite validate its own complete format without opening
+            // session processes or touching any live application tool windows.
+            var placeholders = new List<DockContent>();
+            var floatingWindows = new List<FloatWindow>();
+            using (var host = new Form { ShowInTaskbar = false })
+            using (var theme = new OutlinedVS2015LightTheme())
+            {
+                theme.Extender.FloatWindowFactory = new LayoutValidationFloatWindowFactory(floatingWindows, inspectFloatingWindow);
+                using (var panel = new DockPanel { Theme = theme })
+                {
+                    host.Controls.Add(panel);
+                    try
+                    {
+                        using (var stream = new MemoryStream(content, false))
+                            panel.LoadFromXml(stream, persistString =>
+                            {
+                                var placeholder = new DockContent();
+                                placeholders.Add(placeholder);
+                                return placeholder;
+                            });
+                    }
+                    finally
+                    {
+                        foreach (var placeholder in placeholders) placeholder.Dispose();
+                        foreach (var floating in floatingWindows) floating.Dispose();
+                    }
+                }
+            }
+        }
+
+        private sealed class LayoutValidationFloatWindow : FloatWindow
+        {
+            internal LayoutValidationFloatWindow(DockPanel panel, DockPane pane) : base(panel, pane) { }
+            internal LayoutValidationFloatWindow(DockPanel panel, DockPane pane, Rectangle bounds) : base(panel, pane, bounds) { }
+            protected override void SetVisibleCore(bool value) { base.SetVisibleCore(false); }
+            protected override bool ShowWithoutActivation { get { return true; } }
+        }
+
+        private sealed class LayoutValidationFloatWindowFactory : DockPanelExtender.IFloatWindowFactory
+        {
+            private readonly List<FloatWindow> windows;
+            private readonly Action<Form> inspect;
+            internal LayoutValidationFloatWindowFactory(List<FloatWindow> windows, Action<Form> inspect)
+            {
+                this.windows = windows;
+                this.inspect = inspect;
+            }
+            private FloatWindow Track(FloatWindow window)
+            {
+                windows.Add(window);
+                inspect?.Invoke(window);
+                return window;
+            }
+            public FloatWindow CreateFloatWindow(DockPanel panel, DockPane pane)
+            {
+                return Track(new LayoutValidationFloatWindow(panel, pane));
+            }
+            public FloatWindow CreateFloatWindow(DockPanel panel, DockPane pane, Rectangle bounds)
+            {
+                return Track(new LayoutValidationFloatWindow(panel, pane, bounds));
             }
         }
 
@@ -1161,7 +1335,8 @@ namespace SuperPutty
         void SaveLayout(string file, string statusMsg)
         {
             SuperPuTTY.ReportStatus(statusMsg);
-            this.DockPanel.SaveAsXml(file);
+            string preserved = LayoutStorage.SaveAtomically(file, path => this.DockPanel.SaveAsXml(path), ValidateDockLayout);
+            if (preserved != null) SuperPuTTY.ReportStatus("Saved layout. The damaged original was preserved at {0}", preserved);
         }
 
         internal static bool ShouldRestoreSessionDocuments(LayoutData layout)
@@ -1742,6 +1917,12 @@ namespace SuperPutty
             }
         }
 
+        internal void ReleaseKeyboardHook()
+        {
+            this.keyboardHook?.TryRemove();
+            this.keyboardHookState.Reset();
+        }
+
         private static bool IsAsyncKeyDown(Keys keyCode)
         {
             return (NativeMethods.GetAsyncKeyState((int)keyCode) & 0x8000) != 0;
@@ -1749,6 +1930,19 @@ namespace SuperPutty
 
         // Intercept keyboard messages for Ctrl-F4 and Ctrl-Tab handling
         private IntPtr KBHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            return NativeCallbackGuard.Keyboard(nCode, wParam, lParam,
+                () => this.keyboardHook != null && this.keyboardHook.IsEnabled &&
+                    !IsDisposed && !Disposing && !IsShuttingDown,
+                HandleKeyboardHook, (code, w, l) => NativeMethods.CallNextHookEx(KeyboardHookHandle, code, w, l),
+                failure =>
+                {
+                    this.keyboardHookState.Reset();
+                    Log.Error("Error handling a keyboard-hook notification", failure);
+                });
+        }
+
+        private IntPtr? HandleKeyboardHook(int nCode, IntPtr wParam, IntPtr lParam)
         {
             if (nCode >= 0)
             {
@@ -1760,7 +1954,7 @@ namespace SuperPutty
                 // as physical state or recursively executing SuperPuTTY shortcuts.
                 if (KeyboardHookState.IsSuperPuttyInjectedInput(keyboardData))
                 {
-                    return NativeMethods.CallNextHookEx(kbHookID, nCode, wParam, lParam);
+                    return null;
                 }
 
                 bool isKeyDown = wParam == (IntPtr)NativeMethods.WM_KEYDOWN || wParam == (IntPtr)NativeMethods.WM_SYSKEYDOWN;
@@ -1872,7 +2066,7 @@ namespace SuperPutty
                         {
                             if (!TrySnapWindow(Keys.Left))
                             {
-                                return NativeMethods.CallNextHookEx(kbHookID, nCode, wParam, lParam);
+                                return null;
                             }
                         }
                         return (IntPtr)1;
@@ -1887,7 +2081,7 @@ namespace SuperPutty
                         {
                             if (!TrySnapWindow(Keys.Right))
                             {
-                                return NativeMethods.CallNextHookEx(kbHookID, nCode, wParam, lParam);
+                                return null;
                             }
                         }
                         return (IntPtr)1;
@@ -1915,7 +2109,7 @@ namespace SuperPutty
 
             }
 
-            return NativeMethods.CallNextHookEx(kbHookID, nCode, wParam, lParam);
+            return null;
         }
 
         private static IntPtr SetMHook(NativeMethods.LowLevelKMProc proc)
@@ -1953,7 +2147,7 @@ namespace SuperPutty
             return false;
         }
 
-        private bool IsForegroundWindow(bool includeMainForm)
+        internal bool IsForegroundWindow(bool includeMainForm)
         {
             return IsForegroundWindow(NativeMethods.GetForegroundWindow(), includeMainForm);
         }
@@ -2299,29 +2493,22 @@ namespace SuperPutty
         /// <summary>Check for a newer version of the SuperPuTTY Application</summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void checkForUpdatesToolStripMenuItem_Click(object sender, EventArgs e)
+        private async void checkForUpdatesToolStripMenuItem_Click(object sender, EventArgs e)
         {
+            if (IsDisposed || Disposing || IsShuttingDown) return;
             Log.Info("Checking for application update");
             try
             {
-                UpdateRequestClient updateRequestClient = new UpdateRequestClient();
                 string updateChannel = SuperPuTTY.Settings.UpdateChannel;
                 string releaseApiUrl = UpdateChannel.GetReleaseApiUrl(updateChannel);
                 bool showCurrentVersion = Object.ReferenceEquals(sender, checkForUpdatesToolStripMenuItem);
                 Log.InfoFormat("Using {0} update channel ({1})", updateChannel, releaseApiUrl);
-                updateRequestClient.MakeRequest(releaseApiUrl, delegate (bool success, string content)
-                {
-                    if (IsDisposed || Disposing || !IsHandleCreated)
-                        return;
-                    try
+                await updateChecks.RunAsync(token => UpdateRequestClient.DownloadJsonAsync(releaseApiUrl, token),
+                    (success, content) =>
                     {
-                        BeginInvoke(new Action(() => HandleUpdateResponse(success, content, showCurrentVersion)));
-                    }
-                    catch (InvalidOperationException)
-                    {
-                        // The form was closed between the lifecycle check and BeginInvoke.
-                    }
-                });
+                        if (!IsDisposed && !Disposing && !IsShuttingDown && IsHandleCreated)
+                            HandleUpdateResponse(success, content, showCurrentVersion);
+                    });
             }
             catch (Exception ex)
             {

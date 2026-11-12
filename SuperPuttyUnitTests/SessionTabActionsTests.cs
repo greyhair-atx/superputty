@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 using NUnit.Framework;
@@ -44,8 +45,12 @@ namespace SuperPuttyUnitTests
         public void GuiLoadsMiddleClickPreferenceAndDoesNotApplyAnUnsavedChange(bool enabled)
         {
             bool original = SuperPutty.SuperPuTTY.Settings.MiddleClickClosesWithoutConfirmation;
+            string originalFolder = SuperPutty.SuperPuTTY.Settings.SettingsFolder;
+            string directory = Path.Combine(Path.GetTempPath(), "SuperPutty-OptionsTest-" + Guid.NewGuid());
+            Directory.CreateDirectory(directory);
             try
             {
+                SuperPutty.SuperPuTTY.Settings.SettingsFolder = directory;
                 SuperPutty.SuperPuTTY.Settings.MiddleClickClosesWithoutConfirmation = enabled;
                 using (var options = new dlgFindPutty())
                 {
@@ -57,7 +62,12 @@ namespace SuperPuttyUnitTests
                     Assert.AreEqual(enabled, SuperPutty.SuperPuTTY.Settings.MiddleClickClosesWithoutConfirmation);
                 }
             }
-            finally { SuperPutty.SuperPuTTY.Settings.MiddleClickClosesWithoutConfirmation = original; }
+            finally
+            {
+                SuperPutty.SuperPuTTY.Settings.MiddleClickClosesWithoutConfirmation = original;
+                SuperPutty.SuperPuTTY.Settings.SettingsFolder = originalFolder;
+                Directory.Delete(directory, true);
+            }
         }
 
         [TestCase(false, true)]

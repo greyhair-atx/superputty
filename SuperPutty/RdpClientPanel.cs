@@ -349,23 +349,24 @@ namespace SuperPutty
 
         private void UpdateSessionDisplaySettings()
         {
-            if (this.client == null || this.closing || this.client.Connected == 0)
-            {
-                return;
-            }
-
-            Size displaySize = this.client.ClientSize;
-            int width = Math.Max(200, Math.Min(8192, displaySize.Width));
-            int height = Math.Max(200, Math.Min(8192, displaySize.Height));
-            width -= width % 2;
-            displaySize = new Size(width, height);
-            if (displaySize == this.lastSessionDisplaySize)
+            if (this.client == null || this.closing || this.IsDisposed || this.Disposing)
             {
                 return;
             }
 
             try
             {
+                if (this.client.IsDisposed || this.client.Disposing || this.client.Connected == 0) return;
+                Size displaySize = this.client.ClientSize;
+                int width = Math.Max(200, Math.Min(8192, displaySize.Width));
+                int height = Math.Max(200, Math.Min(8192, displaySize.Height));
+                width -= width % 2;
+                displaySize = new Size(width, height);
+                if (displaySize == this.lastSessionDisplaySize)
+                {
+                    return;
+                }
+
                 IMsRdpClient9 rdpClient9 = (IMsRdpClient9)this.client.GetOcx();
                 uint dpi = (uint)Math.Max(96, this.DeviceDpi);
                 uint physicalWidth = (uint)Math.Max(10, Math.Round(width * 25.4 / dpi));

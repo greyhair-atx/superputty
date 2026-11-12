@@ -1141,9 +1141,7 @@ namespace SuperPutty.Utils
         [DllImport("user32.dll", EntryPoint = "SetWindowLongA", SetLastError = true)]
         public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
-        // http://msdn.microsoft.com/en-us/library/windows/desktop/ms644898%28v=vs.85%29.aspx
-        // This static method is required because legacy OSes do not support
-        // SetWindowLongPtr 
+        // SetWindowLongPtr is a macro for SetWindowLong in a 32-bit process.
         public static IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong)
         {
             if (IntPtr.Size == 8)
@@ -1152,10 +1150,10 @@ namespace SuperPutty.Utils
                 return new IntPtr(SetWindowLong32(hWnd, nIndex, dwNewLong));
         }
 
-        [DllImport("user32.dll", EntryPoint = "SetWindowLong")]
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongW", ExactSpelling = true, SetLastError = true)]
         private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 
-        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr")]
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", ExactSpelling = true, SetLastError = true)]
         private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 
         [DllImport("user32.dll", SetLastError = true)]
@@ -1172,20 +1170,24 @@ namespace SuperPutty.Utils
         internal static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint message, IntPtr wParam,
             StringBuilder lParam, uint flags, uint timeout, out UIntPtr result);
 
-        [DllImport("user32.dll")]
-        public static extern int SendMessage(IntPtr hWnd, uint Msg, long wParam, long lParam);
+        [DllImport("user32.dll", EntryPoint = "SendMessageW", ExactSpelling = true)]
+        public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
-        [DllImport("user32.dll")]
-        private static extern int FindWindow(string className, string windowText);
+        // Numeric command values remain convenient at managed call sites; the
+        // native boundary always uses pointer-sized WPARAM, LPARAM and LRESULT.
+        public static IntPtr SendMessage(IntPtr hWnd, uint Msg, long wParam, long lParam)
+        {
+            return SendMessage(hWnd, Msg, new IntPtr(wParam), new IntPtr(lParam));
+        }
+
+        [DllImport("user32.dll", EntryPoint = "FindWindowW", CharSet = CharSet.Unicode, ExactSpelling = true)]
+        private static extern IntPtr FindWindow(string className, string windowText);
 
         [DllImport("user32.dll")]
         public static extern bool ShowWindow(IntPtr hWnd, WindowShowStyle nCmdShow);
 
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, int wParam, IntPtr lParam);
-
-        [DllImport("user32.dll", EntryPoint = "SendMessage", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
-        public static extern bool SendMessage(IntPtr hWnd, uint Msg, int wParam, StringBuilder lParam);
+        [DllImport("user32.dll", EntryPoint = "SendMessageW", CharSet = CharSet.Unicode, ExactSpelling = true)]
+        public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, StringBuilder lParam);
 
         [DllImport("user32.dll")]
         public static extern short VkKeyScan(char ch);
@@ -1319,7 +1321,7 @@ namespace SuperPutty.Utils
         /// <param name="hWnd"></param>
         /// <param name="lParam"></param>
         /// <returns></returns>
-        public delegate bool EnumDelegate(IntPtr hWnd, int lParam);
+        public delegate bool EnumDelegate(IntPtr hWnd, IntPtr lParam);
 
         /// <summary>
         /// enumarator on all desktop windows
@@ -1356,8 +1358,13 @@ namespace SuperPutty.Utils
         [DllImport("user32.dll")]
         public static extern IntPtr DefWindowProc(IntPtr hWnd, int uMsg, IntPtr wParam, IntPtr lParam);
 
-        [DllImport("user32.dll")]
-        public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+        [DllImport("user32.dll", EntryPoint = "keybd_event", ExactSpelling = true)]
+        public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+        public static void keybd_event(byte bVk, byte bScan, uint dwFlags, uint dwExtraInfo)
+        {
+            keybd_event(bVk, bScan, dwFlags, new UIntPtr(dwExtraInfo));
+        }
 
         [DllImport("user32.dll", EntryPoint = "SetWindowPos", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]

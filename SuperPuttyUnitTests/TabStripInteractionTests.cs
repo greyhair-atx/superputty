@@ -17,8 +17,8 @@ namespace SuperPuttyUnitTests
         [TestCase(true, 20)]
         [TestCase(false, 30)]
         [TestCase(true, 30)]
-        [TestCase(false, 300)]
-        [TestCase(true, 300)]
+        [TestCase(false, 200)]
+        [TestCase(true, 200)]
         public void OverflowHitTestingAndOutlinesDoNotThrow(bool modern, int count)
         {
             using (var fixture = new TabFixture(modern, count))
@@ -71,11 +71,11 @@ namespace SuperPuttyUnitTests
 
         [TestCase(false)]
         [TestCase(true)]
-        public void HundredsOfTabsRemainSelectableAndMoreCanOpenAfterClosing(bool modern)
+        public void TwoHundredTabsRemainSelectableAndClosedSlotsCanBeReused(bool modern)
         {
-            using (var fixture = new TabFixture(modern, 300))
+            using (var fixture = new TabFixture(modern, 200))
             {
-                Assert.AreEqual(300, fixture.OpenDocumentCount);
+                Assert.AreEqual(200, fixture.OpenDocumentCount);
                 for (int index = 0; index < fixture.Documents.Count; index++)
                 {
                     var document = fixture.Documents[index];
@@ -84,7 +84,7 @@ namespace SuperPuttyUnitTests
                     Assert.AreSame(document, document.Pane.ActiveContent);
                     var close = fixture.Strip.CloseBounds(index);
                     Assert.AreEqual(index, fixture.Strip.ProbeHit(new Point(close.Left - 5, close.Top + close.Height / 2)),
-                        "Every overflow tab must become visible and selectable, including indexes above 255.");
+                        "Every overflow tab must become visible and selectable, up to the 200-tab limit.");
                 }
                 for (int removed = 0; removed < 16; removed++)
                 {
@@ -94,11 +94,11 @@ namespace SuperPuttyUnitTests
                     Assert.IsTrue(document.IsDisposed);
                     fixture.Documents.RemoveAt(last);
                 }
-                for (int added = 0; added < 32; added++) fixture.AddDocument();
-                Assert.AreEqual(316, fixture.OpenDocumentCount);
-                fixture.Documents[315].Activate();
+                for (int added = 0; added < 16; added++) fixture.AddDocument();
+                Assert.AreEqual(200, fixture.OpenDocumentCount);
+                fixture.Documents[199].Activate();
                 fixture.Strip.PaintNow();
-                Assert.AreSame(fixture.Documents[315], fixture.Documents[0].Pane.ActiveContent);
+                Assert.AreSame(fixture.Documents[199], fixture.Documents[0].Pane.ActiveContent);
             }
         }
 
@@ -106,12 +106,12 @@ namespace SuperPuttyUnitTests
         [TestCase(true)]
         public void OverflowListIncludesEveryTabAndReleasesItemsAndImages(bool modern)
         {
-            using (var fixture = new TabFixture(modern, 300))
+            using (var fixture = new TabFixture(modern, 200))
             {
                 var strip = fixture.Strip;
                 strip.PopulateWindowList();
                 var menu = strip.WindowList;
-                Assert.AreEqual(300, menu.Items.Count);
+                Assert.AreEqual(200, menu.Items.Count);
                 for (int index = 0; index < menu.Items.Count; index++)
                 {
                     Assert.AreSame(fixture.Documents[index], menu.Items[index].Tag);
@@ -124,7 +124,7 @@ namespace SuperPuttyUnitTests
                 oldItem.Disposed += (sender, args) => oldDisposed++;
                 Assert.IsNotNull(oldImage);
                 strip.PopulateWindowList();
-                Assert.AreEqual(300, menu.Items.Count);
+                Assert.AreEqual(200, menu.Items.Count);
                 Assert.AreEqual(1, oldDisposed, "Rebuilding the list must dispose detached items.");
                 Assert.Throws<ArgumentException>(() => ((Bitmap)oldImage).GetPixel(0, 0));
                 var finalItem = menu.Items[0];

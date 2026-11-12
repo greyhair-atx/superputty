@@ -66,7 +66,6 @@ namespace SuperPutty.Data
         private static readonly ILog Log = LogManager.GetLogger(typeof(SessionData));
         internal const int MaximumRemoteCollectionBytes = 1024 * 1024;
         internal const int MaximumCollectionDepth = 16;
-        private const int RemoteCollectionTimeoutMilliseconds = 10000;
         public delegate void OnPropertyChangedHandler(SessionData Session, String AttributeName);
         public delegate void OnPropertyChangingHandler(SessionData Session, String AttributeName, Object NewValue, ref bool CancelChange);
 
@@ -265,21 +264,21 @@ namespace SuperPutty.Data
         }
 
         private string _Password;
+        private string _extraArgsPassword;
         [XmlIgnore]
         [Browsable(false)]
         public string Password
         {
-            get {
-                
-                 if (String.IsNullOrEmpty(_Password)){
-                    // search if ExtraArgs contains the password
-                    UpdateField(ref _Password, CommandLineOptions.getcommand(this.ExtraArgs, "-pw"), "Password");
-                }
-                return _Password;
-            }
+            get { return String.IsNullOrEmpty(_Password) ? _extraArgsPassword : _Password; }
             set 
             {
-                UpdateField(ref _Password, value, "Password");
+                if (_Password == value) return;
+                bool cancel = false;
+                OnPropertyChanging?.Invoke(this, nameof(Password), value, ref cancel);
+                if (cancel) return;
+                string previous = Password;
+                _Password = value;
+                if (previous != Password) OnPropertyChanged?.Invoke(this, nameof(Password));
             }
         }
 
@@ -301,7 +300,17 @@ namespace SuperPutty.Data
             get { return _ExtraArgs; }
             set
             {
-                UpdateField(ref _ExtraArgs, value, "ExtraArgs");
+                if (_ExtraArgs == value) return;
+                bool cancel = false;
+                OnPropertyChanging?.Invoke(this, nameof(ExtraArgs), value, ref cancel);
+                if (cancel) return;
+                string parsedPassword = CommandLineOptions.getcommand(value, "-pw");
+                string previousPassword = Password;
+                _ExtraArgs = value;
+                _extraArgsPassword = parsedPassword;
+                // Both values are committed before synchronous observers read either property.
+                OnPropertyChanged?.Invoke(this, nameof(ExtraArgs));
+                if (previousPassword != Password) OnPropertyChanged?.Invoke(this, nameof(Password));
             }
         }
 
@@ -497,148 +506,21 @@ namespace SuperPutty.Data
         /// <param name="location">The filename or URL containing the settings</param>
         public static List<SessionData> LoadSessionsFromFile(string location)
         {
-            return LoadSessionsFromFile(
-                location,
-                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                0);
-        }
-
-        private static List<SessionData> LoadSessionsFromFile(
-            string location,
-            HashSet<string> activeCollections,
-            int depth)
-        {
-            if (String.IsNullOrWhiteSpace(location))
+            // Retain the legacy rejection result for callers of this public entry point.
+            Uri uri;
+            if (Uri.TryCreate(location, UriKind.Absolute, out uri) &&
+                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) &&
+                (uri.Scheme != Uri.UriSchemeHttps || !String.IsNullOrEmpty(uri.UserInfo)))
                 return new List<SessionData>();
-            if (depth > MaximumCollectionDepth)
-                throw new InvalidDataException("Session collection nesting exceeds the supported depth.");
-
+            if (String.IsNullOrWhiteSpace(location)) return new List<SessionData>();
+            if (!Uri.TryCreate(location, UriKind.Absolute, out uri) || uri.IsFile)
+            {
+                string path = uri != null && uri.IsFile ? uri.LocalPath : location;
+                if (!File.Exists(path)) return new List<SessionData>();
+            }
             WorkaroundCygwinBug();
-            List<SessionData> sessions = new List<SessionData>();
-            XmlSerializer s = new XmlSerializer(sessions.GetType());
-            Uri remoteUri;
-            bool isWebLocation = Uri.TryCreate(location, UriKind.Absolute, out remoteUri) &&
-                (String.Equals(remoteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
-                 String.Equals(remoteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
-
-            if (isWebLocation &&
-                (!String.Equals(remoteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-                 String.IsNullOrEmpty(remoteUri.Host) ||
-                 !String.IsNullOrEmpty(remoteUri.UserInfo)))
-            {
-                Log.Warn("Blocked insecure remote session collection. Remote collections require HTTPS without embedded credentials.");
-                return sessions;
-            }
-
-            string localLocation = location;
-            if (!isWebLocation && location.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
-                localLocation = new Uri(location).LocalPath;
-
-            string collectionKey = isWebLocation
-                ? remoteUri.AbsoluteUri
-                : Path.GetFullPath(localLocation);
-            if (!activeCollections.Add(collectionKey))
-                throw new InvalidDataException("Circular session collection reference detected.");
-
-            try
-            {
-                if (isWebLocation)
-                {
-                    try
-                    {
-                        sessions = LoadRemoteSessions(s, remoteUri);
-                        Log.InfoFormat("Loaded {0} sessions from HTTPS host {1}", sessions.Count, remoteUri.Host);
-                        ResolveRemoteSessionLocations(sessions, remoteUri);
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Warn("Could not securely load sessions from HTTPS host " + remoteUri.Host, ex);
-                    }
-                }
-                else if (File.Exists(localLocation))
-                {
-                    using (StreamReader r = new StreamReader(localLocation))
-                    {
-                        sessions = (List<SessionData>)s.Deserialize(r);
-                    }
-                    Log.InfoFormat("Loaded {0} sessions from {1}", sessions.Count, localLocation);
-                }
-                else
-                {
-                    Log.WarnFormat("Could not load sessions, file doesn't exist. file={0}", localLocation);
-                }
-
-                // If there are any collections specified, load and replace their placeholders.
-                for(var i = 0; i < sessions.Count; i++)
-                {
-                    if(!string.IsNullOrEmpty(sessions[i].CollectionLocation))
-                    {
-                        var collectionLocation = sessions[i].CollectionLocation;
-                        var collectionName = sessions[i].CollectionID;
-
-                        if(!string.IsNullOrEmpty(collectionName))
-                            collectionName = collectionName.Trim('/');
-
-                        var sessionsToAdd = LoadSessionsFromFile(collectionLocation, activeCollections, depth + 1);
-                        sessions.RemoveAt(i);
-
-                        foreach (var session in sessionsToAdd)
-                        {
-                            if(!string.IsNullOrEmpty(collectionName))
-                            {
-                                string childSessionId = session.SessionId ?? session.SessionName ?? String.Empty;
-                                session.SessionId = collectionName + "/" + childSessionId.TrimStart('/');
-                            }
-
-                            sessions.Insert(i++, session);
-                        }
-
-                        i--;
-                    }
-                }
-
-                return sessions;
-            }
-            finally
-            {
-                activeCollections.Remove(collectionKey);
-            }
+            return new SessionStorage().LoadAsync(location, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
         }
-
-        private static List<SessionData> LoadRemoteSessions(XmlSerializer serializer, Uri location)
-        {
-            HttpWebRequest request = WebRequest.CreateHttp(location);
-            request.AllowAutoRedirect = false;
-            request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
-            request.Timeout = RemoteCollectionTimeoutMilliseconds;
-            request.ReadWriteTimeout = RemoteCollectionTimeoutMilliseconds;
-            request.UserAgent = "SuperPuTTY-Sessions";
-
-            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
-            {
-                if ((int)response.StatusCode < 200 || (int)response.StatusCode >= 300)
-                    throw new InvalidDataException("Remote session collection returned " + response.StatusCode + ".");
-                if (response.ContentLength > MaximumRemoteCollectionBytes)
-                    throw new InvalidDataException("Remote session collection exceeds the 1 MiB limit.");
-
-                using (Stream input = response.GetResponseStream())
-                using (MemoryStream output = new MemoryStream())
-                {
-                    byte[] buffer = new byte[8192];
-                    int read;
-                    while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
-                    {
-                        if (output.Length + read > MaximumRemoteCollectionBytes)
-                            throw new InvalidDataException("Remote session collection exceeds the 1 MiB limit.");
-                        output.Write(buffer, 0, read);
-                    }
-
-                    output.Position = 0;
-                    return (List<SessionData>)serializer.Deserialize(output);
-                }
-            }
-        }
-
         internal static void ResolveRemoteSessionLocations(IEnumerable<SessionData> sessions, Uri parentLocation)
         {
             if (sessions == null)
@@ -741,61 +623,9 @@ namespace SuperPutty.Data
         /// <param name="fileName">A path to a filename to save the data in</param>
         public static void SaveSessionsToFile(List<SessionData> sessions, string fileName)
         {
-            if (sessions == null)
-            {
-                throw new ArgumentNullException("sessions");
-            }
-            if (String.IsNullOrWhiteSpace(fileName))
-            {
-                throw new ArgumentException("A session file name must be provided.", "fileName");
-            }
-
-            Log.InfoFormat("Saving {0} sessions to {1}", sessions.Count, fileName);
-
-            string fullPath = Path.GetFullPath(fileName);
-            string directory = Path.GetDirectoryName(fullPath);
-            string tempFile = Path.Combine(
-                directory,
-                Path.GetFileName(fullPath) + "." + Guid.NewGuid().ToString("N") + ".tmp");
-
-            List<SessionData> sessionsToSave = new List<SessionData>(sessions);
-            sessionsToSave.Sort();
-            XmlSerializer serializer = new XmlSerializer(sessionsToSave.GetType());
-
-            try
-            {
-                using (FileStream stream = new FileStream(
-                    tempFile,
-                    FileMode.CreateNew,
-                    FileAccess.Write,
-                    FileShare.None))
-                using (TextWriter writer = new StreamWriter(stream))
-                {
-                    serializer.Serialize(writer, sessionsToSave);
-                    writer.Flush();
-                    stream.Flush(true);
-                }
-
-                BackUpFiles(fullPath, 20);
-                if (File.Exists(fullPath))
-                {
-                    File.Replace(tempFile, fullPath, null);
-                }
-                else
-                {
-                    File.Move(tempFile, fullPath);
-                }
-            }
-            finally
-            {
-                if (File.Exists(tempFile))
-                {
-                    File.Delete(tempFile);
-                }
-            }
+            new SessionStorage().Save(sessions, fileName);
         }
-
-        private static void BackUpFiles(string fileName, int count)
+        internal static void BackUpFiles(string fileName, int count)
         {
             if (File.Exists(fileName) && count > 0)
             {
@@ -917,11 +747,15 @@ namespace SuperPutty.Data
 
             foreach (PropertyInfo pi in SessionToCopy.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
-                if (pi.CanWrite && pi.Name != nameof(PersistedExtraArgs))
+                if (pi.CanWrite && pi.Name != nameof(PersistedExtraArgs) &&
+                    pi.Name != nameof(Password) && pi.Name != nameof(ExtraArgs))
                 {
                     pi.SetValue(this, pi.GetValue(SessionToCopy, null), null);
                 }
             }
+            // Copy the explicit value, rather than promoting the derived legacy fallback to an override.
+            Password = SessionToCopy._Password;
+            ExtraArgs = SessionToCopy.ExtraArgs;
         }
 
         /// <summary>Return a string containing a uri to the protocol://host:port of this sesssions defined host</summary>
