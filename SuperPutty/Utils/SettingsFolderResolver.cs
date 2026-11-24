@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Security;
+using SuperPutty.Data;
 
 namespace SuperPutty.Utils
 {
@@ -152,45 +153,87 @@ namespace SuperPutty.Utils
             }
         }
 
-        internal static void CopyExistingSettings(string sourceFolder, string destinationFolder)
+        internal static void CopyExistingSettings(string sourceFolder, string destinationFolder, Action<string> validateCatalog = null)
         {
-            if (String.IsNullOrWhiteSpace(sourceFolder) ||
-                String.IsNullOrWhiteSpace(destinationFolder) ||
-                PathsEqual(sourceFolder, destinationFolder) ||
-                !Directory.Exists(sourceFolder))
+            if (String.IsNullOrWhiteSpace(destinationFolder) || PathsEqual(sourceFolder, destinationFolder))
             {
                 return;
             }
 
             Directory.CreateDirectory(destinationFolder);
-            CopyIfMissing(sourceFolder, destinationFolder, "Sessions.XML");
-            CopyIfMissing(sourceFolder, destinationFolder, "AutoRestoreLayout.XML");
+            // Check metadata explicitly. Directory.Exists hides access errors
+            // that should keep the configured folder in place.
+            bool sourceAvailable = !String.IsNullOrWhiteSpace(sourceFolder) && IsDirectory(sourceFolder);
+            CopyIfMissing(sourceAvailable ? Path.Combine(sourceFolder, "Sessions.XML") : null,
+                Path.Combine(destinationFolder, "Sessions.XML"), validateCatalog, SessionStorage.MaximumLocalCatalogBytes);
+            if (!sourceAvailable) return;
+
+            CopyIfMissing(Path.Combine(sourceFolder, "AutoRestoreLayout.XML"), Path.Combine(destinationFolder, "AutoRestoreLayout.XML"));
 
             string sourceLayouts = Path.Combine(sourceFolder, "layouts");
-            if (!Directory.Exists(sourceLayouts))
+            if (!IsDirectory(sourceLayouts))
             {
                 return;
             }
 
             string destinationLayouts = Path.Combine(destinationFolder, "layouts");
             Directory.CreateDirectory(destinationLayouts);
-            foreach (string sourceFile in Directory.GetFiles(sourceLayouts, "*.xml"))
-            {
-                string destinationFile = Path.Combine(destinationLayouts, Path.GetFileName(sourceFile));
-                if (!File.Exists(destinationFile))
-                {
-                    File.Copy(sourceFile, destinationFile, false);
-                }
-            }
+            foreach (string sourceFile in Directory.EnumerateFiles(sourceLayouts, "*.xml"))
+                CopyIfMissing(sourceFile, Path.Combine(destinationLayouts, Path.GetFileName(sourceFile)));
         }
 
-        private static void CopyIfMissing(string sourceFolder, string destinationFolder, string fileName)
+        private static FileAttributes? GetAttributesIfPresent(string path)
         {
-            string source = Path.Combine(sourceFolder, fileName);
-            string destination = Path.Combine(destinationFolder, fileName);
-            if (File.Exists(source) && !File.Exists(destination))
+            try { return File.GetAttributes(path); }
+            catch (FileNotFoundException) { return null; }
+            catch (DirectoryNotFoundException) { return null; }
+        }
+
+        private static bool IsDirectory(string path)
+        {
+            var attributes = GetAttributesIfPresent(path);
+            return attributes.HasValue && (attributes.Value & FileAttributes.Directory) != 0;
+        }
+
+        private static void CopyIfMissing(string source, string destination, Action<string> validate = null,
+            long maximumBytes = Int64.MaxValue)
+        {
+            using (SharedFile.Lock(destination))
             {
-                File.Copy(source, destination, false);
+                if (GetAttributesIfPresent(destination).HasValue)
+                {
+                    validate?.Invoke(destination);
+                    return;
+                }
+                if (source == null) return;
+                using (var input = SharedFile.OpenOptional(source))
+                {
+                    if (input == null) return;
+                    if (input.Length > maximumBytes) throw new InvalidDataException("The session catalog exceeds its supported size limit.");
+                    string staged = destination + ".migration." + Guid.NewGuid().ToString("N") + ".tmp";
+                    try
+                    {
+                        using (var output = new FileStream(staged, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                        {
+                            input.CopyTo(output);
+                            output.Flush(true);
+                        }
+                        validate?.Invoke(staged);
+                        try { SharedFile.Retry(() => { File.Move(staged, destination); return true; }); }
+                        catch (IOException ex) when ((ex.HResult & 65535) == 80 || (ex.HResult & 65535) == 183)
+                        {
+                            // A nonparticipating writer created the destination.
+                            // Keep its data and validate it before accepting the folder.
+                            validate?.Invoke(destination);
+                        }
+                    }
+                    finally
+                    {
+                        try { File.Delete(staged); }
+                        catch (IOException) { }
+                        catch (UnauthorizedAccessException) { }
+                    }
+                }
             }
         }
 

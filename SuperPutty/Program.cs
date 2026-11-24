@@ -56,13 +56,18 @@ namespace SuperPutty
             IDisposable listener = null;
             try
             {
-                var endpoint = SingleInstanceEndpoint.Current;
-                instance = new SingleInstanceMutex(endpoint);
+                bool firstRun = SuperPuTTY.IsFirstRun;
+                bool singleInstance = (EnforceSingleInstance || SuperPuTTY.Settings.SingleInstanceMode) && !firstRun;
+                SingleInstanceEndpoint endpoint = null;
+                instance = StartSingleInstanceComponent(singleInstance, () =>
+                {
+                    endpoint = SingleInstanceEndpoint.Current;
+                    return new SingleInstanceMutex(endpoint);
+                });
 
                 Log.InfoFormat(
                     "IsFirstRun={0}, SingleInstanceMode={1}, onlyInstance={2}",
-                    SuperPuTTY.IsFirstRun, SuperPuTTY.Settings.SingleInstanceMode, instance.IsPrimary);
-                bool singleInstance = (EnforceSingleInstance || SuperPuTTY.Settings.SingleInstanceMode) && !SuperPuTTY.IsFirstRun;
+                    firstRun, SuperPuTTY.Settings.SingleInstanceMode, instance?.IsPrimary == true);
                 bool legacyInstance = singleInstance && SingleInstanceMutex.LegacyInstanceExists();
                 if (singleInstance && (!instance.IsPrimary || legacyInstance))
                 {
@@ -90,10 +95,16 @@ namespace SuperPutty
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
 
-                frmSuperPutty mainForm = new frmSuperPutty();
-                SetDefaultIcon(mainForm);
-                if (instance.IsPrimary) listener = SingleInstanceHelper.StartReceiving(mainForm, endpoint);
-                Application.Run(SuperPuTTY.MainForm = mainForm);
+                using (var mainForm = new frmSuperPutty())
+                {
+                    SetDefaultIcon(mainForm);
+                    if (instance?.IsPrimary == true)
+                    {
+                        listener = StartSingleInstanceComponent(singleInstance, () => SingleInstanceHelper.StartReceiving(mainForm, endpoint));
+                        if (listener == null) { instance.Dispose(); instance = null; }
+                    }
+                    Application.Run(SuperPuTTY.MainForm = mainForm);
+                }
             }
             catch (Exception ex)
             {
@@ -101,6 +112,8 @@ namespace SuperPutty
                 Environment.ExitCode = 1;
                 if (ex is System.Configuration.ConfigurationErrorsException)
                     MessageBox.Show(ex.Message, "Unable to load preferences", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                else if (ex is SingleInstanceStartupException)
+                    MessageBox.Show(ex.Message, "Unable to start single-instance mode", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
@@ -111,6 +124,26 @@ namespace SuperPutty
                     Log.Info("Shutdown");
                 }
                 finally { instance?.Dispose(); }
+            }
+        }
+
+        internal sealed class SingleInstanceStartupException : IOException
+        {
+            internal SingleInstanceStartupException(Exception cause) : base(
+                "SuperPuTTY could not start its single-instance connection. Close other SuperPuTTY windows and retry. " +
+                "If it still fails, check Windows access to local named pipes and mutexes.\n\n" + cause.Message, cause) { }
+        }
+
+        internal static T StartSingleInstanceComponent<T>(bool required, Func<T> start) where T : class
+        {
+            try { return start(); }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException ||
+                ex is System.ComponentModel.Win32Exception || ex is System.Security.SecurityException ||
+                ex is WaitHandleCannotBeOpenedException)
+            {
+                if (required) throw new SingleInstanceStartupException(ex);
+                Log.Warn("Single-instance IPC is unavailable. Starting an independent SuperPuTTY window.", ex);
+                return null;
             }
         }
 

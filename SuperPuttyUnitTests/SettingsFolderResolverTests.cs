@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using SuperPutty.Utils;
 
@@ -146,6 +148,38 @@ namespace SuperPuttyUnitTests
             Assert.AreEqual("existing sessions", File.ReadAllText(Path.Combine(destination, "Sessions.XML")));
             Assert.AreEqual("source auto restore", File.ReadAllText(Path.Combine(destination, "AutoRestoreLayout.XML")));
             Assert.AreEqual("source layout", File.ReadAllText(Path.Combine(destination, "layouts", "work.xml")));
+        }
+
+        [Test]
+        public void MigrationWaitsForATemporarySharingLockBeforePublishingTheCatalog()
+        {
+            string source = Path.Combine(testRoot, "source");
+            string destination = Path.Combine(testRoot, "destination");
+            Directory.CreateDirectory(source);
+            string catalog = Path.Combine(source, "Sessions.XML");
+            string copied = Path.Combine(destination, "Sessions.XML");
+            const string content = "<ArrayOfSessionData />";
+            File.WriteAllText(catalog, content);
+
+            Task copy;
+            using (var started = new ManualResetEventSlim())
+            {
+                using (File.Open(catalog, FileMode.Open, FileAccess.Read, FileShare.None))
+                {
+                    copy = Task.Run(() =>
+                    {
+                        started.Set();
+                        SettingsFolderResolver.CopyExistingSettings(source, destination);
+                    });
+                    Assert.True(started.Wait(2000));
+                    Assert.False(copy.Wait(100));
+                    Assert.False(File.Exists(copied));
+                }
+                copy.GetAwaiter().GetResult();
+            }
+
+            Assert.AreEqual(content, File.ReadAllText(copied));
+            Assert.AreEqual(1, Directory.GetFiles(destination).Length);
         }
     }
 }

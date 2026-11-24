@@ -8,6 +8,8 @@ using System.Windows.Forms;
 using NUnit.Framework;
 using SuperPutty;
 using SuperPutty.Data;
+using SuperPutty.Gui.Docking;
+using WeifenLuo.WinFormsUI.Docking;
 
 namespace SuperPuttyUnitTests
 {
@@ -15,6 +17,66 @@ namespace SuperPuttyUnitTests
     [Apartment(ApartmentState.STA)]
     public class SessionTabActionsTests
     {
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void LayoutChangeChecksApprovalAndPendingSavesBeforeClosingAnyTabs(bool approve, bool saved)
+        {
+            using (var host = new Form())
+            using (var theme = new OutlinedVS2015LightTheme())
+            using (var dock = new DockPanel { Theme = theme })
+            using (var first = new TestPanel(SessionConnectionState.Connected))
+            using (var second = new TestPanel(SessionConnectionState.Disconnected))
+            {
+                host.Controls.Add(dock);
+                first.Show(dock, DockState.Document);
+                second.Show(dock, DockState.Document);
+                var firstHandle = first.Handle;
+                var secondHandle = second.Handle;
+                int confirmationCount = 0, prepareCount = 0;
+
+                bool closed = frmSuperPutty.TryCloseLayoutContents(dock, count =>
+                {
+                    confirmationCount++;
+                    Assert.AreEqual(1, count);
+                    Assert.AreSame(dock, first.DockPanel);
+                    Assert.AreSame(dock, second.DockPanel);
+                    return approve;
+                }, () => { prepareCount++; return saved; });
+
+                Assert.AreEqual(approve && saved, closed);
+                Assert.AreEqual(1, confirmationCount);
+                Assert.AreEqual(approve ? 1 : 0, prepareCount);
+                Assert.AreEqual(0, first.PromptCount, "Layout confirmation must replace per-tab prompts.");
+                if (closed) Assert.AreEqual(0, dock.Contents.Count);
+                else
+                {
+                    Assert.AreSame(dock, first.DockPanel);
+                    Assert.AreSame(dock, second.DockPanel);
+                }
+            }
+        }
+
+        [Test]
+        public void ALayoutCloseVetoLeavesTheWindowAttached()
+        {
+            using (var host = new Form())
+            using (var theme = new OutlinedVS2015LightTheme())
+            using (var dock = new DockPanel { Theme = theme })
+            using (var terminal = new TestPanel(SessionConnectionState.Connected))
+            {
+                host.Controls.Add(dock);
+                terminal.Show(dock, DockState.Document);
+                var handle = terminal.Handle;
+                terminal.FormClosing += (sender, args) => args.Cancel = true;
+
+                Assert.False(frmSuperPutty.TryCloseLayoutContents(dock, count => true, () => true));
+
+                Assert.False(terminal.IsDisposed);
+                Assert.AreSame(dock, terminal.DockPanel);
+            }
+        }
+
         [TestCase(SessionConnectionState.Connected, false, true)]
         [TestCase(SessionConnectionState.Connecting, false, true)]
         [TestCase(SessionConnectionState.Reconnecting, false, true)]

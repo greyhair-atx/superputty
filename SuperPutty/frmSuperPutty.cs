@@ -1205,7 +1205,7 @@ namespace SuperPutty
 
             if (eventArgs.New == null)
             {
-                ResetLayoutContents();
+                if (!TryLeaveLayout()) { eventArgs.Cancel = true; return; }
                 InitDefaultLayout();
                 toolStripStatusLabelLayout.Text = "";
                 SuperPuTTY.ReportStatus("Initialized default layout");
@@ -1217,16 +1217,22 @@ namespace SuperPutty
             LayoutLoadResult prepared;
             Exception failure;
             bool teardownStarted;
-            bool loaded = LayoutStorage.TryApply(eventArgs.New.FilePath, ValidateDockLayout, ResetLayoutContents,
+            bool loaded = LayoutStorage.TryApply(eventArgs.New.FilePath, ValidateDockLayout, TryLeaveLayout,
                 content =>
                 {
                     using (var stream = new MemoryStream(content, false))
                         this.DockPanel.LoadFromXml(stream,
                             persistString => RestoreLayoutFromPersistString(persistString, restoreSessionDocuments));
                 },
-                () => { ResetLayoutContents(); InitDefaultLayout(); }, out prepared, out failure, out teardownStarted);
+                () =>
+                {
+                    if (!CloseLayoutContents(DockPanel))
+                        throw new InvalidOperationException("A window refused to close while restoring the default workspace.");
+                    InitDefaultLayout();
+                }, out prepared, out failure, out teardownStarted);
             if (!loaded)
             {
+                if (failure == null) { eventArgs.Cancel = true; return; }
                 Log.Warn("Could not load the selected layout", failure);
                 if (teardownStarted)
                 {
@@ -1242,7 +1248,7 @@ namespace SuperPutty
                 }
                 string message = teardownStarted
                     ? "The selected layout could not be loaded. SuperPuTTY attempted to open the default workspace. Reconnect any session tabs that were closed."
-                    : "The selected layout could not be loaded. The current workspace was kept.";
+                    : "The selected layout could not be loaded. The layout change was canceled.";
                 eventArgs.CompletionNotice = () => MessageBox.Show(this, message + "\n\n" + failure.Message,
                     "Unable to load layout", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
@@ -1259,19 +1265,69 @@ namespace SuperPutty
             }
         }
 
-        private void ResetLayoutContents()
+        private bool TryLeaveLayout()
         {
-            foreach (DockContent content in this.DockPanel.DocumentsToArray())
+            bool closed = TryCloseLayoutContents(DockPanel, count => MessageBox.Show(this,
+                String.Format("Changing layouts will close {0} active session tab(s). Continue?", count),
+                "Change Layout", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.OK,
+                FlushSessionMovesBeforeLayoutChange);
+            if (!closed) SuperPuTTY.ReportStatus("Layout change canceled.");
+            return closed;
+        }
+
+        private bool FlushSessionMovesBeforeLayoutChange()
+        {
+            if (SuperPuTTY.IsSessionWriteInProgress)
             {
-                content.DockPanel = null;
-                if (content.CloseButtonVisible) content.Close();
+                MessageBox.Show(this, "Wait for the session save to finish and try loading the layout again.",
+                    "Change Layout", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
             }
-            foreach (DockContent content in this.DockPanel.Contents.Cast<DockContent>().ToList())
+            if (!SuperPuTTY.HasPendingSessionMoves) return true;
+            try { SuperPuTTY.SaveSessions(); return true; }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is InvalidDataException ||
+                ex is InvalidOperationException || ex is System.Security.SecurityException)
             {
-                content.DockPanel = null;
-                if (content.CloseButtonVisible) content.Close();
+                Log.Warn("Could not save session moves before changing layouts", ex);
+                MessageBox.Show(this, ex.Message, "Could Not Save Session Moves", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
             }
-            foreach (FloatWindow floating in this.DockPanel.FloatWindows.ToArray()) floating.Dispose();
+        }
+
+        internal static bool TryCloseLayoutContents(DockPanel panel, Func<int, bool> confirm, Func<bool> prepare)
+        {
+            var active = new HashSet<ToolWindowDocument>(panel.Contents.OfType<ToolWindowDocument>().Where(NeedsLayoutCloseConfirmation));
+            if (active.Count > 0 && !confirm(active.Count)) return false;
+            if (!prepare()) return false;
+            // A modal confirmation can pump callbacks. A session opened during
+            // the prompt needs its own confirmation before it can be closed.
+            if (panel.Contents.OfType<ToolWindowDocument>().Any(doc => NeedsLayoutCloseConfirmation(doc) && !active.Contains(doc)))
+                return false;
+            return CloseLayoutContents(panel);
+        }
+
+        private static bool NeedsLayoutCloseConfirmation(ToolWindowDocument doc)
+        {
+            var terminal = doc as ctlPuttyPanel;
+            return doc is PscpBrowserPanel || (terminal?.AppPanel != null &&
+                terminal.AppPanel.ConnectionState != SessionConnectionState.Disconnected);
+        }
+
+        private static bool CloseLayoutContents(DockPanel panel)
+        {
+            var contents = panel.Contents.OfType<DockContent>().ToArray();
+            if (contents.Any(content => !content.CloseButton)) return false;
+            foreach (DockContent content in contents)
+            {
+                if (content.IsDisposed || content.DockPanel != panel) continue;
+                if (content is ctlPuttyPanel terminal) terminal.CloseWithoutConfirmation();
+                else content.Close();
+                // If a close handler vetoed the operation, keep its window in
+                // the workspace and stop before loading another layout.
+                if (!content.IsDisposed && content.DockPanel == panel) return false;
+            }
+            foreach (FloatWindow floating in panel.FloatWindows.ToArray()) floating.Dispose();
+            return true;
         }
 
         internal static void ValidateDockLayout(byte[] content)
@@ -1388,6 +1444,13 @@ namespace SuperPutty
                 MessageBox.Show(this, ex.Message, "Unable to Save Layout", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
             }
+        }
+
+        internal void ClearLayoutStatus()
+        {
+            if (IsDisposed || Disposing) return;
+            toolStripStatusLabelLayout.Text = String.Empty;
+            saveFileDialogLayout.FileName = String.Empty;
         }
 
         void SaveLayout(string file, string statusMsg)

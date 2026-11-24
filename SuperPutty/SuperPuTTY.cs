@@ -151,21 +151,33 @@ namespace SuperPutty
                     configuredFolder,
                     writableFolder,
                     configuredFolderError == null ? "unknown" : configuredFolderError.Message);
-                try
-                {
-                    SettingsFolderResolver.CopyExistingSettings(configuredFolder, writableFolder);
-                }
-                catch (Exception ex)
-                {
-                    Log.Warn("Could not copy existing session and layout files to the Local AppData fallback", ex);
-                }
             }
 
-            if (!String.Equals(Settings.SettingsFolder, writableFolder, StringComparison.OrdinalIgnoreCase))
+            ApplyStartupSettingsFolder(writableFolder, usedFallback ? configuredFolder : null, Settings.Save);
+        }
+
+        internal static void ApplyStartupSettingsFolder(string writableFolder, string migrationSource, Action persist)
+        {
+            if (migrationSource != null)
             {
-                Settings.SettingsFolder = writableFolder;
-                Settings.Save();
+                try
+                {
+                    SettingsFolderResolver.CopyExistingSettings(migrationSource, writableFolder, path =>
+                        ValidateSessionCatalog(new SessionStorage().LoadAsync(path, CancellationToken.None).GetAwaiter().GetResult()));
+                }
+                catch (Exception ex) when (ex is IOException || ex is InvalidDataException || ex is UnauthorizedAccessException ||
+                    ex is InvalidOperationException || ex is ArgumentException || ex is TimeoutException || ex is System.Security.SecurityException)
+                {
+                    throw new System.Configuration.ConfigurationErrorsException(
+                        "SuperPuTTY could not move its settings to the fallback folder. The configured folder was kept. " +
+                        "Check access to the original folder and its session catalog, then restart SuperPuTTY.\n\n" + ex.Message, ex);
+                }
             }
+            string original = Settings.SettingsFolder;
+            if (String.Equals(original, writableFolder, StringComparison.OrdinalIgnoreCase)) return;
+            Settings.SettingsFolder = writableFolder;
+            try { persist(); }
+            catch { Settings.SettingsFolder = original; throw; }
         }
 
         /// <summary>Called when application is shutting down, sends message to log.</summary>
@@ -217,6 +229,9 @@ namespace SuperPutty
                 {
                     LayoutStorage.DeleteFiles(layout.FilePath);
                 }
+                if (CurrentLayout != null && (ReferenceEquals(CurrentLayout, layout) ||
+                    SettingsFolderResolver.PathsEqual(CurrentLayout.FilePath, layout.FilePath)))
+                    DetachCurrentLayout();
                 layouts.Remove(layout);
             }
         }
@@ -304,6 +319,7 @@ namespace SuperPutty
             // The visible workspace stays intact, but its former file is no longer
             // the save destination after changing profiles.
             CurrentLayout = null;
+            MainForm?.ClearLayoutStatus();
         }
 
         public static void LoadLayout(LayoutData layout)

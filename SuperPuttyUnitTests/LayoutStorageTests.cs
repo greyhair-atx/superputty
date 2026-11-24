@@ -249,6 +249,21 @@ namespace SuperPuttyUnitTests
         }
 
         [Test]
+        public void VetoedWorkspaceClosureDoesNotApplyOrRestoreAnotherLayout()
+        {
+            File.WriteAllBytes(layoutPath, original);
+            bool loaded = LayoutStorage.TryApply(layoutPath, frmSuperPutty.ValidateDockLayout, () => false,
+                content => Assert.Fail("A canceled layout must not apply."),
+                () => Assert.Fail("A canceled layout must not reset the workspace."),
+                out var prepared, out var failure, out var teardown);
+
+            Assert.False(loaded);
+            Assert.False(teardown);
+            Assert.IsNull(failure);
+            Assert.IsNotNull(prepared);
+        }
+
+        [Test]
         public void RuntimeFailureAfterTeardownRequestsDefaultWorkspace()
         {
             File.WriteAllBytes(layoutPath, original);
@@ -258,7 +273,7 @@ namespace SuperPuttyUnitTests
             bool teardown;
 
             bool loaded = LayoutStorage.TryApply(layoutPath, frmSuperPutty.ValidateDockLayout,
-                () => steps.Add("closed"), content => { steps.Add("apply"); throw new InvalidOperationException("Session restore failed"); },
+                () => { steps.Add("closed"); return true; }, content => { steps.Add("apply"); throw new InvalidOperationException("Session restore failed"); },
                 () => steps.Add("default"), out prepared, out failure, out teardown);
 
             Assert.False(loaded);
@@ -328,6 +343,42 @@ namespace SuperPuttyUnitTests
 
             Assert.IsEmpty(Directory.GetFiles(directory));
             Assert.DoesNotThrow(() => LayoutStorage.DeleteFiles(layoutPath));
+        }
+
+        [Test]
+        public void DeletingTheCurrentLayoutClearsItsSaveTargetOnlyAfterTheFilesAreRemoved()
+        {
+            var previous = App.CurrentLayout;
+            var listed = new LayoutData(layoutPath) { Name = Guid.NewGuid().ToString("N") };
+            var active = new LayoutData(layoutPath) { Name = listed.Name };
+            File.WriteAllBytes(layoutPath, original);
+            File.WriteAllBytes(layoutPath + ".bak", ChangedLayout());
+            App.Layouts.Add(listed);
+            App.LoadLayout(active, true);
+            bool workspaceReloaded = false;
+            EventHandler<LayoutChangedEventArgs> changing = (s, e) => workspaceReloaded = true;
+            App.LayoutChanging += changing;
+            try
+            {
+                using (File.Open(layoutPath + ".bak", FileMode.Open, FileAccess.Read, FileShare.Read))
+                    Assert.Throws<IOException>(() => App.RemoveLayout(listed.Name, true));
+                Assert.AreSame(active, App.CurrentLayout);
+                Assert.Contains(listed, App.Layouts);
+
+                App.RemoveLayout(listed.Name, true);
+
+                Assert.IsNull(App.CurrentLayout);
+                Assert.False(workspaceReloaded);
+                Assert.False(App.Layouts.Contains(listed));
+                Assert.False(File.Exists(layoutPath));
+                Assert.False(File.Exists(layoutPath + ".bak"));
+            }
+            finally
+            {
+                App.LayoutChanging -= changing;
+                App.Layouts.Remove(listed);
+                App.LoadLayout(previous, true);
+            }
         }
 
         [Test]

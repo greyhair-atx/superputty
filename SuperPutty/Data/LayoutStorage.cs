@@ -201,7 +201,7 @@ namespace SuperPutty.Data
                 .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToList();
         }
 
-        internal static bool TryApply(string filePath, Action<byte[]> validateLayout, Action closeCurrent,
+        internal static bool TryApply(string filePath, Action<byte[]> validateLayout, Func<bool> closeCurrent,
             Action<byte[]> applyLayout, Action restoreDefault, out LayoutLoadResult prepared,
             out Exception failure, out bool teardownStarted)
         {
@@ -213,14 +213,15 @@ namespace SuperPutty.Data
 
             try
             {
+                if (!closeCurrent()) return false;
                 teardownStarted = true;
-                closeCurrent();
                 applyLayout(prepared.Content);
                 return true;
             }
             catch (Exception ex) when (IsLoadFailure(ex))
             {
                 failure = ex;
+                if (!teardownStarted) return false;
                 try { restoreDefault(); }
                 catch (Exception fallbackFailure) when (IsLoadFailure(fallbackFailure))
                 {

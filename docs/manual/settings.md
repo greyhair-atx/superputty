@@ -9,7 +9,7 @@ SuperPuTTY uses two related locations:
 - `SuperPutty.settings` stores application preferences. It is normally in `%USERPROFILE%`; the file beside `SuperPutty.exe` is used when no profile settings file exists.
 - The configured settings folder contains `Sessions.XML`, `AutoRestoreLayout.XML`, named layouts, and theme resources.
 
-New profiles reuse an existing writable Documents-based SuperPuTTY folder when available. Otherwise, the application uses `%LOCALAPPDATA%\SuperPuTTY`. If a configured folder becomes unwritable, SuperPuTTY can fall back to Local AppData and copy readable settings without overwriting files already there.
+New profiles reuse an existing writable Documents-based SuperPuTTY folder when available. Otherwise, the application uses `%LOCALAPPDATA%\SuperPuTTY`. If a configured folder becomes unwritable, SuperPuTTY can fall back to Local AppData and copy settings while preserving files already there. It validates the session catalog before saving the new folder. If copying or validation fails, check the original folder and restart SuperPuTTY. The configured path remains available for retry.
 
 Use **Tools > Options > General** to see or change the active settings folder. The directory must be writable.
 
@@ -22,6 +22,8 @@ Export sessions to a separate file. Export cannot replace the active `Sessions.X
 Local session catalog XML files are limited to 64 MiB per file. The application preferences XML file and its backup are each limited to 16 MiB.
 
 Single-instance requests use a local pipe restricted to the current Windows user and session. Startup and shutdown reject new requests until the UI can accept them. If an exit confirmation is canceled, previously accepted requests resume. When an older version is running, close it before using single-instance mode with this version.
+
+If the single-instance connection cannot start, SuperPuTTY can still open an independent window when single-instance mode is disabled.
 
 ## Protocol dropdowns
 

@@ -201,6 +201,25 @@ namespace SuperPuttyUnitTests
         }
 
         [Test]
+        [Apartment(ApartmentState.STA)]
+        public void OccupiedListenerIsOptionalOnlyWhenSingleInstanceModeIsDisabled()
+        {
+            var endpoint = SingleInstanceEndpoint.ForUser(SingleInstanceEndpoint.Current.User.Value,
+                Guid.NewGuid().GetHashCode() & Int32.MaxValue);
+            using (var main = new Form())
+            using (var occupying = new SingleInstancePipeServer(endpoint.PipeName, args => SingleInstanceReply.NotReady))
+            {
+                Func<IDisposable> start = () => SingleInstanceHelper.StartReceiving(main, endpoint);
+
+                Assert.IsNull(SuperPutty.Program.StartSingleInstanceComponent(false, start));
+                var error = Assert.Throws<SuperPutty.Program.SingleInstanceStartupException>(() =>
+                    SuperPutty.Program.StartSingleInstanceComponent(true, start));
+                StringAssert.Contains("local named pipes and mutexes", error.Message);
+                Assert.IsNotNull(error.InnerException);
+            }
+        }
+
+        [Test]
         public void SecondApplicationExecutableForwardsToTheReadyUiAndExits()
         {
             string directory = Path.Combine(Path.GetTempPath(), "SuperPuttyIpcProcess-" + Guid.NewGuid().ToString("N"));

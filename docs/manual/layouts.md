@@ -22,6 +22,8 @@ Use **File > Save Layout As** to create a named layout. Named layouts retain the
 
 Use the Layouts panel to load, rename, remove, or mark an existing named layout as the default. `Ctrl+S` updates the active named layout.
 
+Changing layouts asks for confirmation before closing active session tabs. Cancel keeps the workspace open. Deleting the active layout keeps the workspace visible and clears the save target. The next **Save Layout** asks for a filename.
+
 ## Recovery
 
 The automatic layout is stored as `AutoRestoreLayout.XML` in the settings folder. Named layouts are stored under its `layouts` subdirectory.

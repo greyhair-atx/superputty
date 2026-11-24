@@ -85,6 +85,50 @@ namespace SuperPuttyUnitTests
         }
 
         [Test]
+        public void StartupDoesNotChangeSettingsFolderWhenTheSourceCatalogIsLocked()
+        {
+            string catalog = Path.Combine(first, "Sessions.XML");
+            const string content = "<ArrayOfSessionData />";
+            File.WriteAllText(catalog, content);
+
+            using (File.Open(catalog, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                var error = Assert.Throws<ConfigurationErrorsException>(() =>
+                    App.ApplyStartupSettingsFolder(second, first, () => Assert.Fail("Failed migration must not save preferences.")));
+                StringAssert.Contains("configured folder was kept", error.Message);
+            }
+
+            Assert.AreEqual(first, App.Settings.SettingsFolder);
+            Assert.AreEqual(content, File.ReadAllText(catalog));
+            Assert.IsEmpty(Directory.GetFiles(second));
+        }
+
+        [Test]
+        public void StartupCanRetryMigrationAfterAnInvalidSourceCatalogIsCorrected()
+        {
+            string source = Path.Combine(first, "Sessions.XML");
+            string destination = Path.Combine(second, "Sessions.XML");
+            File.WriteAllText(source, "<Settings />");
+            Assert.Throws<ConfigurationErrorsException>(() =>
+                App.ApplyStartupSettingsFolder(second, first, () => Assert.Fail("Invalid migration must not save preferences.")));
+            Assert.AreEqual(first, App.Settings.SettingsFolder);
+            Assert.IsEmpty(Directory.GetFiles(second));
+
+            const string fixedCatalog = "<ArrayOfSessionData><SessionData SessionId='Keep' SessionName='Keep'/></ArrayOfSessionData>";
+            File.WriteAllText(source, fixedCatalog);
+            int saves = 0;
+            App.ApplyStartupSettingsFolder(second, first, () =>
+            {
+                Assert.AreEqual(fixedCatalog, File.ReadAllText(destination));
+                Assert.AreEqual(second, App.Settings.SettingsFolder);
+                saves++;
+            });
+
+            Assert.AreEqual(1, saves);
+            Assert.AreEqual(fixedCatalog, File.ReadAllText(source));
+        }
+
+        [Test]
         public void LayoutSaveCannotCreateOrReplaceTheActiveSessionCatalog()
         {
             string catalog = Path.Combine(first, "Sessions.XML");
