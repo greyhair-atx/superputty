@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Xml;
 using NUnit.Framework;
@@ -234,6 +235,85 @@ namespace SuperPuttyUnitTests
             CollectionAssert.AreEqual(original, File.ReadAllBytes(layoutPath + ".bak"));
             Assert.False(File.Exists(renamed));
             Assert.AreEqual("existing destination", File.ReadAllText(renamed + ".bak"));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void RenameCannotCombineASingleComponentWithAnUnrelatedDestination(bool backupOnlySource)
+        {
+            string source = layoutPath + (backupOnlySource ? ".bak" : String.Empty);
+            string renamed = Path.Combine(directory, "Renamed.xml");
+            string destination = renamed + (backupOnlySource ? String.Empty : ".bak");
+            File.WriteAllBytes(source, original);
+            File.WriteAllText(destination, "unrelated destination");
+
+            Assert.Throws<IOException>(() => LayoutStorage.MoveFiles(layoutPath, renamed));
+
+            CollectionAssert.AreEqual(original, File.ReadAllBytes(source));
+            Assert.AreEqual("unrelated destination", File.ReadAllText(destination));
+            Assert.AreEqual(2, Directory.GetFiles(directory).Length);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void DeleteRemovesBothActiveLayoutFilesIncludingBackupOnlyLayouts(bool backupOnly)
+        {
+            if (!backupOnly) File.WriteAllBytes(layoutPath, original);
+            File.WriteAllBytes(layoutPath + ".bak", ChangedLayout());
+
+            LayoutStorage.DeleteFiles(layoutPath);
+
+            Assert.IsEmpty(Directory.GetFiles(directory));
+            Assert.DoesNotThrow(() => LayoutStorage.DeleteFiles(layoutPath));
+        }
+
+        [Test]
+        public void FailedBackupDeleteRestoresTheUnchangedPrimary()
+        {
+            File.WriteAllBytes(layoutPath, original);
+            File.WriteAllBytes(layoutPath + ".bak", ChangedLayout());
+
+            using (File.Open(layoutPath + ".bak", FileMode.Open, FileAccess.Read, FileShare.Read))
+                Assert.Throws<IOException>(() => LayoutStorage.DeleteFiles(layoutPath));
+
+            CollectionAssert.AreEqual(original, File.ReadAllBytes(layoutPath));
+            CollectionAssert.AreEqual(ChangedLayout(), File.ReadAllBytes(layoutPath + ".bak"));
+            Assert.AreEqual(2, Directory.GetFiles(directory).Length);
+        }
+
+        [Test]
+        public void DeleteWaitsForAnActiveSaveAndDoesNotLeaveARecoverableBackup()
+        {
+            File.WriteAllBytes(layoutPath, original);
+            File.WriteAllBytes(layoutPath + ".bak", original);
+            using (var serializing = new ManualResetEventSlim())
+            using (var release = new ManualResetEventSlim())
+            {
+                var save = Task.Run(() => LayoutStorage.SaveAtomically(layoutPath, path =>
+                {
+                    serializing.Set();
+                    if (!release.Wait(5000)) throw new TimeoutException("Test serialization was not released.");
+                    File.WriteAllBytes(path, ChangedLayout());
+                }, bytes => { }));
+                Task deleting = null;
+                try
+                {
+                    Assert.True(serializing.Wait(2000));
+                    deleting = Task.Run(() => LayoutStorage.DeleteFiles(layoutPath));
+                    Assert.False(deleting.Wait(100), "Delete must take the same destination lock as save.");
+                    release.Set();
+                    Assert.True(Task.WaitAll(new[] { save, deleting }, 3000));
+                    Assert.False(File.Exists(layoutPath));
+                    Assert.False(File.Exists(layoutPath + ".bak"));
+                    Assert.IsEmpty(LayoutStorage.Discover(directory));
+                }
+                finally
+                {
+                    release.Set();
+                    save.GetAwaiter().GetResult();
+                    deleting?.GetAwaiter().GetResult();
+                }
+            }
         }
 
         [Test]

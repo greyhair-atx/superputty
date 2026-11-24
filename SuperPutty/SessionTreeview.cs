@@ -33,6 +33,7 @@ using SuperPutty.Utils;
 using WeifenLuo.WinFormsUI.Docking;
 using SuperPutty.Gui;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 
 namespace SuperPutty
@@ -55,7 +56,6 @@ namespace SuperPutty
         private DockPanel m_DockPanel;
         private bool isRenamingNode;
         private bool rebuildingTree;
-        private bool sessionSavePending;
         private string sessionSaveError;
         TreeNode nodeRoot;
         ImageList imgIcons = new ImageList();
@@ -97,7 +97,7 @@ namespace SuperPutty
             this.LoadSessions();
             this.ExpandInitialTree();
             SuperPuTTY.Sessions.ListChanged += new ListChangedEventHandler(Sessions_ListChanged);
-            SuperPuTTY.Settings.SettingsSaving += new SettingsSavingEventHandler(Settings_SettingsSaving);
+            SuperPuTTY.Settings.SettingsApplied += Settings_SettingsApplied;
         }
 
         void ExpandInitialTree()
@@ -126,7 +126,7 @@ namespace SuperPutty
             base.OnLoad(e);
         }
 
-        void Settings_SettingsSaving(object sender, CancelEventArgs e)
+        void Settings_SettingsApplied(object sender, EventArgs e)
         {
             this.ApplySettings();
         }
@@ -177,7 +177,7 @@ namespace SuperPutty
         {
             DetachSessionEvents();
             SuperPuTTY.Sessions.ListChanged -= Sessions_ListChanged;
-            SuperPuTTY.Settings.SettingsSaving -= Settings_SettingsSaving;
+            SuperPuTTY.Settings.SettingsApplied -= Settings_SettingsApplied;
         }
 
         void LoadSessions(bool preserveEmptyFolders = false)
@@ -355,7 +355,7 @@ namespace SuperPutty
         /// </summary>
         /// <param name="sender">The toolstripmenuitem control that was clicked</param>
         /// <param name="e">An Empty EventArgs object</param>
-        private void CreateOrEditSessionToolStripMenuItem_Click(object sender, EventArgs e)
+        private async void CreateOrEditSessionToolStripMenuItem_Click(object sender, EventArgs e)
         {
             SessionData session = null;
             TreeNode node = null;
@@ -410,19 +410,19 @@ namespace SuperPutty
 
                 try
                 {
-                    SuperPuTTY.SaveSessionChanges(savedSession, session, SuperPuTTY.SaveSessions);
+                    await SuperPuTTY.SaveSessionChangesAsync(savedSession, session);
                 }
                 catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException ||
-                    ex is System.IO.IOException || ex is UnauthorizedAccessException)
+                    ex is System.IO.IOException || ex is System.IO.InvalidDataException || ex is UnauthorizedAccessException)
                 {
                     Log.Warn("Could not save the edited session; its changes were rolled back.", ex);
-                    MessageBox.Show(this, "The session could not be saved.\n\n" + ex.Message,
+                    if (!IsDisposed && !Disposing) MessageBox.Show(this, "The session could not be saved.\n\n" + ex.Message,
                         "Could Not Save Session", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
 
                 // Saving rebuilds the tree; select the replacement node by its final ID.
-                this.treeView1.SelectedNode = FindSessionNode(savedSession.SessionId);
+                if (!IsDisposed && !Disposing) this.treeView1.SelectedNode = FindSessionNode(savedSession.SessionId);
             }
             
         }
@@ -491,16 +491,13 @@ namespace SuperPutty
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void deleteToolStripMenuItem_Click(object sender, EventArgs e)
+        private async void deleteToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            SessionData session = (SessionData)treeView1.SelectedNode.Tag;
+            var session = treeView1.SelectedNode?.Tag as SessionData;
+            if (session == null) return;
             if (MessageBox.Show("Are you sure you want to delete " + session.SessionName + "?", "Delete Session?", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
             {
-                //session.RegistryRemove(session.SessionName);
-                treeView1.SelectedNode.Remove();
-                SuperPuTTY.RemoveSession(session.SessionId);
-                SuperPuTTY.SaveSessions();
-                //m_SessionsById.Remove(session.SessionId);
+                await TryDeleteSessionsAsync(new[] { session });
             }
         }
 
@@ -600,7 +597,7 @@ namespace SuperPutty
             }
         }
 
-        private void renameToolStripMenuItem_Click(object sender, EventArgs e)
+        private async void renameToolStripMenuItem_Click(object sender, EventArgs e)
         {
             TreeNode node = this.treeView1.SelectedNode;
             if (node != null)
@@ -632,9 +629,10 @@ namespace SuperPutty
                     try
                     {
                         RenameFolderNode(node, dialog.ItemName);
-                        SuperPuTTY.SaveSessions();
+                        if (SuperPuTTY.HasPendingSessionMoves) await SuperPuTTY.SaveSessionsAsync();
                     }
-                    catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException || ex is System.IO.IOException || ex is UnauthorizedAccessException)
+                    catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException ||
+                        ex is System.IO.IOException || ex is System.IO.InvalidDataException || ex is UnauthorizedAccessException)
                     {
                         MessageBox.Show(this, ex.Message, "Rename Folder", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     }
@@ -642,7 +640,7 @@ namespace SuperPutty
             }
         }
 
-        private void removeFolderToolStripMenuItem_Click(object sender, EventArgs e)
+        private async void removeFolderToolStripMenuItem_Click(object sender, EventArgs e)
         {
             TreeNode node = treeView1.SelectedNode;
             if (node == null || node == nodeRoot) return;
@@ -651,9 +649,29 @@ namespace SuperPutty
             if (sessions.Count == 0) { node.Remove(); return; }
             if (MessageBox.Show("Remove Folder [" + node.Text + "] and [" + sessions.Count + "] sessions?",
                 "Remove Folder?", MessageBoxButtons.YesNo) != DialogResult.Yes) return;
-            SuperPuTTY.RemoveSessionFolder(folder);
-            SuperPuTTY.SaveSessions();
-            SuperPuTTY.ReportStatus("Removed Folder, {0} and {1} sessions", folder, sessions.Count);
+            if (await TryDeleteSessionsAsync(sessions) && !IsDisposed && !Disposing)
+            {
+                // ResetAfterSave retains empty folders for edits; an explicitly deleted folder is removed here.
+                FindNode(folder)?.Remove();
+                SuperPuTTY.ReportStatus("Removed Folder, {0} and {1} sessions", folder, sessions.Count);
+            }
+        }
+
+        private async Task<bool> TryDeleteSessionsAsync(IEnumerable<SessionData> sessions)
+        {
+            try
+            {
+                await SuperPuTTY.DeleteSessionsAsync(sessions);
+                return true;
+            }
+            catch (Exception ex) when (ex is System.IO.IOException || ex is UnauthorizedAccessException ||
+                ex is System.IO.InvalidDataException || ex is InvalidOperationException || ex is System.Security.SecurityException)
+            {
+                Log.Warn("Unable to delete saved sessions", ex);
+                if (!IsDisposed && !Disposing)
+                    MessageBox.Show(this, ex.Message, "Unable to Delete Sessions", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
         }
 
         private void connectAllToolStripMenuItem_Click(object sender, EventArgs e)
@@ -1141,10 +1159,11 @@ namespace SuperPutty
             UpdateSessionId(nodePayload);
         }
 
-        private void timerDelayedSave_Tick(object sender, EventArgs e)
+        private async void timerDelayedSave_Tick(object sender, EventArgs e)
         {
             timerDelayedSave.Stop();
-            if (FlushPendingSessionSave())
+            if (!SuperPuTTY.HasPendingSessionMoves || SuperPuTTY.IsSessionWriteInProgress) return;
+            if (await FlushPendingSessionSaveAsync(SuperPuTTY.SaveSessionsAsync))
                 SuperPuTTY.ReportStatus("Saved Sessions after Drag-Drop @ {0}", DateTime.Now);
             else
                 SuperPuTTY.ReportStatus("Moved sessions have not been saved: {0}", sessionSaveError);
@@ -1152,24 +1171,34 @@ namespace SuperPutty
 
         internal void ScheduleSessionSave()
         {
-            sessionSavePending = true;
             timerDelayedSave.Stop();
-            timerDelayedSave.Start();
+            if (SuperPuTTY.HasPendingSessionMoves) timerDelayedSave.Start();
         }
+
+        internal void PauseDelayedSessionSave() { timerDelayedSave.Stop(); }
 
         internal bool FlushPendingSessionSave()
         {
-            if (!sessionSavePending) return true;
-            try
+            return FlushPendingSessionSaveAsync(() =>
             {
                 SuperPuTTY.SaveSessions();
-                sessionSavePending = false;
+                return Task.CompletedTask;
+            }).GetAwaiter().GetResult();
+        }
+
+        private async Task<bool> FlushPendingSessionSaveAsync(Func<Task> save)
+        {
+            if (!SuperPuTTY.HasPendingSessionMoves) return true;
+            try
+            {
+                await save();
                 timerDelayedSave.Stop();
                 sessionSaveError = null;
                 return true;
             }
             catch (Exception ex) when (ex is System.IO.IOException || ex is UnauthorizedAccessException ||
-                ex is ArgumentException || ex is InvalidOperationException || ex is System.Security.SecurityException)
+                ex is System.IO.InvalidDataException || ex is ArgumentException || ex is InvalidOperationException ||
+                ex is System.Security.SecurityException)
             {
                 sessionSaveError = ex.Message;
                 Log.Warn("Moved sessions could not be saved; changes remain pending.", ex);

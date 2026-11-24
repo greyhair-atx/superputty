@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -74,6 +75,7 @@ namespace SuperPuttyUnitTests
         [TestCase(ConnectionProtocol.Serial)]
         public void RefreshAndResizeKeepTwoPixelBoundsAndRemoveRestoredFrames(ConnectionProtocol protocol)
         {
+            using (var process = Process.GetCurrentProcess())
             using (var panel = new ApplicationPanel(protocol))
             using (var terminal = new TerminalWindow(true))
             {
@@ -81,6 +83,7 @@ namespace SuperPuttyUnitTests
                 ApplicationPanel.ReparentWindow(terminal.Handle, panel.Handle, true);
                 FieldInfo handle = typeof(ApplicationPanel).GetField("m_AppWin", BindingFlags.Instance | BindingFlags.NonPublic);
                 handle.SetValue(panel, terminal.Handle);
+                typeof(ApplicationPanel).GetField("m_Process", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(panel, process);
                 try
                 {
                     panel.RefreshAppWindow();
@@ -110,6 +113,35 @@ namespace SuperPuttyUnitTests
             }
         }
 
+        [Test]
+        public void ForeignOrReparentedWindowIsNeverStyledMovedOrClosed()
+        {
+            using (var process = Process.GetCurrentProcess())
+            using (var panel = new ApplicationPanel(ConnectionProtocol.SSH))
+            using (var otherHost = new Panel())
+            using (var terminal = new TerminalWindow(true))
+            {
+                panel.Size = new Size(640, 480);
+                var handle = panel.Handle;
+                ApplicationPanel.ReparentWindow(terminal.Handle, otherHost.Handle, true);
+                typeof(ApplicationPanel).GetField("m_AppWin", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(panel, terminal.Handle);
+                typeof(ApplicationPanel).GetField("m_Process", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(panel, process);
+                int style = NativeMethods.GetWindowLong(terminal.Handle, NativeMethods.GWL_STYLE);
+                var before = new NativeMethods.RECT();
+                NativeMethods.GetWindowRect(terminal.Handle, ref before);
+                Assert.IsFalse(panel.ExternalProcessCaptured);
+                Assert.AreEqual(IntPtr.Zero, panel.AppWindowHandle);
+                panel.RefreshAppWindow();
+                panel.Size = new Size(800, 600);
+                panel.Dispose();
+                Application.DoEvents();
+                var after = new NativeMethods.RECT();
+                Assert.IsTrue(NativeMethods.GetWindowRect(terminal.Handle, ref after));
+                Assert.AreEqual(before.ToString(), after.ToString());
+                Assert.AreEqual(style, NativeMethods.GetWindowLong(terminal.Handle, NativeMethods.GWL_STYLE));
+            }
+        }
+
         private static void AssertEmbeddedBounds(ApplicationPanel panel, IntPtr window, Rectangle expected)
         {
             Assert.AreEqual(expected, panel.HostedWindowBounds);
@@ -118,6 +150,30 @@ namespace SuperPuttyUnitTests
             Point origin = panel.PointToScreen(Point.Empty);
             Assert.AreEqual(new Rectangle(origin.X + expected.X, origin.Y + expected.Y, expected.Width, expected.Height),
                 Rectangle.FromLTRB(outer.Left, outer.Top, outer.Right, outer.Bottom));
+        }
+
+        [Test, NonParallelizable]
+        public void TitleRefreshIgnoresAWindowThatHasLeftItsHost()
+        {
+            string originalBehavior = SuperPutty.SuperPuTTY.Settings.TabTextBehavior;
+            try
+            {
+                SuperPutty.SuperPuTTY.Settings.TabTextBehavior = frmSuperPutty.TabTextBehavior.Dynamic.ToString();
+                using (var tab = new ctlPuttyPanel(new SessionData { Proto = ConnectionProtocol.SSH, SessionName = "Original tab" }, null))
+                using (var otherHost = new Panel())
+                using (var terminal = new TerminalWindow(false))
+                using (var process = Process.GetCurrentProcess())
+                {
+                    tab.AppPanel.ApplicationName = String.Empty;
+                    var createdHandle = tab.AppPanel.Handle;
+                    ApplicationPanel.ReparentWindow(terminal.Handle, otherHost.Handle, true);
+                    typeof(ApplicationPanel).GetField("m_AppWin", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(tab.AppPanel, terminal.Handle);
+                    typeof(ApplicationPanel).GetField("m_Process", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(tab.AppPanel, process);
+                    typeof(ApplicationPanel).GetMethod("UpdateTitle", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(tab.AppPanel, null);
+                    Assert.AreEqual("Original tab", tab.Text);
+                }
+            }
+            finally { SuperPutty.SuperPuTTY.Settings.TabTextBehavior = originalBehavior; }
         }
 
         [TestCase(0, 0), TestCase(1, 3), TestCase(3, 1), TestCase(4, 4), TestCase(5, 5)]

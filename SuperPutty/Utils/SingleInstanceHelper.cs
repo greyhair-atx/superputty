@@ -1,36 +1,15 @@
-﻿using System;
+using System;
+using System.Threading;
+using System.Windows.Forms;
 using SuperPutty.Data;
-using System.Runtime.Remoting.Channels.Ipc;
-using System.Runtime.Remoting.Channels;
-using System.Runtime.Remoting;
 using log4net;
-using System.Runtime.Remoting.Messaging;
 
 namespace SuperPutty.Utils
 {
-    public class SingleInstanceHelper : MarshalByRefObject
+    public static class SingleInstanceHelper
     {
         private static readonly ILog Log = LogManager.GetLogger(typeof(SingleInstanceHelper));
-
-        public const string ChannelName = "SuperPuTTY";
-        public const string SingleInstanceServiceName = "SingleInstance";
-
-        public static void RegisterRemotingService()
-        {
-            try
-            {
-                IpcChannel ipcCh = new IpcChannel(ChannelName);
-                ChannelServices.RegisterChannel(ipcCh, false);
-                RemotingConfiguration.RegisterWellKnownServiceType(
-                    typeof(SingleInstanceHelper), SingleInstanceServiceName, WellKnownObjectMode.SingleCall);
-
-                Log.InfoFormat("Registered IpcChannel and Service: [ipc://{0}/{1}]", ChannelName, SingleInstanceServiceName);
-            }
-            catch (RemotingException ex)
-            {
-                Log.Warn("Unable to register ipcchannel for single instance support, feature will be unavailable (or another instance of SuperPuTTY is already running)", ex);
-            }            
-        }
+        private static Registration registration;
 
         internal static bool TryLaunchInExistingInstance(string[] args, Action<string[]> launch = null)
         {
@@ -41,52 +20,102 @@ namespace SuperPutty.Utils
             }
             catch (Exception ex)
             {
-                Log.Warn("Unable to forward command to the running instance", ex);
+                // Exception messages can originate in untrusted command arguments.
+                Log.Warn("Unable to forward command to the running instance (" + ex.GetType().Name + ").");
                 return false;
             }
         }
 
         public static void LaunchInExistingInstance(string[] args)
         {
-            IpcChannel channel = new IpcChannel();
-            ChannelServices.RegisterChannel(channel, false);
-            string url = String.Format("ipc://{0}/{1}", ChannelName, SingleInstanceServiceName);
-
-            // Register as client for remote object.
-            WellKnownClientTypeEntry remoteType = new WellKnownClientTypeEntry(typeof(SingleInstanceHelper), url);
-            RemotingConfiguration.RegisterWellKnownClientType(remoteType);
-
-            // Create a message sink.
-            string objectUri;
-            IMessageSink messageSink = channel.CreateMessageSink(url, null, out objectUri);
-
-            /*
-            Console.WriteLine("The URI of the message sink is {0}.", objectUri);
-            if (messageSink != null)
-            {
-                Console.WriteLine("The type of the message sink is {0}.", messageSink.GetType().ToString());
-            }
-            */
-
-            SingleInstanceHelper helper = new SingleInstanceHelper();
-            helper.Run(args);
+            var reply = SingleInstancePipeClient.SendAsync(SingleInstanceEndpoint.Current, args, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            if (reply != SingleInstanceReply.Accepted)
+                throw new InvalidOperationException("The running instance could not accept the command: " + reply + ".");
         }
 
-
-        public void Run(String[] args)
+        internal static IDisposable StartReceiving(Form form, SingleInstanceEndpoint endpoint, Action<string[]> dispatch = null)
         {
-            Log.InfoFormat("Received remote Run command: [{0}]", CommandLineOptions.RedactSensitiveArguments(args));
-            var form = SuperPuTTY.MainForm;
-            if (form == null || form.IsDisposed || form.Disposing || !form.IsHandleCreated)
-                throw new InvalidOperationException("The running instance is not ready to accept commands.");
-            // Parse and resolve layouts/sessions on the UI thread as both use UI-owned collections.
-            form.Invoke(new Action(() => DispatchCommand(args,
+            if (registration != null) throw new InvalidOperationException("A single-instance listener is already registered.");
+            registration = new Registration(form, endpoint, dispatch ?? DispatchToApplication);
+            return registration;
+        }
+
+        internal static void PauseReceiving() { registration?.Pause(); }
+        internal static void ResumeReceiving() { registration?.Resume(); }
+        internal static void StopReceiving() { registration?.Dispose(); }
+
+        private static void DispatchToApplication(string[] args)
+        {
+            DispatchCommand(args,
                 name =>
                 {
                     var layout = SuperPuTTY.FindLayout(name);
-                    if (layout == null) throw new ArgumentException("Layout not found: " + name);
+                    if (layout == null) throw new ArgumentException("The requested layout was not found.");
                     SuperPuTTY.LoadLayout(layout);
-                }, SuperPuTTY.OpenSession)));
+                }, SuperPuTTY.OpenSession);
+        }
+
+        // The main UI thread owns this registration; the pipe worker only reads
+        // the volatile readiness flag and submits to the bounded command queue.
+        private sealed class Registration : IDisposable
+        {
+            private readonly Form form;
+            private readonly SingleInstanceCommandQueue queue;
+            private readonly SingleInstancePipeServer server;
+            private volatile bool receiving;
+            private bool paused;
+            private bool shown;
+            private bool disposed;
+
+            internal Registration(Form form, SingleInstanceEndpoint endpoint, Action<string[]> dispatch)
+            {
+                this.form = form ?? throw new ArgumentNullException(nameof(form));
+                if (endpoint == null) throw new ArgumentNullException(nameof(endpoint));
+                queue = new SingleInstanceCommandQueue(action => form.BeginInvoke(action), dispatch,
+                    () => receiving && !form.IsDisposed && !form.Disposing && form.IsHandleCreated,
+                    reportFailure: error => Log.Warn("A forwarded command could not be executed (" + error.GetType().Name + ")."));
+                try { server = new SingleInstancePipeServer(endpoint.PipeName, queue.TryEnqueue); }
+                catch { queue.Dispose(); throw; }
+                form.Shown += FormShown;
+                form.Disposed += FormDisposed;
+            }
+
+            private void FormShown(object sender, EventArgs args)
+            {
+                if (disposed || form.IsDisposed || form.Disposing || !form.IsHandleCreated) return;
+                // Load has already queued the initial layout. Admit commands after
+                // that work, rather than resolving sessions against startup state.
+                form.BeginInvoke((Action)(() =>
+                {
+                    if (disposed) return;
+                    shown = true;
+                    receiving = !paused;
+                    queue.ResumePending();
+                }));
+            }
+
+            internal void Pause() { paused = true; receiving = false; }
+            internal void Resume()
+            {
+                paused = false;
+                if (disposed || !shown) return;
+                receiving = true;
+                queue.ResumePending();
+            }
+            private void FormDisposed(object sender, EventArgs args) { Dispose(); }
+
+            public void Dispose()
+            {
+                if (disposed) return;
+                disposed = true;
+                receiving = false;
+                queue.Stop();
+                server.Dispose();
+                form.Shown -= FormShown;
+                form.Disposed -= FormDisposed;
+                if (Object.ReferenceEquals(registration, this)) registration = null;
+            }
         }
 
         internal static void DispatchCommand(string[] args, Action<string> loadLayout, Action<SessionDataStartInfo> openSession)

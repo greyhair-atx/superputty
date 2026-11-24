@@ -362,7 +362,6 @@ namespace SuperPutty
             {
                 SuperPuTTY.Settings.WindowPosition = this.lastNormalDesktopBounds;
                 SuperPuTTY.Settings.WindowState = this.WindowState == FormWindowState.Minimized ? this.WindowState = this.lastNonMinimizedWindowState : this.WindowState;
-                SuperPuTTY.Settings.Save();
             }
 
             // Persist docking geometry for the next run. Session documents are
@@ -384,7 +383,17 @@ namespace SuperPutty
             if(SuperPuTTY.Settings.PersistCommandBarHistory)
             {
                 SuperPuTTY.Settings.CommandBarHistory = tsCommandHistory.SerializeXML();
-                SuperPuTTY.Settings.Save();
+            }
+
+            if (SuperPuTTY.Settings.RestoreWindowLocation || SuperPuTTY.Settings.PersistCommandBarHistory)
+            {
+                try { SuperPuTTY.Settings.Save(); }
+                catch (System.Configuration.ConfigurationErrorsException ex)
+                {
+                    Log.Warn("Preferences were not saved while closing; the existing file was kept.", ex);
+                    if (e.CloseReason != CloseReason.WindowsShutDown && e.CloseReason != CloseReason.TaskManagerClosing)
+                        MessageBox.Show(ex.Message, "Preferences Not Saved", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             }
 
             this.focusHelper.Dispose();
@@ -401,11 +410,26 @@ namespace SuperPutty
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            base.OnFormClosing(e);
-            // All confirmation and FormClosing handlers have had a chance to cancel.
-            IsShuttingDown = !e.Cancel;
-            updateChecks.OnClosing(e.Cancel);
-            if (IsShuttingDown) sessionLoadCancellation?.Cancel();
+            if (SuperPuTTY.IsSessionWriteInProgress)
+            {
+                e.Cancel = true;
+                SuperPuTTY.ReportStatus("Wait for the session save to finish before closing SuperPuTTY.");
+                return;
+            }
+            SingleInstanceHelper.PauseReceiving();
+            try
+            {
+                base.OnFormClosing(e);
+                // All confirmation and FormClosing handlers have had a chance to cancel.
+                IsShuttingDown = !e.Cancel;
+                updateChecks.OnClosing(e.Cancel);
+                if (IsShuttingDown) sessionLoadCancellation?.Cancel();
+            }
+            finally
+            {
+                if (e.Cancel) SingleInstanceHelper.ResumeReceiving();
+                else SingleInstanceHelper.StopReceiving();
+            }
         }
 
         private void frmSuperPutty_FormClosing(object sender, FormClosingEventArgs e)
@@ -495,7 +519,7 @@ namespace SuperPutty
                 SuperPuTTY.IsSessionCatalogReady && activeSession != null && String.IsNullOrEmpty(activeSession.ConsoleCommand);
         }
 
-        private void saveCurrentSessionToolStripMenuItem_Click(object sender, EventArgs e)
+        private async void saveCurrentSessionToolStripMenuItem_Click(object sender, EventArgs e)
         {
             ToolWindowDocument activeDocument = this.DockPanel.ActiveDocument as ToolWindowDocument;
             SessionData activeSession = GetDocumentSession(activeDocument);
@@ -539,7 +563,7 @@ namespace SuperPutty
 
             try
             {
-                SuperPuTTY.SaveSessionChanges(activeSession, editedSession, SuperPuTTY.SaveSessions);
+                await SuperPuTTY.SaveSessionChangesAsync(activeSession, editedSession);
             }
             catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException ||
                 ex is InvalidDataException || ex is IOException || ex is UnauthorizedAccessException)
@@ -550,6 +574,7 @@ namespace SuperPutty
                 return;
             }
 
+            if (activeDocument.IsDisposed || activeDocument.Disposing) return;
             activeDocument.Text = activeSession.SessionName;
             activeDocument.TabText = activeSession.SessionName;
             ctlPuttyPanel activeTerminal = activeDocument as ctlPuttyPanel;
@@ -598,17 +623,25 @@ namespace SuperPutty
             return error.Length == 0;
         }
 
-        private void toolStripMenuItem1_Click(object sender, EventArgs e)
+        private async void toolStripMenuItem1_Click(object sender, EventArgs e)
         {
-            SaveFileDialog saveDialog = new SaveFileDialog
+            using (var saveDialog = new SaveFileDialog
             {
                 Filter = "XML Files|*.xml|All files|*.*",
                 FileName = "Sessions.XML",
                 InitialDirectory = Application.StartupPath
-            };
-            if (saveDialog.ShowDialog(this) == DialogResult.OK)
+            })
             {
-                SessionData.SaveSessionsToFile(SuperPuTTY.GetAllSessions(), saveDialog.FileName);
+                if (saveDialog.ShowDialog(this) != DialogResult.OK) return;
+                try { await SuperPuTTY.ExportSessionsAsync(saveDialog.FileName); }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException ||
+                    ex is InvalidDataException || ex is InvalidOperationException || ex is ArgumentException ||
+                    ex is System.Security.SecurityException)
+                {
+                    Log.Warn("Could not export sessions", ex);
+                    if (!IsDisposed && !Disposing)
+                        MessageBox.Show(this, ex.Message, "Unable to Export Sessions", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             }
         }
 
@@ -627,7 +660,7 @@ namespace SuperPutty
             }
         }
 
-        private void fromCsvFileToolStripMenuItem_Click(object sender, EventArgs e)
+        private async void fromCsvFileToolStripMenuItem_Click(object sender, EventArgs e)
         {
             OpenFileDialog openDialog = new OpenFileDialog
             {
@@ -650,7 +683,7 @@ namespace SuperPutty
                     return;
                 }
 
-                SuperPuTTY.ImportSessions(result.Sessions, "Imported");
+                await SuperPuTTY.ImportSessionsAsync(result.Sessions, "Imported");
                 MessageBox.Show(
                     this,
                     String.Format("Successfully imported {0} session{1} into the Imported folder.",
@@ -847,8 +880,15 @@ namespace SuperPutty
         private async void reloadSessionsToolStripMenuItem_Click(object sender, EventArgs e)
         {
             if (sessionLoadCancellation != null) { sessionLoadCancellation.Cancel(); return; }
-            await RunSessionLoadAsync(token => SuperPuTTY.LoadSessionsAsync(token));
+            await RunSessionLoadAsync(async token =>
+            {
+                bool? discard = await SuperPuTTY.ResolvePendingSessionMovesAsync(this);
+                if (!discard.HasValue) throw new OperationCanceledException();
+                await SuperPuTTY.LoadSessionsAsync(token, discardPendingMoves: discard.Value);
+            });
         }
+
+        internal void PauseDelayedSessionSave() { sessions?.Instance?.PauseDelayedSessionSave(); }
 
         private void toolStripMenuItem2_Click(object sender, EventArgs e)
         {
@@ -1430,9 +1470,15 @@ namespace SuperPutty
         {
             SuperPuTTY.ReportStatus("Editing Options");
 
-            dlgFindPutty dialog = new dlgFindPutty();
+            using (dlgFindPutty dialog = new dlgFindPutty())
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
+                if (SuperPuTTY.CurrentLayout == null)
+                {
+                    toolStripStatusLabelLayout.Text = String.Empty;
+                    saveFileDialogLayout.FileName = String.Empty;
+                    saveFileDialogLayout.InitialDirectory = SuperPuTTY.LayoutsDir;
+                }
                 ApplySettings();
                 RefreshConnectionToolbarData();
 

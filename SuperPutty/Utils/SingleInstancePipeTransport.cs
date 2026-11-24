@@ -94,6 +94,7 @@ namespace SuperPutty.Utils
                 using (Mutex.OpenExisting("Local\\SuperPutty", MutexRights.Synchronize | MutexRights.ReadPermissions)) return true;
             }
             catch (WaitHandleCannotBeOpenedException) { return false; }
+            catch (UnauthorizedAccessException) { return true; }
         }
 
         public void Dispose()
@@ -121,20 +122,53 @@ namespace SuperPutty.Utils
                 PipeOptions.Asynchronous, TokenImpersonationLevel.Identification, HandleInheritability.None))
             {
                 deadline.CancelAfter(limit);
-                using (deadline.Token.Register(() => Close(pipe)))
                 try
                 {
-                    await pipe.ConnectAsync((int)Math.Min(Int32.MaxValue, Math.Max(1, limit.TotalMilliseconds)), deadline.Token).ConfigureAwait(false);
-                    return await ExchangeAuthenticatedAsync(pipe, args, () =>
+                    await ConnectUntilAvailableAsync(pipe, limit, deadline.Token).ConfigureAwait(false);
+                    // Closing the pipe cancels pending I/O. Passing the same token
+                    // to native pipe I/O would also call CancelIoEx on that handle.
+                    using (deadline.Token.Register(() => Close(pipe)))
                     {
-                        if (!expectedOwner.Equals(pipe.GetAccessControl().GetOwner(typeof(SecurityIdentifier))))
-                            throw new UnauthorizedAccessException("The running instance's pipe owner could not be verified.");
-                    }, deadline.Token).ConfigureAwait(false);
+                        deadline.Token.ThrowIfCancellationRequested();
+                        return await ExchangeAuthenticatedAsync(pipe, args, () =>
+                        {
+                            if (!expectedOwner.Equals(pipe.GetAccessControl().GetOwner(typeof(SecurityIdentifier))))
+                                throw new UnauthorizedAccessException("The running instance's pipe owner could not be verified.");
+                        }, CancellationToken.None).ConfigureAwait(false);
+                    }
                 }
                 catch (Exception ex) when (deadline.IsCancellationRequested)
                 {
                     cancellation.ThrowIfCancellationRequested();
                     throw new TimeoutException("The running instance did not respond within the time limit.", ex);
+                }
+            }
+        }
+
+        private static async Task ConnectUntilAvailableAsync(NamedPipeClientStream pipe, TimeSpan limit,
+            CancellationToken cancellation)
+        {
+            var elapsed = Stopwatch.StartNew();
+            while (true)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                double remaining = limit.TotalMilliseconds - elapsed.Elapsed.TotalMilliseconds;
+                if (remaining <= 0) throw new TimeoutException("The running instance did not become available within the time limit.");
+                try
+                {
+                    await pipe.ConnectAsync((int)Math.Min(Int32.MaxValue, Math.Max(1, remaining)), cancellation).ConfigureAwait(false);
+                    return;
+                }
+                catch (IOException ex) when (((ex.HResult & 65535) == 121 || (ex.HResult & 65535) == 231) &&
+                    !cancellation.IsCancellationRequested)
+                {
+                    // Windows can end WaitNamedPipe with ERROR_SEM_TIMEOUT or
+                    // ERROR_PIPE_BUSY while the previous client is expiring.
+                    // Retry connection only: once any request is sent, retrying
+                    // could execute an accepted command a second time.
+                    remaining = limit.TotalMilliseconds - elapsed.Elapsed.TotalMilliseconds;
+                    if (remaining <= 0) throw new TimeoutException("The running instance did not become available within the time limit.", ex);
+                    await Task.Delay((int)Math.Min(20, Math.Max(1, remaining)), cancellation).ConfigureAwait(false);
                 }
             }
         }
@@ -153,7 +187,7 @@ namespace SuperPutty.Utils
         private static void Close(IDisposable pipe)
         {
             try { pipe.Dispose(); }
-            catch (IOException) { }
+            catch (Exception ex) when (ex is IOException || ex is ObjectDisposedException) { }
         }
     }
 
@@ -177,8 +211,10 @@ namespace SuperPutty.Utils
             try
             {
                 active = CreatePipe();
-                Completion = Task.Run(() => ServeAsync(active));
-                _ = Completion.ContinueWith(task => Log.Warn("The single-instance listener stopped unexpectedly."),
+                var first = active;
+                Completion = Task.Run(() => ServeAsync(first));
+                _ = Completion.ContinueWith(task =>
+                    Log.Warn("The single-instance listener stopped unexpectedly (" + task.Exception.GetBaseException().GetType().Name + ")."),
                     CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             }
             catch { active?.Dispose(); stopping.Dispose(); throw; }
@@ -197,7 +233,9 @@ namespace SuperPutty.Utils
             {
                 try
                 {
-                    await pipe.WaitForConnectionAsync(stopping.Token).ConfigureAwait(false);
+                    // Dispose closes the active pipe, including a pending accept.
+                    // Use handle closure as the sole way to abort native I/O.
+                    await pipe.WaitForConnectionAsync().ConfigureAwait(false);
                     using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(stopping.Token))
                     {
                         deadline.CancelAfter(requestTimeout);
@@ -206,7 +244,7 @@ namespace SuperPutty.Utils
                             SingleInstanceReply reply;
                             try
                             {
-                                string[] args = await SingleInstancePipeProtocol.ReadRequestAsync(pipe, deadline.Token).ConfigureAwait(false);
+                                string[] args = await SingleInstancePipeProtocol.ReadRequestAsync(pipe, CancellationToken.None).ConfigureAwait(false);
                                 deadline.Token.ThrowIfCancellationRequested();
                                 reply = enqueue(args);
                             }
@@ -216,7 +254,12 @@ namespace SuperPutty.Utils
                                 // Malformed payload exceptions must not echo argument data.
                                 reply = SingleInstanceReply.InvalidRequest;
                             }
-                            await SingleInstancePipeProtocol.WriteReplyAsync(pipe, reply, deadline.Token).ConfigureAwait(false);
+                            await SingleInstancePipeProtocol.WriteReplyAsync(pipe, reply, CancellationToken.None).ConfigureAwait(false);
+                            // Closing a server pipe can discard a reply that the
+                            // client has not read yet. Our client disconnects after
+                            // reading it; wait asynchronously under the same deadline
+                            // so a stalled reader cannot retain the listener.
+                            await pipe.ReadAsync(new byte[1], 0, 1, CancellationToken.None).ConfigureAwait(false);
                         }
                     }
                 }
@@ -241,7 +284,7 @@ namespace SuperPutty.Utils
         private static void Close(IDisposable pipe)
         {
             try { pipe?.Dispose(); }
-            catch (IOException) { }
+            catch (Exception ex) when (ex is IOException || ex is ObjectDisposedException) { }
         }
 
         public void Dispose()

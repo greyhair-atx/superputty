@@ -97,7 +97,7 @@ namespace SuperPutty
 DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string ApplicationWorkingDirectory { get; set; }
 
-        public virtual IntPtr AppWindowHandle { get { return this.m_AppWin; } }
+        public virtual IntPtr AppWindowHandle { get { return ExternalProcessCaptured ? this.m_AppWin : IntPtr.Zero; } }
 
         /// <summary>
         /// Managed child hosts override this to bypass the external-process window
@@ -142,14 +142,14 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             string typeName = string.IsNullOrEmpty(SuperPuTTY.Settings.WindowActivator) ? ActivatorTypeName : SuperPuTTY.Settings.WindowActivator;
             this.m_windowActivator = (WindowActivator)Activator.CreateInstance(Type.GetType(typeName));
             //this.m_windowActivator = new SetFGCombinedWindowActivator();
-            SuperPuTTY.Settings.SettingsSaving += Settings_SettingsSaving;
+            SuperPuTTY.Settings.SettingsApplied += Settings_SettingsApplied;
             if (SuperPuTTY.WindowEvents != null)
             {
                 SuperPuTTY.WindowEvents.SystemSwitch += new EventHandler<GlobalWindowEventArgs>(OnSystemSwitch);
             }
         }
 
-        void Settings_SettingsSaving(object sender, CancelEventArgs e)
+        void Settings_SettingsApplied(object sender, EventArgs e)
         {
             if (this.UsesManagedChildHost)
             {
@@ -166,7 +166,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             StopVncWindowTracker();
             this.Disposed -= new EventHandler(ApplicationPanel_Disposed);
             SuperPuTTY.LayoutChanged -= new EventHandler<Data.LayoutChangedEventArgs>(SuperPuTTY_LayoutChanged);
-            SuperPuTTY.Settings.SettingsSaving -= Settings_SettingsSaving;
+            SuperPuTTY.Settings.SettingsApplied -= Settings_SettingsApplied;
             if (SuperPuTTY.WindowEvents != null)
             {
                 SuperPuTTY.WindowEvents.SystemSwitch -= new EventHandler<GlobalWindowEventArgs>(OnSystemSwitch);
@@ -225,6 +225,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
         private void MoveWindow(string src, int x, int y)
         {
+            if (!ExternalProcessCaptured) return;
             if (this.UsesManagedChildHost)
             {
                 return;
@@ -433,6 +434,8 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
         private void AttachToWindow()
         {
+            if (m_AppWin != IntPtr.Zero && !IsProcessWindow(m_AppWin))
+                throw new InvalidOperationException("The application window no longer belongs to the launched process.");
             if (this.m_AppWin != IntPtr.Zero)
             {
                 // Set the application as a child of the parent form
@@ -604,7 +607,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
         private void HandleWindowEvent(uint eventType, IntPtr hwnd, int idObject, int idChild)
         {
-            if (m_AppWin != hwnd)
+            if (m_AppWin != hwnd || !ExternalProcessCaptured)
                 return;
 
             switch (eventType)
@@ -721,7 +724,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         private void UpdateTitle()
         {
             string controlText;
-            if (!TryReadWindowTitle(m_AppWin, out controlText) || !(this.Parent is ctlPuttyPanel))
+            if (!TryReadWindowTitle(AppWindowHandle, out controlText) || !(this.Parent is ctlPuttyPanel))
                 return;
             string parentText = ((ctlPuttyPanel)this.Parent).TextOverride;
 
@@ -926,8 +929,9 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                     NativeMethods.PostMessage(m_AppWin, NativeMethods.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
                 }
 
-                m_AppWin = IntPtr.Zero;
             }
+
+            m_AppWin = IntPtr.Zero;
 
             base.OnHandleDestroyed(e);
         }
@@ -956,7 +960,22 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             base.OnResize(e);
         }
 
-        public virtual bool ExternalProcessCaptured { get { return this.m_AppWin != IntPtr.Zero; } }
+        private bool IsProcessWindow(IntPtr window)
+        {
+            if (window == IntPtr.Zero || !NativeMethods.IsWindow(window) || m_Process == null) return false;
+            try
+            {
+                uint owner;
+                return !m_Process.HasExited && NativeMethods.GetWindowThreadProcessId(window, out owner) != 0 && owner == (uint)m_Process.Id;
+            }
+            catch (InvalidOperationException) { return false; }
+            catch (Win32Exception) { return false; }
+        }
+
+        public virtual bool ExternalProcessCaptured
+        {
+            get { return IsHandleCreated && IsProcessWindow(m_AppWin) && NativeMethods.GetAncestor(m_AppWin, 1) == Handle; }
+        }
 
         public virtual SessionConnectionState ConnectionState
         {

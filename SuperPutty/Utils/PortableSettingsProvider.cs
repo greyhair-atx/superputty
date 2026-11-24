@@ -45,6 +45,7 @@ namespace SuperPutty.Utils
         public const string SettingsRoot = "Settings";
 
         private XmlDocument settingsXML;
+        private string loadedRevision;
 
         internal sealed class SettingsRecoveryNotification
         {
@@ -145,11 +146,13 @@ namespace SuperPutty.Utils
         }
 
         public string SettingsFilePath { get; private set; }
+        internal const int MaximumSettingsBytes = 16 * 1024 * 1024;
 
         public override void SetPropertyValues(SettingsContext context, SettingsPropertyValueCollection collection)
         {
             // Load before mutating anything, and propagate unrecoverable load failures.
             XmlDocument document = SettingsXML;
+            var previous = (XmlDocument)document.CloneNode(true);
             foreach (SettingsPropertyValue propVal in collection)
             {
                 SetValue(propVal);
@@ -157,41 +160,35 @@ namespace SuperPutty.Utils
 
             try
             {             
-                SaveAtomically(document, SettingsFilePath);
+                loadedRevision = SaveAtomically(document, SettingsFilePath, loadedRevision, true);
             }
             catch(Exception ex){
+                settingsXML = previous;
                 Log.Error("Error saving settings", ex);
-                throw new ConfigurationErrorsException("Unable to save settings. Check that the settings folder is writable.", ex);
+                throw new ConfigurationErrorsException("Unable to save settings. " + ex.Message, ex);
             }
         }
 
-        internal static void SaveAtomically(XmlDocument document, string filePath)
+        internal static string SaveAtomically(XmlDocument document, string filePath, string expectedRevision = null, bool checkRevision = false)
         {
-            // Stage on the same volume so publishing never truncates the live file.
-            string temporaryPath = filePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            try
+            using (SharedFile.Lock(filePath))
             {
-                using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                string revision = checkRevision ? expectedRevision : SharedFile.Revision(filePath);
+                // Stage on the same volume so publishing never truncates the live file.
+                string temporaryPath = filePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
                 {
-                    document.Save(stream);
-                    stream.Flush(true);
+                    string savedRevision = SharedFile.WriteStaged(temporaryPath, document.Save, MaximumSettingsBytes);
+                    SharedFile.Publish(temporaryPath, filePath, filePath + ".bak", revision);
+                    return savedRevision;
                 }
-
-                if (File.Exists(filePath))
+                finally
                 {
-                    File.Replace(temporaryPath, filePath, filePath + ".bak");
+                    // Preserve the original save error if cleanup also fails.
+                    try { File.Delete(temporaryPath); }
+                    catch (IOException ex) { Log.Warn("Could not remove temporary settings file", ex); }
+                    catch (UnauthorizedAccessException ex) { Log.Warn("Could not remove temporary settings file", ex); }
                 }
-                else
-                {
-                    File.Move(temporaryPath, filePath);
-                }
-            }
-            finally
-            {
-                // Preserve the original save error if cleanup also fails.
-                try { File.Delete(temporaryPath); }
-                catch (IOException ex) { Log.Warn("Could not remove temporary settings file", ex); }
-                catch (UnauthorizedAccessException ex) { Log.Warn("Could not remove temporary settings file", ex); }
             }
         }
 
@@ -226,7 +223,7 @@ namespace SuperPutty.Utils
                         this.settingsXML = LoadSettingsDocument(SettingsFilePath);
                     }
                     catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException ||
-                        ex is System.Security.SecurityException || ex is XmlException)
+                        ex is System.Security.SecurityException || ex is XmlException || ex is InvalidDataException)
                     {
                         Log.Error("Could not load application preferences; the existing files were not replaced with defaults.", ex);
                         throw new ConfigurationErrorsException(
@@ -241,25 +238,40 @@ namespace SuperPutty.Utils
 
         private XmlDocument LoadSettingsDocument(string settingsFile)
         {
+            using (SharedFile.Lock(settingsFile))
+            {
+                for (int attempt = 0; ; attempt++)
+                {
+                    try { return LoadSettingsDocumentCore(settingsFile); }
+                    catch (SharedFile.ChangedException) when (attempt < 2) { }
+                }
+            }
+        }
+
+        private XmlDocument LoadSettingsDocumentCore(string settingsFile)
+        {
             bool primaryMissing = false;
             Exception primaryFailure;
+            SharedFile.FileVersion version = null;
             try
             {
-                using (var stream = File.OpenRead(settingsFile))
+                byte[] snapshot = SharedFile.Capture(settingsFile, MaximumSettingsBytes, out version);
+                loadedRevision = version.Revision;
+                using (var stream = new MemoryStream(snapshot, false))
                 {
                     XmlDocument document = ReadSettingsDocument(stream);
                     Log.InfoFormat("Loaded settings from {0}", settingsFile);
                     return document;
                 }
             }
-            catch (FileNotFoundException ex) { primaryMissing = true; primaryFailure = ex; }
-            catch (DirectoryNotFoundException ex) { primaryMissing = true; primaryFailure = ex; }
-            catch (XmlException ex) { primaryFailure = ex; }
+            catch (FileNotFoundException ex) { loadedRevision = null; primaryMissing = true; primaryFailure = ex; }
+            catch (DirectoryNotFoundException ex) { loadedRevision = null; primaryMissing = true; primaryFailure = ex; }
+            catch (Exception ex) when (ex is XmlException || ex is InvalidDataException) { primaryFailure = ex; }
 
             if (!primaryMissing) Log.Warn("Application preferences are invalid; checking the backup: " + settingsFile, primaryFailure);
             string backupFile = settingsFile + ".bak";
             byte[] backupBytes;
-            try { backupBytes = File.ReadAllBytes(backupFile); }
+            try { backupBytes = SharedFile.Read(backupFile, MaximumSettingsBytes); }
             catch (FileNotFoundException)
             {
                 if (!primaryMissing) throw new XmlException("Application preferences are invalid and no backup exists.", primaryFailure);
@@ -295,8 +307,8 @@ namespace SuperPutty.Utils
 
                 // Never put the damaged primary into .bak. Restore the exact validated
                 // backup bytes and preserve the damaged original under a unique name.
-                if (primaryMissing) File.Move(temporaryFile, settingsFile);
-                else File.Replace(temporaryFile, settingsFile, preservedFile);
+                SharedFile.PublishVersion(temporaryFile, settingsFile, preservedFile, version);
+                loadedRevision = SharedFile.Hash(backupBytes);
             }
             finally
             {
@@ -313,7 +325,8 @@ namespace SuperPutty.Utils
         private static XmlDocument ReadSettingsDocument(Stream stream)
         {
             var document = new XmlDocument { XmlResolver = null };
-            var readerSettings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };
+            var readerSettings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null,
+                MaxCharactersInDocument = MaximumSettingsBytes };
             using (XmlReader reader = XmlReader.Create(stream, readerSettings)) document.Load(reader);
             if (document.DocumentElement == null || document.DocumentElement.Name != SettingsRoot ||
                 document.DocumentElement.NamespaceURI.Length != 0)

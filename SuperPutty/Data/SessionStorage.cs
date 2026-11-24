@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Serialization;
+using SuperPutty.Utils;
 
 namespace SuperPutty.Data
 {
@@ -22,30 +24,44 @@ namespace SuperPutty.Data
         private readonly Func<string, CancellationToken, Task<List<SessionData>>> readLocal;
         private readonly Func<Uri, CancellationToken, Task<List<SessionData>>> readRemote;
         private readonly TimeSpan operationTimeout;
+        private readonly Dictionary<string, string> revisions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         internal const int MaximumCollections = 128;
         internal const int MaximumSessions = 100000;
+        internal const int MaximumLocalCatalogBytes = 64 * 1024 * 1024;
 
         internal SessionStorage(
             Func<string, CancellationToken, Task<List<SessionData>>> readLocal = null,
             Func<Uri, CancellationToken, Task<List<SessionData>>> readRemote = null,
             TimeSpan? operationTimeout = null)
         {
-            this.readLocal = readLocal ?? ReadLocalAsync;
+            this.readLocal = readLocal;
             this.readRemote = readRemote ?? ReadRemoteAsync;
             this.operationTimeout = operationTimeout ?? TimeSpan.FromSeconds(30);
         }
 
-        public async Task<List<SessionData>> LoadAsync(string location, CancellationToken cancellation)
+        public Task<List<SessionData>> LoadAsync(string location, CancellationToken cancellation)
+        {
+            return LoadCoreAsync(location, cancellation, false);
+        }
+
+        internal Task<List<SessionData>> LoadPrimaryOrMissingAsync(string path, CancellationToken cancellation)
+        {
+            return LoadCoreAsync(path, cancellation, true);
+        }
+
+        private async Task<List<SessionData>> LoadCoreAsync(string location, CancellationToken cancellation, bool allowMissingPrimary)
         {
             using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
             {
                 deadline.CancelAfter(operationTimeout);
                 try
                 {
-                    var budget = new LoadBudget();
+                    var budget = new LoadBudget { AllowMissingPrimary = allowMissingPrimary };
                     var result = await LoadCollectionAsync(location, new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                         0, budget, deadline.Token).ConfigureAwait(false);
                     deadline.Token.ThrowIfCancellationRequested();
+                    lock (revisions)
+                        foreach (var pair in budget.Revisions) revisions[pair.Key] = pair.Value;
                     return result;
                 }
                 catch (OperationCanceledException ex) when (deadline.IsCancellationRequested && !cancellation.IsCancellationRequested)
@@ -59,6 +75,8 @@ namespace SuperPutty.Data
         {
             internal int Collections;
             internal int Sessions;
+            internal bool AllowMissingPrimary;
+            internal readonly Dictionary<string, string> Revisions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         }
 
         private async Task<List<SessionData>> LoadCollectionAsync(string location, HashSet<string> active,
@@ -81,8 +99,19 @@ namespace SuperPutty.Data
             if (!active.Add(key)) throw new InvalidDataException("Circular session collection reference detected.");
             try
             {
-                var sessions = await AwaitReadAsync(web ? readRemote(uri, cancellation) : readLocal(localPath, cancellation),
-                    cancellation).ConfigureAwait(false);
+                List<SessionData> sessions;
+                try
+                {
+                    sessions = await AwaitReadAsync(web ? readRemote(uri, cancellation) :
+                        readLocal != null ? readLocal(localPath, cancellation) : ReadLocalAsync(localPath, cancellation, budget),
+                        cancellation).ConfigureAwait(false);
+                }
+                catch (IOException ex) when (depth == 0 && !web && budget.AllowMissingPrimary &&
+                    (ex is FileNotFoundException || ex is DirectoryNotFoundException))
+                {
+                    budget.Revisions[key] = null;
+                    return null;
+                }
                 cancellation.ThrowIfCancellationRequested();
                 if (sessions == null) throw new InvalidDataException("The session collection is empty or invalid.");
                 if (sessions.Exists(session => session == null))
@@ -133,18 +162,23 @@ namespace SuperPutty.Data
             }
         }
 
-        private static Task<List<SessionData>> ReadLocalAsync(string path, CancellationToken cancellation)
+        private static Task<List<SessionData>> ReadLocalAsync(string path, CancellationToken cancellation, LoadBudget budget)
         {
             return Task.Run(() =>
             {
                 cancellation.ThrowIfCancellationRequested();
-                using (var reader = XmlReader.Create(path, new XmlReaderSettings
+                SharedFile.FileVersion version;
+                byte[] snapshot = SharedFile.Capture(path, MaximumLocalCatalogBytes, out version, cancellation);
+                using (var stream = new MemoryStream(snapshot, false))
+                using (var reader = XmlReader.Create(stream, new XmlReaderSettings
                 {
-                    DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null
+                    DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null,
+                    MaxCharactersInDocument = MaximumLocalCatalogBytes
                 }))
                 {
                     var sessions = (List<SessionData>)new XmlSerializer(typeof(List<SessionData>)).Deserialize(reader);
                     cancellation.ThrowIfCancellationRequested();
+                    budget.Revisions[Path.GetFullPath(path)] = version.Revision;
                     return sessions;
                 }
             }, cancellation);
@@ -200,6 +234,11 @@ namespace SuperPutty.Data
             }
         }
 
+        internal void RememberMissing(string fileName)
+        {
+            lock (revisions) revisions[Path.GetFullPath(fileName)] = null;
+        }
+
         public void Save(List<SessionData> sessions, string fileName)
         {
             if (sessions == null)
@@ -214,44 +253,41 @@ namespace SuperPutty.Data
             Log.InfoFormat("Saving {0} sessions to {1}", sessions.Count, fileName);
 
             string fullPath = Path.GetFullPath(fileName);
-            string directory = Path.GetDirectoryName(fullPath);
-            string tempFile = Path.Combine(
-                directory,
-                Path.GetFileName(fullPath) + "." + Guid.NewGuid().ToString("N") + ".tmp");
-
-            List<SessionData> sessionsToSave = new List<SessionData>(sessions);
-            sessionsToSave.Sort();
-            XmlSerializer serializer = new XmlSerializer(sessionsToSave.GetType());
-
-            try
+            using (SharedFile.Lock(fullPath))
+            using (var previous = SharedFile.OpenOptional(fullPath))
             {
-                using (FileStream stream = new FileStream(
-                    tempFile,
-                    FileMode.CreateNew,
-                    FileAccess.Write,
-                    FileShare.None))
-                using (TextWriter writer = new StreamWriter(stream))
-                {
-                    serializer.Serialize(writer, sessionsToSave);
-                    writer.Flush();
-                    stream.Flush(true);
-                }
+                var identity = previous == null ? default(SharedFile.FileIdentity) : SharedFile.Identity(previous);
+                byte[] bytes = previous == null ? null : SharedFile.ReadBounded(previous, MaximumLocalCatalogBytes);
+                string actual = SharedFile.Hash(bytes);
+                string expected;
+                lock (revisions)
+                    if (revisions.TryGetValue(fullPath, out expected) && !String.Equals(actual, expected, StringComparison.Ordinal))
+                        throw new SharedFile.ChangedException(fullPath);
+                string directory = Path.GetDirectoryName(fullPath);
+                string tempFile = Path.Combine(
+                    directory,
+                    Path.GetFileName(fullPath) + "." + Guid.NewGuid().ToString("N") + ".tmp");
 
-                SessionData.BackUpFiles(fullPath, 20);
-                if (File.Exists(fullPath))
+                List<SessionData> sessionsToSave = new List<SessionData>(sessions);
+                sessionsToSave.Sort();
+                XmlSerializer serializer = new XmlSerializer(sessionsToSave.GetType());
+
+                try
                 {
-                    File.Replace(tempFile, fullPath, null);
+                    string savedRevision = SharedFile.WriteStaged(tempFile, stream =>
+                    {
+                        using (var writer = new StreamWriter(stream, new UTF8Encoding(false, true), 1024, true))
+                            serializer.Serialize(writer, sessionsToSave);
+                    }, MaximumLocalCatalogBytes);
+                    SharedFile.PublishVerified(tempFile, fullPath, null, previous == null, identity);
+                    lock (revisions) revisions[fullPath] = savedRevision;
+                    SessionData.BackUpFiles(fullPath, 20, bytes);
                 }
-                else
+                finally
                 {
-                    File.Move(tempFile, fullPath);
-                }
-            }
-            finally
-            {
-                if (File.Exists(tempFile))
-                {
-                    File.Delete(tempFile);
+                    try { File.Delete(tempFile); }
+                    catch (IOException ex) { Log.Warn("Could not remove a temporary session file", ex); }
+                    catch (UnauthorizedAccessException ex) { Log.Warn("Could not remove a temporary session file", ex); }
                 }
             }
         }

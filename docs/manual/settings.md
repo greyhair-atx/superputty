@@ -13,6 +13,16 @@ New profiles reuse an existing writable Documents-based SuperPuTTY folder when a
 
 Use **Tools > Options > General** to see or change the active settings folder. The directory must be writable.
 
+When multiple SuperPuTTY instances share these files, a save is rejected if another instance has changed the preferences or session catalog since it was loaded. Use **Reload Sessions** before retrying a session save; restart SuperPuTTY to reload application preferences. This keeps an older instance from silently replacing newer changes. File access retries transient sharing violations for a bounded time and reports a busy file if access remains unavailable.
+
+Options validates and loads a changed settings folder before applying it. Canceling during that load leaves the current folder and sessions active. A failed preference save restores the previous settings and catalog. Session imports do not reset the current catalog's protection against changes made by another instance; failed session or folder deletions retain the original sessions.
+
+Export sessions to a separate file. Export cannot replace the active `Sessions.XML`. Before **Reload Sessions** or a settings folder change, SuperPuTTY asks you to save or discard pending session moves. A folder change keeps the open workspace visible and asks for a destination the next time you use **Save Layout**.
+
+Local session catalog XML files are limited to 64 MiB per file. The application preferences XML file and its backup are each limited to 16 MiB.
+
+Single-instance requests use a local pipe restricted to the current Windows user and session. Startup and shutdown reject new requests until the UI can accept them. If an exit confirmation is canceled, previously accepted requests resume. When an older version is running, close it before using single-instance mode with this version.
+
 ## Protocol dropdowns
 
 Under **Tools > Options > Protocols**, check the protocols you want in the connection toolbar and new session dropdowns. Uncheck protocols to hide them, or use **Show all** to restore every option. Keep at least one checked. Changes apply when you save, without restarting. All protocols are shown by default.

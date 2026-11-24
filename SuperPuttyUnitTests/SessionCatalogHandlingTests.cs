@@ -16,7 +16,7 @@ namespace SuperPuttyUnitTests
     [TestFixture, NonParallelizable, Apartment(ApartmentState.STA)]
     public class SessionCatalogHandlingTests
     {
-        private List<SessionData> original;
+        private App.PreparedCatalog original;
         private string originalFolder;
         private string directory;
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -24,18 +24,19 @@ namespace SuperPuttyUnitTests
         [SetUp]
         public void SetUp()
         {
-            original = App.GetAllSessions();
+            original = App.CaptureCatalog();
             originalFolder = App.Settings.SettingsFolder;
             App.ReplaceSessionCatalog(new SessionData[0]);
             directory = Path.Combine(Path.GetTempPath(), "SuperPutty-SessionCatalog-" + Guid.NewGuid());
             Directory.CreateDirectory(directory);
             App.Settings.SettingsFolder = directory;
+            App.LoadInitialSessions();
         }
 
         [TearDown]
         public void TearDown()
         {
-            App.ReplaceSessionCatalog(original);
+            App.AcceptCatalog(original, true);
             App.Settings.SettingsFolder = originalFolder;
             Directory.Delete(directory, true);
         }

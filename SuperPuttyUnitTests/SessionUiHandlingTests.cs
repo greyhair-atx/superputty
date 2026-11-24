@@ -19,7 +19,7 @@ namespace SuperPuttyUnitTests
     public class SessionUiHandlingTests
     {
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
-        private List<SessionData> original;
+        private App.PreparedCatalog original;
         private string originalFolder;
         private string directory;
         private bool originalDocumentRestriction;
@@ -29,7 +29,7 @@ namespace SuperPuttyUnitTests
         [SetUp]
         public void SetUp()
         {
-            original = App.GetAllSessions();
+            original = App.CaptureCatalog();
             originalFolder = App.Settings.SettingsFolder;
             originalDocumentRestriction = App.Settings.RestrictContentToDocumentTabs;
             originalFloatRestriction = App.Settings.DockingRestrictFloatingWindows;
@@ -37,12 +37,13 @@ namespace SuperPuttyUnitTests
             Directory.CreateDirectory(directory);
             App.Settings.SettingsFolder = directory;
             App.ReplaceSessionCatalog(new SessionData[0]);
+            App.LoadInitialSessions();
         }
 
         [TearDown]
         public void TearDown()
         {
-            App.ReplaceSessionCatalog(original);
+            App.AcceptCatalog(original, true);
             App.Settings.SettingsFolder = originalFolder;
             App.Settings.RestrictContentToDocumentTabs = originalDocumentRestriction;
             App.Settings.DockingRestrictFloatingWindows = originalFloatRestriction;
@@ -71,6 +72,65 @@ namespace SuperPuttyUnitTests
             var tree = Field<TreeView>(view, "treeView1");
             var handle = tree.Handle;
             tree.SelectedNode = node;
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void FailedDeletionRestoresCatalogTreeSelectionAndDisk(bool entireFolder)
+        {
+            var selected = Session("Folder/Selected");
+            var sibling = Session("Folder/Sibling");
+            var other = Session("Other");
+            App.ReplaceSessionCatalog(new[] { selected, sibling, other });
+            App.SaveSessions();
+            byte[] before = File.ReadAllBytes(SessionsFile);
+            using (var dock = new DockPanel())
+            using (var view = new SessionTreeview(dock))
+            {
+                Select(view, Root(view).Nodes["Folder"].Nodes["Selected"]);
+                var removed = entireFolder ? App.GetSessionsInFolder("Folder") : new List<SessionData> { selected };
+                Assert.Throws<IOException>(() => App.DeleteSessions(removed, () => { throw new IOException("Write failed"); }));
+                CollectionAssert.AreEqual(new[] { selected, sibling, other }, App.GetAllSessions());
+                Assert.AreSame(selected, App.GetSessionById("Folder/Selected"));
+                Assert.AreSame(sibling, App.GetSessionById("Folder/Sibling"));
+                Assert.AreSame(selected, view.SelectedSession);
+                Assert.AreSame(selected, Root(view).Nodes["Folder"].Nodes["Selected"].Tag);
+                CollectionAssert.AreEqual(before, File.ReadAllBytes(SessionsFile));
+                Assert.False(App.IsUpdatingSessionCatalog);
+            }
+        }
+
+        [Test]
+        public void StaleDeletionRestoresCatalogAndPreservesOtherInstancesChanges()
+        {
+            var selected = Session("Selected");
+            App.ReplaceSessionCatalog(new[] { selected });
+            App.SaveSessions();
+            new SessionStorage().Save(new List<SessionData> { Session("OtherInstance") }, SessionsFile);
+            byte[] before = File.ReadAllBytes(SessionsFile);
+            Assert.Throws<SharedFile.ChangedException>(() => App.DeleteSessions(new[] { selected }, App.SaveSessions));
+            Assert.AreSame(selected, App.GetSessionById("Selected"));
+            CollectionAssert.AreEqual(before, File.ReadAllBytes(SessionsFile));
+        }
+
+        [Test]
+        public void SuccessfulDeletionUpdatesDiskAndTreeAfterCommit()
+        {
+            var removed = Session("Folder/Removed");
+            var retained = Session("Folder/Retained");
+            App.ReplaceSessionCatalog(new[] { removed, retained });
+            App.SaveSessions();
+            using (var dock = new DockPanel())
+            using (var view = new SessionTreeview(dock))
+            {
+                App.DeleteSessions(new[] { removed }, App.SaveSessions);
+                Assert.IsNull(App.GetSessionById("Folder/Removed"));
+                Assert.AreSame(retained, App.GetSessionById("Folder/Retained"));
+                Assert.IsNull(Root(view).Nodes["Folder"].Nodes["Removed"]);
+                Assert.AreSame(retained, Root(view).Nodes["Folder"].Nodes["Retained"].Tag);
+                Assert.AreEqual("Folder/Retained", new SessionStorage().LoadAsync(SessionsFile, CancellationToken.None)
+                    .GetAwaiter().GetResult().Single().SessionId);
+            }
         }
 
         [TestCase(false, "Taken")]

@@ -194,10 +194,11 @@ namespace SuperPutty.Utils
             }
         }
 
-        private static bool PathsEqual(string left, string right)
+        internal static bool PathsEqual(string left, string right)
         {
             try
             {
+                if (String.Equals(left, right, StringComparison.OrdinalIgnoreCase)) return true;
                 return String.Equals(
                     Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
                     Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),

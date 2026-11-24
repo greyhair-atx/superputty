@@ -39,10 +39,6 @@ namespace SuperPutty
         private static bool EnforceSingleInstance = Convert.ToBoolean(
             ConfigurationManager.AppSettings["SuperPuTTY.SingleInstance"] ?? "False");
         
-        //ISSUE: In Release mode (1.4.0.6) doesn't work single instance option 
-        //FIX: declare mutex out of Main       
-        private static Mutex mutex;
-
         /// <summary>
         /// The main entry point for the application.
         /// </summary>
@@ -56,19 +52,27 @@ namespace SuperPutty
             // send log to console
             log4net.Config.BasicConfigurator.Configure();
 
+            SingleInstanceMutex instance = null;
+            IDisposable listener = null;
             try
             {
-                bool onlyInstance = false;
-                mutex = new Mutex(true, "SuperPutty", out onlyInstance);
+                var endpoint = SingleInstanceEndpoint.Current;
+                instance = new SingleInstanceMutex(endpoint);
 
                 Log.InfoFormat(
                     "IsFirstRun={0}, SingleInstanceMode={1}, onlyInstance={2}",
-                    SuperPuTTY.IsFirstRun, SuperPuTTY.Settings.SingleInstanceMode, onlyInstance);
-                if ((EnforceSingleInstance  || SuperPuTTY.Settings.SingleInstanceMode) && !SuperPuTTY.IsFirstRun && !onlyInstance)
+                    SuperPuTTY.IsFirstRun, SuperPuTTY.Settings.SingleInstanceMode, instance.IsPrimary);
+                bool singleInstance = (EnforceSingleInstance || SuperPuTTY.Settings.SingleInstanceMode) && !SuperPuTTY.IsFirstRun;
+                bool legacyInstance = singleInstance && SingleInstanceMutex.LegacyInstanceExists();
+                if (singleInstance && (!instance.IsPrimary || legacyInstance))
                 {
-                    if (!SingleInstanceHelper.TryLaunchInExistingInstance(args))
+                    // Never send credentials through the old unauthenticated
+                    // remoting channel when an older executable is still running.
+                    if (legacyInstance || !SingleInstanceHelper.TryLaunchInExistingInstance(args))
                     {
-                        MessageBox.Show("Unable to contact the running SuperPuTTY instance. Wait for it to finish starting or closing, then try again.",
+                        MessageBox.Show(legacyInstance
+                            ? "An older SuperPuTTY instance is running. Close it before starting this version in single-instance mode."
+                            : "Unable to contact the running SuperPuTTY instance. Wait for it to finish starting or closing, then try again.",
                             "SuperPuTTY", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         Environment.ExitCode = 1;
                     }
@@ -88,6 +92,7 @@ namespace SuperPutty
 
                 frmSuperPutty mainForm = new frmSuperPutty();
                 SetDefaultIcon(mainForm);
+                if (instance.IsPrimary) listener = SingleInstanceHelper.StartReceiving(mainForm, endpoint);
                 Application.Run(SuperPuTTY.MainForm = mainForm);
             }
             catch (Exception ex)
@@ -99,8 +104,13 @@ namespace SuperPutty
             }
             finally
             {
-                SuperPuTTY.Shutdown();
-                Log.Info("Shutdown");
+                try
+                {
+                    listener?.Dispose();
+                    SuperPuTTY.Shutdown();
+                    Log.Info("Shutdown");
+                }
+                finally { instance?.Dispose(); }
             }
         }
 

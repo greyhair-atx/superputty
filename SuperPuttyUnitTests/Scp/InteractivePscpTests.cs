@@ -152,6 +152,37 @@ namespace SuperPuttyUnitTests.Scp
 
         [Test]
         [Category("InteractiveConsoleTest")]
+        public void QuietProgressArrivesWhileTheConsoleClientWaitsForMoreWork()
+        {
+            int progressSeen = 0;
+            using (var cancellation = new CancellationTokenSource())
+            using (var dialog = new InteractivePscpDialog(client, "sparse", 10000, cancellation.Token,
+                line =>
+                {
+                    if (line == "quiet-progress")
+                    {
+                        Interlocked.Exchange(ref progressSeen, 1);
+                        cancellation.Cancel();
+                    }
+                    return true;
+                }))
+            using (var watchdog = new System.Windows.Forms.Timer { Interval = 100 })
+            {
+                var elapsed = Stopwatch.StartNew();
+                watchdog.Tick += delegate
+                {
+                    if (dialog.Result.Error != null || elapsed.ElapsedMilliseconds > 12000) dialog.Close();
+                };
+                watchdog.Start();
+                dialog.ShowDialog();
+                Assert.AreEqual(1, Interlocked.CompareExchange(ref progressSeen, 0, 0),
+                    "The second line must flush even though the client never writes another line.");
+                Assert.IsTrue(dialog.Result.Cancelled);
+            }
+        }
+
+        [Test]
+        [Category("InteractiveConsoleTest")]
         public void FailedProcessKeepsItsExitCodeInsteadOfRetryingAuthentication()
         {
             using (var dialog = new InteractivePscpDialog(client, "fail", 10000, CancellationToken.None, null))
@@ -243,6 +274,10 @@ class Client {
  [DllImport(""kernel32.dll"",CharSet=CharSet.Unicode)] static extern bool ReadConsole(IntPtr h,char[] data,uint count,out uint read,IntPtr control);
  static int Main(string[] args) {
   if(args[0]==""fail"") { Console.Error.WriteLine(""Authentication rejected""); return 7; }
+  if(args[0]==""sparse"") {
+   Console.WriteLine(System.Diagnostics.Process.GetCurrentProcess().Id); Console.Out.Flush();
+   Thread.Sleep(300); Console.WriteLine(""quiet-progress""); Console.Out.Flush(); Thread.Sleep(Timeout.Infinite);
+  }
   if(args[0]==""long-output"" || args[0]==""many-lines"") {
    Console.WriteLine(System.Diagnostics.Process.GetCurrentProcess().Id);
    if(args[0]==""long-output"") Console.Write(new string('x',65540));

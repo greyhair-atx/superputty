@@ -40,7 +40,11 @@ namespace SuperPutty
         static SortedList<string, SessionData> sessionsMap = new SortedList<string, SessionData>(StringComparer.OrdinalIgnoreCase);
         internal static bool IsUpdatingSessionCatalog { get; private set; }
         static SessionCatalogList sessionsList = new SessionCatalogList();
-        private static readonly ISessionStorage sessionStorage = new SessionStorage();
+        private static ISessionStorage sessionStorage = new SessionStorage();
+        private static string acceptedCatalogPath;
+        private static bool sessionWriteInProgress;
+        internal static bool HasPendingSessionMoves { get; private set; }
+        internal static bool IsSessionWriteInProgress { get { return sessionWriteInProgress; } }
         private static long sessionCatalogVersion;
         internal static bool IsSessionCatalogReady { get; private set; } = true;
         static bool? isFirstRun;
@@ -124,8 +128,7 @@ namespace SuperPutty
                 }
             }
 
-            // Register IpcChanncel for single instance support
-            SingleInstanceHelper.RegisterRemotingService();
+            // Program owns single-instance IPC after the main UI has been constructed.
             WindowEvents = new GlobalWindowEvents();
 
             Log.Info("Initialized");
@@ -211,8 +214,7 @@ namespace SuperPutty
             {
                 if (deleteFile)
                 {
-                    File.Delete(layout.FilePath);
-                    File.Delete(layout.FilePath + ".bak");
+                    LayoutStorage.DeleteFiles(layout.FilePath);
                 }
                 layouts.Remove(layout);
             }
@@ -294,6 +296,13 @@ namespace SuperPutty
                     Directory.CreateDirectory(LayoutsDir);
                 }
             }
+        }
+
+        internal static void DetachCurrentLayout()
+        {
+            // The visible workspace stays intact, but its former file is no longer
+            // the save destination after changing profiles.
+            CurrentLayout = null;
         }
 
         public static void LoadLayout(LayoutData layout)
@@ -392,7 +401,7 @@ namespace SuperPutty
         {
             // Treat only genuinely missing paths as a new catalog. File.Exists also
             // reports false for access errors and directories at the expected path.
-            try { using (File.OpenRead(fileName)) { } return true; }
+            try { using (SharedFile.OpenRead(fileName)) { } return true; }
             catch (FileNotFoundException) { return false; }
             catch (DirectoryNotFoundException) { return false; }
         }
@@ -405,14 +414,20 @@ namespace SuperPutty
 
             try
             {
+                EnsureCatalogCanBeReplaced(false);
                 if (SessionCatalogFileExists(fileName))
                 {
-                    ReplaceSessionCatalog(sessionStorage.LoadAsync(fileName, CancellationToken.None).GetAwaiter().GetResult());
+                    var loadingStorage = new SessionStorage();
+                    ReplaceSessionCatalog(loadingStorage.LoadAsync(fileName, CancellationToken.None).GetAwaiter().GetResult());
+                    sessionStorage = loadingStorage;
+                    acceptedCatalogPath = Path.GetFullPath(fileName);
                     IsSessionCatalogReady = true;
                 }
                 else
                 {
                     Log.WarnFormat($"Sessions file does not exist, nothing loaded.  file={fileName}");
+                    (sessionStorage as SessionStorage)?.RememberMissing(fileName);
+                    acceptedCatalogPath = Path.GetFullPath(fileName);
                     IsSessionCatalogReady = true;
                 }
 
@@ -423,17 +438,110 @@ namespace SuperPutty
             }
         }
 
-        internal static async Task LoadSessionsAsync(CancellationToken cancellation, ISessionStorage storage = null)
+        internal static async Task LoadSessionsAsync(CancellationToken cancellation, ISessionStorage storage = null,
+            bool discardPendingMoves = false)
         {
+            EnsureCatalogCanBeReplaced(discardPendingMoves);
             cancellation.ThrowIfCancellationRequested();
             string fileName = SessionsFileName;
             long version = sessionCatalogVersion;
-            var replacement = await (storage ?? sessionStorage).LoadAsync(fileName, cancellation);
+            var loadingStorage = storage ?? new SessionStorage();
+            var replacement = storage == null
+                ? await ((SessionStorage)loadingStorage).LoadPrimaryOrMissingAsync(fileName, cancellation)
+                : await loadingStorage.LoadAsync(fileName, cancellation);
             cancellation.ThrowIfCancellationRequested();
             if (version != sessionCatalogVersion || !String.Equals(fileName, SessionsFileName, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Sessions changed while loading. Reload again to replace the current catalog.");
-            ReplaceSessionCatalog(replacement);
+            EnsureCatalogCanBeReplaced(discardPendingMoves);
+            ReplaceSessionCatalog(replacement ?? new List<SessionData>());
+            if (storage == null) sessionStorage = loadingStorage;
+            acceptedCatalogPath = Path.GetFullPath(fileName);
             IsSessionCatalogReady = true;
+            HasPendingSessionMoves = false;
+        }
+
+        internal sealed class PreparedCatalog
+        {
+            internal string Path;
+            internal ISessionStorage Storage;
+            internal List<SessionData> Sessions;
+            internal long Version;
+            internal bool Ready;
+            internal bool PendingMoves;
+            internal bool DiscardPendingMoves;
+        }
+
+        internal static PreparedCatalog CaptureCatalog()
+        {
+            return new PreparedCatalog { Path = acceptedCatalogPath, Storage = sessionStorage,
+                Sessions = GetAllSessions(), Version = sessionCatalogVersion, Ready = IsSessionCatalogReady,
+                PendingMoves = HasPendingSessionMoves };
+        }
+
+        internal static bool HasAcceptedCatalog(string folder)
+        {
+            return IsSessionCatalogReady && String.Equals(acceptedCatalogPath,
+                Path.GetFullPath(Path.Combine(folder, "Sessions.XML")), StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static async Task<PreparedCatalog> PrepareCatalogAsync(string folder, CancellationToken cancellation,
+            bool discardPendingMoves = false)
+        {
+            EnsureCatalogCanBeReplaced(discardPendingMoves);
+            string path = Path.GetFullPath(Path.Combine(folder, "Sessions.XML"));
+            string originalPath = acceptedCatalogPath;
+            var storage = new SessionStorage();
+            var prepared = new PreparedCatalog { Path = path, Storage = storage,
+                Sessions = GetAllSessions(), Version = sessionCatalogVersion, Ready = true, DiscardPendingMoves = discardPendingMoves };
+            var loaded = await storage.LoadPrimaryOrMissingAsync(path, cancellation);
+            if (loaded != null) prepared.Sessions = loaded;
+            else if (discardPendingMoves && HasPendingSessionMoves)
+                prepared.Sessions = (originalPath == null ? null :
+                    await new SessionStorage().LoadPrimaryOrMissingAsync(originalPath, cancellation)) ?? new List<SessionData>();
+            cancellation.ThrowIfCancellationRequested();
+            ValidateSessionCatalog(prepared.Sessions);
+            return prepared;
+        }
+
+        internal static void AcceptCatalog(PreparedCatalog prepared, bool restore = false)
+        {
+            if (!restore)
+            {
+                EnsureCatalogCanBeReplaced(prepared.DiscardPendingMoves);
+                if (prepared.Version != sessionCatalogVersion)
+                    throw new InvalidOperationException("Sessions changed while loading the settings folder. Try saving Options again.");
+            }
+            ReplaceSessionCatalog(prepared.Sessions);
+            sessionStorage = prepared.Storage;
+            acceptedCatalogPath = prepared.Path;
+            IsSessionCatalogReady = prepared.Ready;
+            HasPendingSessionMoves = prepared.PendingMoves;
+        }
+
+        private static void EnsureCatalogCanBeReplaced(bool discardPendingMoves)
+        {
+            EnsureSessionCatalogIdle();
+            if (HasPendingSessionMoves && !discardPendingMoves)
+                throw new InvalidOperationException("Save or discard the pending session moves before replacing the catalog.");
+        }
+
+        internal static async Task<bool?> ResolvePendingSessionMovesAsync(IWin32Window owner)
+        {
+            EnsureSessionCatalogIdle();
+            if (!HasPendingSessionMoves) return false;
+
+            MainForm?.PauseDelayedSessionSave();
+            var result = MessageBox.Show(owner, "There are unsaved session moves.\n\n" +
+                "Yes saves the moves, No discards them, and Cancel keeps the current catalog.",
+                "Unsaved Session Moves", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
+            if (result == DialogResult.Cancel)
+            {
+                ReportStatus("The session moves are still unsaved.");
+                return null;
+            }
+            if (result == DialogResult.No) return true;
+            await SaveSessionsAsync();
+            return false;
         }
 
         private static SortedList<string, SessionData> ValidateSessionCatalog(
@@ -468,6 +576,7 @@ namespace SuperPutty
 
         internal static void ReplaceSessionCatalog(IEnumerable<SessionData> sessions)
         {
+            EnsureSessionCatalogIdle();
             var replacement = sessions.ToList();
             var staged = ValidateSessionCatalog(replacement);
             bool notify = sessionsList.RaiseListChangedEvents;
@@ -479,6 +588,7 @@ namespace SuperPutty
                 foreach (var session in replacement) sessionsList.Add(session);
             }
             finally { sessionsList.RaiseListChangedEvents = notify; }
+            HasPendingSessionMoves = false;
             if (notify) sessionsList.ResetBindings();
         }
 
@@ -497,6 +607,22 @@ namespace SuperPutty
         }
 
         internal static void SaveSessionChanges(SessionData session, SessionData edited, Action persistSessions)
+        {
+            SaveSessionChangesCoreAsync(session, edited, AsCompletedTask(persistSessions)).GetAwaiter().GetResult();
+        }
+
+        internal static Task SaveSessionChangesAsync(SessionData session, SessionData edited)
+        {
+            return SaveSessionChangesCoreAsync(session, edited, SaveSessionsAsync);
+        }
+
+        private static Func<Task> AsCompletedTask(Action action)
+        {
+            if (action == null) throw new ArgumentNullException(nameof(action));
+            return () => { action(); return Task.CompletedTask; };
+        }
+
+        private static async Task SaveSessionChangesCoreAsync(SessionData session, SessionData edited, Func<Task> persistSessions)
         {
             EnsureSessionCatalogReady();
             if (session == null || edited == null || persistSessions == null)
@@ -519,7 +645,7 @@ namespace SuperPutty
                     throw new InvalidOperationException("A session name or ID change was canceled.");
                 if (!saved) sessionsList.Add(session);
                 sessionsMap = ValidateSessionCatalog(sessionsList);
-                persistSessions();
+                await persistSessions();
             }
             catch
             {
@@ -545,6 +671,7 @@ namespace SuperPutty
 
         private static void ChangeSessionIds(IDictionary<SessionData, string> renamed)
         {
+            EnsureSessionCatalogIdle();
             var staged = ValidateSessionCatalog(sessionsList, renamed);
             var original = renamed.Keys.ToDictionary(session => session, session => session.SessionId);
             IsUpdatingSessionCatalog = true;
@@ -557,6 +684,7 @@ namespace SuperPutty
                         throw new InvalidOperationException("A session ID change was canceled.");
                 }
                 sessionsMap = staged;
+                HasPendingSessionMoves = true;
             }
             catch
             {
@@ -602,16 +730,129 @@ namespace SuperPutty
             if (notify) sessionsList.ResetBindings();
         }
 
+        internal static void DeleteSessions(IEnumerable<SessionData> sessions, Action persistSessions)
+        {
+            DeleteSessionsCoreAsync(sessions, AsCompletedTask(persistSessions)).GetAwaiter().GetResult();
+        }
+
+        internal static Task DeleteSessionsAsync(IEnumerable<SessionData> sessions)
+        {
+            return DeleteSessionsCoreAsync(sessions, SaveSessionsAsync);
+        }
+
+        private static async Task DeleteSessionsCoreAsync(IEnumerable<SessionData> sessions, Func<Task> persistSessions)
+        {
+            EnsureSessionCatalogReady();
+            if (sessions == null || persistSessions == null)
+                throw new ArgumentNullException(sessions == null ? nameof(sessions) : nameof(persistSessions));
+            var removed = new HashSet<SessionData>(sessions);
+            var original = GetAllSessions();
+            var existing = new HashSet<SessionData>(original);
+            if (!removed.IsSubsetOf(existing))
+                throw new InvalidOperationException("A session selected for deletion is no longer in the catalog.");
+            var remaining = original.Where(session => !removed.Contains(session)).ToList();
+            var originalMap = sessionsMap;
+            bool notify = sessionsList.RaiseListChangedEvents;
+            bool updating = IsUpdatingSessionCatalog;
+            try
+            {
+                IsUpdatingSessionCatalog = true;
+                sessionsList.RaiseListChangedEvents = false;
+                sessionsMap = ValidateSessionCatalog(remaining);
+                sessionsList.Clear();
+                foreach (var session in remaining) sessionsList.Add(session);
+                await persistSessions();
+            }
+            catch
+            {
+                sessionsMap = originalMap;
+                sessionsList.Clear();
+                foreach (var session in original) sessionsList.Add(session);
+                throw;
+            }
+            finally
+            {
+                IsUpdatingSessionCatalog = updating;
+                sessionsList.RaiseListChangedEvents = notify;
+                if (notify) sessionsList.ResetAfterSave();
+            }
+        }
+
         /// <summary>Save in-application Session Database to XML File</summary>
         public static void SaveSessions()
         {
-            EnsureSessionCatalogReady();
+            string path = GetAcceptedSessionSavePath();
             Log.InfoFormat("Saving all sessions");
-            sessionStorage.Save(GetAllSessions(), SessionsFileName);
+            sessionStorage.Save(GetAllSessions(), path);
+            MarkSessionMovesSaved();
+        }
+
+        private static string GetAcceptedSessionSavePath()
+        {
+            EnsureSessionCatalogReady();
+            string path = Path.GetFullPath(SessionsFileName);
+            if (!String.Equals(acceptedCatalogPath, path, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The settings folder changed. Load its session catalog successfully before saving.");
+            return path;
+        }
+
+        internal static async Task SaveSessionsAsync()
+        {
+            string path = GetAcceptedSessionSavePath();
+            var storage = sessionStorage;
+            var snapshot = CloneSessions();
+            sessionWriteInProgress = true;
+            try
+            {
+                await Task.Run(() => storage.Save(snapshot, path));
+                MarkSessionMovesSaved();
+            }
+            finally { sessionWriteInProgress = false; }
+        }
+
+        internal static async Task ExportSessionsAsync(string destination)
+        {
+            EnsureSessionCatalogIdle();
+            string configuredFolder = Settings.SettingsFolder;
+            string active = String.IsNullOrWhiteSpace(configuredFolder) ? null : SessionsFileName;
+            string accepted = acceptedCatalogPath;
+            var snapshot = CloneSessions();
+            sessionWriteInProgress = true;
+            try
+            {
+                await Task.Run(() =>
+                {
+                    if ((active != null && SharedFile.IsSameDestination(active, destination)) ||
+                        (accepted != null && !String.Equals(active, accepted, StringComparison.OrdinalIgnoreCase) &&
+                            SharedFile.IsSameDestination(accepted, destination)))
+                        throw new InvalidOperationException("Choose a different file. Export cannot replace the active session catalog.");
+                    new SessionStorage().Save(snapshot, destination);
+                });
+            }
+            finally { sessionWriteInProgress = false; }
+        }
+
+        private static List<SessionData> CloneSessions()
+        {
+            return sessionsList.Select(session => session.SnapshotForPersistence()).ToList();
+        }
+
+        private static void MarkSessionMovesSaved()
+        {
+            if (!HasPendingSessionMoves) return;
+            HasPendingSessionMoves = false;
+            sessionCatalogVersion++;
+        }
+
+        private static void EnsureSessionCatalogIdle()
+        {
+            if (sessionWriteInProgress)
+                throw new InvalidOperationException("A session save is already in progress. Wait for it to finish and try again.");
         }
 
         private static void EnsureSessionCatalogReady()
         {
+            EnsureSessionCatalogIdle();
             if (!IsSessionCatalogReady)
                 throw new InvalidOperationException("Saved sessions could not be loaded. Reload Sessions successfully before saving or importing changes.");
         }
@@ -623,6 +864,7 @@ namespace SuperPutty
         /// <returns>true on success, or false on failure or if session did not exist</returns>
         public static bool RemoveSession(string sessionId)
         {
+            EnsureSessionCatalogIdle();
             SessionData session = GetSessionById(sessionId);
             if (session != null)
             {
@@ -666,6 +908,7 @@ namespace SuperPutty
         /// <returns>true on success, false on failure</returns>
         public static bool AddSession(SessionData session)
         {
+            EnsureSessionCatalogIdle();
             if (session == null || String.IsNullOrWhiteSpace(session.SessionId) || String.IsNullOrWhiteSpace(session.SessionName) ||
                 session.SessionId.Split('/').Any(String.IsNullOrWhiteSpace))
                 throw new ArgumentException("A session requires a valid ID and name.");
@@ -756,7 +999,7 @@ namespace SuperPutty
                 // We use this to save the last docking location and to close the panel
                 PuttyClosedCallback callback = delegate
                 {
-                    CloseExitedSession(panel, session, SaveSessions);
+                    _ = CloseExitedSessionAsync(panel, session, SaveSessionsAsync);
                 };
 
                 try {
@@ -779,10 +1022,15 @@ namespace SuperPutty
 
         internal static void CloseExitedSession(ctlPuttyPanel panel, SessionData session, Action persist)
         {
+            CloseExitedSessionAsync(panel, session, AsCompletedTask(persist)).GetAwaiter().GetResult();
+        }
+
+        private static async Task CloseExitedSessionAsync(ctlPuttyPanel panel, SessionData session, Func<Task> persist)
+        {
             if (panel == null || panel.IsDisposed || panel.Disposing || !panel.IsHandleCreated) return;
             if (panel.InvokeRequired)
             {
-                try { panel.BeginInvoke((Action)(() => CloseExitedSession(panel, session, persist))); }
+                try { panel.BeginInvoke((Action)(() => { _ = CloseExitedSessionAsync(panel, session, persist); })); }
                 catch (InvalidOperationException) { } // The tab closed before the post.
                 return;
             }
@@ -793,7 +1041,10 @@ namespace SuperPutty
                 {
                     var previous = session.LastDockstate;
                     session.LastDockstate = panel.DockState;
-                    try { persist(); }
+                    // A pending move is written only by its save or the next
+                    // explicit catalog edit, never as a tab-close side effect.
+                    if (HasPendingSessionMoves) return;
+                    try { await persist(); }
                     catch
                     {
                         session.LastDockstate = previous;
@@ -801,7 +1052,7 @@ namespace SuperPutty
                     }
                 }
             }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException ||
+            catch (Exception ex) when (ex is IOException || ex is InvalidDataException || ex is UnauthorizedAccessException ||
                 ex is System.Security.SecurityException || ex is InvalidOperationException)
             {
                 Log.Warn("Unable to save the exited session's docking position.", ex);
@@ -994,9 +1245,13 @@ namespace SuperPutty
 
         internal static async Task ImportSessionsFromFileAsync(string fileName, CancellationToken cancellation)
         {
-            var imported = await sessionStorage.LoadAsync(fileName, cancellation);
+            // An import is a separate read, not acceptance of a new save baseline.
+            var catalogStorage = sessionStorage;
+            var imported = await new SessionStorage().LoadAsync(fileName, cancellation);
             cancellation.ThrowIfCancellationRequested();
-            ImportSessions(imported, "Imported");
+            if (!ReferenceEquals(sessionStorage, catalogStorage))
+                throw new InvalidOperationException("The session catalog changed during the import. Start the import again.");
+            await ImportSessionsAsync(imported, "Imported");
         }
 
         /// <summary>Import sessions from the specified folder into the in-application database</summary>
@@ -1046,6 +1301,16 @@ namespace SuperPutty
 
         internal static void ImportSessions(List<SessionData> sessions, string folder, Action persistSessions)
         {
+            ImportSessionsCoreAsync(sessions, folder, AsCompletedTask(persistSessions)).GetAwaiter().GetResult();
+        }
+
+        internal static Task ImportSessionsAsync(List<SessionData> sessions, string folder)
+        {
+            return ImportSessionsCoreAsync(sessions, folder, SaveSessionsAsync);
+        }
+
+        private static async Task ImportSessionsCoreAsync(List<SessionData> sessions, string folder, Func<Task> persistSessions)
+        {
             EnsureSessionCatalogReady();
             if (sessions == null)
             {
@@ -1076,7 +1341,7 @@ namespace SuperPutty
                     addedSessions.Add(session);
                 }
 
-                persistSessions();
+                await persistSessions();
                 Log.InfoFormat($"Imported {sessions.Count} sessions into {folder}");
             }
             catch

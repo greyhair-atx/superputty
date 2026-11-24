@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -109,8 +108,7 @@ namespace SuperPuttyUnitTests
                 File.WriteAllText(file, "<ArrayOfSessionData />");
                 foreach (string stamp in new[] { "20000101_010000", "20000101_130000", "20000101_140000" })
                     File.WriteAllText(Path.Combine(directory, "Sessions." + stamp + ".XML"), "<ArrayOfSessionData />");
-                typeof(SessionData).GetMethod("BackUpFiles", BindingFlags.NonPublic | BindingFlags.Static)
-                    .Invoke(null, new object[] { file, 2 });
+                SessionData.BackUpFiles(file, 2, File.ReadAllBytes(file));
                 string[] backups = Directory.GetFiles(directory, "Sessions.*.XML");
                 Assert.AreEqual(2, backups.Length);
                 Assert.IsTrue(backups.Any(path => path.EndsWith("20000101_140000.XML")));

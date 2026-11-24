@@ -14,21 +14,14 @@ namespace SuperPuttyUnitTests
     {
         private string directory;
         private string originalFolder;
-        private List<SessionData> originalCatalog;
+        private App.PreparedCatalog originalCatalog;
         private string SessionsFile { get { return Path.Combine(directory, "Sessions.XML"); } }
-
-        private sealed class RestoredStorage : ISessionStorage
-        {
-            internal List<SessionData> Catalog;
-            public Task<List<SessionData>> LoadAsync(string path, CancellationToken token) { return Task.FromResult(Catalog); }
-            public void Save(List<SessionData> sessions, string path) { Assert.Fail("Restoring test state must not save."); }
-        }
 
         [SetUp]
         public void SetUp()
         {
             originalFolder = App.Settings.SettingsFolder;
-            originalCatalog = App.GetAllSessions();
+            originalCatalog = App.CaptureCatalog();
             directory = Path.Combine(Path.GetTempPath(), "SuperPutty-StartupCatalog-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
             App.Settings.SettingsFolder = directory;
@@ -38,14 +31,9 @@ namespace SuperPuttyUnitTests
         [TearDown]
         public void TearDown()
         {
-            // A successful load restores readiness as well as the original catalog,
-            // without reaching into private state or writing the developer's files.
-            if (Directory.Exists(SessionsFile)) Directory.Delete(SessionsFile);
-            File.WriteAllText(SessionsFile, "temporary probe file");
             try
             {
-                App.LoadSessionsAsync(CancellationToken.None, new RestoredStorage { Catalog = originalCatalog })
-                    .GetAwaiter().GetResult();
+                App.AcceptCatalog(originalCatalog, true);
             }
             finally
             {

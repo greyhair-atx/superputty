@@ -24,6 +24,7 @@ using SuperPutty.Data;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Diagnostics;
 
 namespace SuperPutty.Utils
 {
@@ -39,6 +40,22 @@ namespace SuperPutty.Utils
             "smart sizing:i:1\r\n" +
             "use multimon:i:0\r\n";
         private static readonly object SmartSizingFileLock = new object();
+        private static readonly string SmartSizingDirectory = Path.Combine(Path.GetTempPath(), "SuperPuTTY",
+            "rdp-" + Process.GetCurrentProcess().Id + "-" + Guid.NewGuid().ToString("N"));
+
+        static RDPStartInfo()
+        {
+            AppDomain.CurrentDomain.ProcessExit += delegate
+            {
+                try
+                {
+                    File.Delete(Path.Combine(SmartSizingDirectory, SmartSizingFileName));
+                    if (Directory.Exists(SmartSizingDirectory)) Directory.Delete(SmartSizingDirectory);
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            };
+        }
 
         public RDPStartInfo(SessionData session, String binName)
         {
@@ -122,15 +139,31 @@ namespace SuperPutty.Utils
         /// </summary>
         private static string GetSmartSizingConnectionFile()
         {
-            string directory = Path.Combine(Path.GetTempPath(), "SuperPuTTY");
+            string directory = SmartSizingDirectory;
             string fileName = Path.Combine(directory, SmartSizingFileName);
 
             lock (SmartSizingFileLock)
             {
                 Directory.CreateDirectory(directory);
-                if (!File.Exists(fileName) || File.ReadAllText(fileName) != SmartSizingFileContents)
+                using (SharedFile.Lock(fileName))
                 {
-                    File.WriteAllText(fileName, SmartSizingFileContents, Encoding.Unicode);
+                    string revision = SharedFile.Revision(fileName);
+                    if (revision == null || Encoding.Unicode.GetString(SharedFile.Read(fileName)).TrimStart('\uFEFF') != SmartSizingFileContents)
+                    {
+                        string temporary = fileName + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                        try
+                        {
+                            using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                            using (var writer = new StreamWriter(output, Encoding.Unicode))
+                            {
+                                writer.Write(SmartSizingFileContents);
+                                writer.Flush();
+                                output.Flush(true);
+                            }
+                            SharedFile.Publish(temporary, fileName, null, revision);
+                        }
+                        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+                    }
                 }
             }
 

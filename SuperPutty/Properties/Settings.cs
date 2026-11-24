@@ -27,6 +27,27 @@ namespace SuperPutty.Properties {
 
         public string SettingsFilePath { get; private set; }
 
+        internal event EventHandler SettingsApplied;
+
+        public override void Save()
+        {
+            bool canceled = false;
+            System.Configuration.SettingsSavingEventHandler saving = (sender, args) => canceled = args.Cancel;
+            SettingsSaving += saving;
+            try { base.Save(); }
+            finally { SettingsSaving -= saving; }
+            if (canceled) throw new InvalidOperationException("Saving preferences was canceled.");
+            // Display changes follow a successful write. A failed write must leave
+            // controls showing the previously accepted preferences.
+            var applied = SettingsApplied;
+            if (applied == null) return;
+            foreach (EventHandler handler in applied.GetInvocationList())
+            {
+                try { handler(this, EventArgs.Empty); }
+                catch (Exception ex) { Log.Warn("Preferences were saved, but a control could not refresh.", ex); }
+            }
+        }
+
         protected override void OnSettingsLoaded(object sender, System.Configuration.SettingsLoadedEventArgs e)
         {
             Log.InfoFormat("Settings Loaded");

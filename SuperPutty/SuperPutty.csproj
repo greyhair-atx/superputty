@@ -291,6 +291,7 @@
     <Compile Include="Utils\PSStartInfo.cs" />
     <Compile Include="Utils\NativeMethods.cs" />
     <Compile Include="Utils\PortableSettingsProvider.cs" />
+    <Compile Include="Utils\SharedFile.cs" />
     <Compile Include="Utils\SettingsFolderResolver.cs" />
     <Compile Include="Utils\PropertyNotifiableObject.cs" />
     <Compile Include="Utils\PuttyStartInfo.cs" />

@@ -2,6 +2,7 @@ using SuperPutty.Data;
 using SuperPutty.Utils;
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace SuperPutty
@@ -119,8 +120,9 @@ namespace SuperPutty
             subscriptionsReleased = true;
         }
 
-        private void sessionDetailPropertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
+        private async void sessionDetailPropertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
         {
+            if (saving) return;
             SessionData Session = sessionDetailPropertyGrid.SelectedObject as SessionData;
             if (Session != null)
             {
@@ -167,10 +169,19 @@ namespace SuperPutty
 
                 Session.SessionId = SessionData.CombineSessionIds(SessionData.GetSessionParentId(Session.SessionId), Session.SessionName);
             }
-            CommitChanges(SuperPuTTY.SaveSessions);
+            await CommitChangesAsync(SuperPuTTY.SaveSessionChangesAsync);
         }
 
         internal bool CommitChanges(Action persist)
+        {
+            return CommitChangesAsync((session, edited) =>
+            {
+                SuperPuTTY.SaveSessionChanges(session, edited, persist);
+                return Task.CompletedTask;
+            }).GetAwaiter().GetResult();
+        }
+
+        private async Task<bool> CommitChangesAsync(Func<SessionData, SessionData, Task> save)
         {
             var session = selectedSession;
             var edited = sessionDetailPropertyGrid.SelectedObject as SessionData;
@@ -178,17 +189,25 @@ namespace SuperPutty
             try
             {
                 saving = true;
-                SuperPuTTY.SaveSessionChanges(session, edited, persist);
+                sessionDetailPropertyGrid.Enabled = false;
+                await save(session, edited);
                 return true;
             }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException ||
+            catch (Exception ex) when (ex is IOException || ex is InvalidDataException || ex is UnauthorizedAccessException ||
                 ex is System.Security.SecurityException || ex is InvalidOperationException || ex is ArgumentException)
             {
-                sessionDetailPropertyGrid.SelectedObject = session.Clone();
-                ShowSaveError("The session could not be saved. The edit was reverted.\n\n" + ex.Message);
+                if (!IsDisposed && !Disposing)
+                {
+                    if (ReferenceEquals(selectedSession, session)) sessionDetailPropertyGrid.SelectedObject = session.Clone();
+                    ShowSaveError("The session could not be saved. The edit was reverted.\n\n" + ex.Message);
+                }
                 return false;
             }
-            finally { saving = false; }
+            finally
+            {
+                saving = false;
+                if (!IsDisposed && !Disposing) sessionDetailPropertyGrid.Enabled = true;
+            }
         }
 
         protected virtual void ShowSaveError(string message)

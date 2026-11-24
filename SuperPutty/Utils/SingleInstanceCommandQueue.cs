@@ -9,6 +9,7 @@ namespace SuperPutty.Utils
     {
         private readonly object gate = new object();
         private readonly Dictionary<long, string[]> pending = new Dictionary<long, string[]>();
+        private readonly HashSet<long> scheduled = new HashSet<long>();
         private readonly Action<Action> post;
         private readonly Action<string[]> dispatch;
         private readonly Func<bool> ready;
@@ -41,14 +42,25 @@ namespace SuperPutty.Utils
                 id = ++nextId;
                 pending.Add(id, (string[])args.Clone());
             }
+            if (!Post(id)) return SingleInstanceReply.NotReady;
+            lock (gate) return stopped ? SingleInstanceReply.NotReady : SingleInstanceReply.Accepted;
+        }
+
+        private bool Post(long id)
+        {
+            lock (gate)
+            {
+                if (stopped || !pending.ContainsKey(id)) return false;
+                if (!scheduled.Add(id)) return true;
+            }
             try { post(() => Execute(id)); }
             catch (Exception ex) when (ex is InvalidOperationException || ex is System.ComponentModel.Win32Exception)
             {
-                lock (gate) pending.Remove(id);
+                lock (gate) { pending.Remove(id); scheduled.Remove(id); }
                 ReportFailure(ex);
-                return SingleInstanceReply.NotReady;
+                return false;
             }
-            lock (gate) return stopped ? SingleInstanceReply.NotReady : SingleInstanceReply.Accepted;
+            return true;
         }
 
         private void Execute(long id)
@@ -56,12 +68,29 @@ namespace SuperPutty.Utils
             string[] args;
             lock (gate)
             {
+                scheduled.Remove(id);
                 if (!pending.TryGetValue(id, out args)) return;
+                // A modal exit confirmation can pump posted UI callbacks. Keep
+                // accepted work so canceling the exit can resume it.
+                if (!ready() && !stopped) return;
                 pending.Remove(id);
-                if (stopped || !ready()) return;
+                if (stopped) return;
             }
             try { dispatch(args); }
             catch (Exception ex) { ReportFailure(ex); }
+        }
+
+        internal void ResumePending()
+        {
+            long[] ids;
+            lock (gate)
+            {
+                if (stopped || !ready()) return;
+                ids = new long[pending.Count];
+                pending.Keys.CopyTo(ids, 0);
+            }
+            Array.Sort(ids);
+            foreach (long id in ids) Post(id);
         }
 
         private void ReportFailure(Exception error)
@@ -72,7 +101,7 @@ namespace SuperPutty.Utils
 
         internal void Stop()
         {
-            lock (gate) { stopped = true; pending.Clear(); }
+            lock (gate) { stopped = true; pending.Clear(); scheduled.Clear(); }
         }
 
         public void Dispose() { Stop(); }

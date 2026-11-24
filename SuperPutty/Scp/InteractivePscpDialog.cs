@@ -31,6 +31,7 @@ namespace SuperPutty.Scp
     /// </summary>
     internal sealed class InteractivePscpDialog : Form
     {
+        private static readonly log4net.ILog Log = log4net.LogManager.GetLogger(typeof(InteractivePscpDialog));
         private const string HostSwitch = "--pscp-interactive-host";
         private const string PipePrefix = "SuperPuTTY-pscp-interactive-";
         private readonly Panel consolePanel = new Panel { Dock = DockStyle.Fill };
@@ -47,7 +48,10 @@ namespace SuperPutty.Scp
         private SafeFileHandle job;
         private Process host;
         private IntPtr consoleWindow;
-        private bool stopped, finished, workerEnded;
+        private uint consoleOwner;
+        private uint consoleThread;
+        private volatile bool stopped;
+        private bool finished, workerEnded;
         private long lastActivity;
 
         internal InteractivePscpResult Result { get; } = new InteractivePscpResult();
@@ -129,11 +133,20 @@ namespace SuperPutty.Scp
                         throw new TimeoutException("The PSCP console could not be started.");
                     pipe.EndWaitForConnection(connected);
                 }
-                var reader = new BinaryReader(pipe, Encoding.UTF8, true);
+                // BinaryReader otherwise performs a pipe read for every frame kind
+                // and string-length byte, particularly expensive for empty lines.
+                lock (resources)
+                {
+                    if (stopped) return;
+                    VerifyPipeClient(pipe, job);
+                }
+                var reader = new BinaryReader(new BufferedStream(pipe, 16 * 1024), Encoding.UTF8, true);
                 var writer = new BinaryWriter(pipe, Encoding.UTF8, true);
                 stage = "reading the console window";
                 var window = new IntPtr(reader.ReadInt64());
-                Post(() => EmbedConsole(window));
+                uint owner = reader.ReadUInt32();
+                uint thread = reader.ReadUInt32();
+                Post(() => EmbedConsole(window, owner, thread));
                 lock (resources)
                 {
                     if (stopped) return;
@@ -191,44 +204,92 @@ namespace SuperPutty.Scp
             }
         }
 
-        private void EmbedConsole(IntPtr window)
+        private static void VerifyPipeClient(NamedPipeServerStream connection, SafeFileHandle job)
+        {
+            uint clientId;
+            if (!Native.GetNamedPipeClientProcessId(connection.SafePipeHandle, out clientId)) throw new Win32Exception();
+            try
+            {
+                using (var client = Process.GetProcessById((int)clientId))
+                {
+                    bool inJob;
+                    if (!Native.IsProcessInJob(client.Handle, job, out inJob)) throw new Win32Exception();
+                    if (!inJob) throw new IOException("The PSCP console helper did not belong to its launch job.");
+                }
+            }
+            catch (ArgumentException ex) { throw new IOException("The PSCP console helper exited before connection.", ex); }
+        }
+
+        internal static bool IsOwnedConsoleWindow(IntPtr window, uint expectedOwner, uint expectedThread, IntPtr expectedParent)
+        {
+            uint actualOwner;
+            return window != IntPtr.Zero && expectedOwner != 0 && expectedThread != 0 &&
+                NativeMethods.GetWindowThreadProcessId(window, out actualOwner) == expectedThread && actualOwner == expectedOwner &&
+                (expectedParent == IntPtr.Zero || NativeMethods.GetAncestor(window, 1) == expectedParent);
+        }
+
+        private bool HasAttachedConsole()
+        {
+            return !stopped && consolePanel.IsHandleCreated &&
+                IsOwnedConsoleWindow(consoleWindow, consoleOwner, consoleThread, consolePanel.Handle);
+        }
+
+        private void EmbedConsole(IntPtr window, uint owner, uint thread)
         {
             if (stopped) return;
-            if (!Native.IsWindow(window))
+            string stage = "verifying window ownership";
+            try
             {
-                StopOperation();
-                Complete(-1, "The PSCP console window could not be located.");
-                return;
+                IntPtr parent = NativeMethods.GetAncestor(window, 1);
+                if (!IsOwnedConsoleWindow(window, owner, thread, IntPtr.Zero) ||
+                    (parent != IntPtr.Zero && parent != Native.GetDesktopWindow()))
+                    throw new InvalidOperationException("The PSCP console window is no longer available to embed.");
+
+                stage = "attaching the window";
+                ApplicationPanel.ReparentWindow(window, consolePanel.Handle);
+                if (!IsOwnedConsoleWindow(window, owner, thread, consolePanel.Handle))
+                    throw new InvalidOperationException("The embedded PSCP console window changed.");
+
+                const int styleIndex = -16;
+                stage = "setting the window frame";
+                NativeMethods.ClearLastError(0);
+                int style = NativeMethods.GetWindowLong(window, styleIndex);
+                if (style == 0 && Marshal.GetLastWin32Error() != 0) throw new Win32Exception();
+                NativeMethods.ClearLastError(0);
+                int previous = NativeMethods.SetWindowLong(window, styleIndex, ConsoleApplicationPanel.GetEmbeddedWindowStyle(style));
+                if (previous == 0 && Marshal.GetLastWin32Error() != 0) throw new Win32Exception();
+                if (!NativeMethods.SetWindowPos(window, IntPtr.Zero, 0, 0, consolePanel.Width, consolePanel.Height, 0x0020 | 0x0004))
+                    throw new Win32Exception();
+                consoleWindow = window;
+                consoleOwner = owner;
+                consoleThread = thread;
+                stage = "verifying the embedded window";
+                if (!HasAttachedConsole()) throw new InvalidOperationException("The embedded PSCP console window changed.");
+                Native.ShowWindow(window, 5);
+                FocusConsole();
             }
-            consoleWindow = window;
-            int style = Native.GetWindowLong(window, -16);
-            Native.SetWindowLong(window, -16, ConsoleApplicationPanel.GetEmbeddedWindowStyle(style));
-            Native.SetParent(window, consolePanel.Handle);
-            if (Native.GetParent(window) != consolePanel.Handle)
+            catch (Exception ex) when (ex is Win32Exception || ex is InvalidOperationException)
             {
+                Log.Warn("The PSCP console could not be embedded.", ex);
+                consoleWindow = IntPtr.Zero;
                 StopOperation();
-                Complete(-1, "The PSCP console could not be embedded.");
-                return;
+                Complete(-1, "The PSCP console could not be embedded while " + stage + ". Close and retry.");
             }
-            Native.SetWindowPos(window, IntPtr.Zero, 0, 0, consolePanel.Width, consolePanel.Height, 0x0020 | 0x0004);
-            Native.ShowWindow(window, 5);
-            ResizeConsole();
-            FocusConsole();
         }
 
         private void ResizeConsole()
         {
-            if (consoleWindow != IntPtr.Zero)
+            if (HasAttachedConsole())
                 Native.MoveWindow(consoleWindow, 0, 0, consolePanel.Width, consolePanel.Height, true);
         }
 
         private void FocusConsole()
         {
-            if (consoleWindow == IntPtr.Zero || !Native.IsWindow(consoleWindow)) return;
+            if (!IsHandleCreated || !HasAttachedConsole()) return;
             uint current = Native.GetWindowThreadProcessId(Handle, IntPtr.Zero);
             uint console = Native.GetWindowThreadProcessId(consoleWindow, IntPtr.Zero);
-            bool attached = current != console && Native.AttachThreadInput(current, console, true);
-            try { Native.SetFocus(consoleWindow); }
+            bool attached = current != 0 && console != 0 && current != console && Native.AttachThreadInput(current, console, true);
+            try { if (HasAttachedConsole()) Native.SetFocus(consoleWindow); }
             finally { if (attached) Native.AttachThreadInput(current, console, false); }
         }
 
@@ -323,10 +384,19 @@ namespace SuperPutty.Scp
                     connection.Connect(15000);
                     var reader = new BinaryReader(connection, Encoding.UTF8, true);
                     var writer = new BinaryWriter(connection, Encoding.UTF8, true);
-                    writer.Write(Native.GetConsoleWindow().ToInt64());
+                    // Windows may give the console window to a different process
+                    // than the conhost launcher. Report the identity of this
+                    // helper's own console over the job-verified connection.
+                    IntPtr window = Native.GetConsoleWindow();
+                    uint owner;
+                    uint windowThread = NativeMethods.GetWindowThreadProcessId(window, out owner);
+                    writer.Write(window.ToInt64());
+                    writer.Write(owner);
+                    writer.Write(windowThread);
                     writer.Flush();
                     string executable = ScpOutputCapture.ReadString(reader);
                     string arguments = ScpOutputCapture.ReadString(reader);
+                    using (var output = new BufferedOutputWriter(connection))
                     using (var child = Process.Start(new ProcessStartInfo
                     {
                         FileName = executable,
@@ -343,21 +413,14 @@ namespace SuperPutty.Scp
                         {
                             string line;
                             while ((line = ScpOutputCapture.ReadLine(child.StandardOutput)) != null)
-                            {
-                                writer.Write((byte)0);
-                                writer.Write(line);
-                                writer.Flush();
-                            }
+                                output.WriteLine(line);
                             child.WaitForExit();
-                            writer.Write((byte)1);
-                            writer.Write(child.ExitCode);
-                            writer.Flush();
+                            output.WriteExit(child.ExitCode);
                         }
                         catch (ScpOutputLimitException)
                         {
                             // A fixed status crosses the pipe; no oversized content is forwarded.
-                            writer.Write((byte)2);
-                            writer.Flush();
+                            output.WriteLimit();
                         }
                     }
                     // Keep failures visible until the user closes the dialog. The parent job
@@ -375,8 +438,119 @@ namespace SuperPutty.Scp
             return WindowsCommandLine.RewriteSensitive(arguments, null, true, true);
         }
 
+        /// <summary>
+        /// Preserves the wire framing while coalescing short lines into pipe writes.
+        /// The first line is immediate; a timer also flushes quiet producers whose
+        /// next ReadLine may block indefinitely waiting for authentication or work.
+        /// </summary>
+        internal sealed class BufferedOutputWriter : IDisposable
+        {
+            private const int BatchBytes = 16 * 1024;
+            private const int FlushIntervalMilliseconds = 100;
+            private readonly object gate = new object();
+            private readonly Stream destination;
+            private readonly MemoryStream pending = new MemoryStream();
+            private readonly BinaryWriter frames;
+            private readonly System.Threading.Timer flushTimer;
+            private Exception failure;
+            private bool firstLine = true, disposed;
+
+            internal BufferedOutputWriter(Stream destination)
+            {
+                this.destination = destination;
+                frames = new BinaryWriter(pending, Encoding.UTF8, true);
+                flushTimer = new System.Threading.Timer(FlushPending, null,
+                    FlushIntervalMilliseconds, FlushIntervalMilliseconds);
+            }
+
+            internal void WriteLine(string line)
+            {
+                if (line.Length > ScpOutputCapture.MaximumLineCharacters) throw new ScpOutputLimitException();
+                lock (gate)
+                {
+                    ThrowIfUnavailable();
+                    frames.Write((byte)0);
+                    frames.Write(line);
+                    if (firstLine || pending.Length >= BatchBytes) Flush();
+                    firstLine = false;
+                }
+            }
+
+            internal void WriteExit(int exitCode)
+            {
+                lock (gate)
+                {
+                    ThrowIfUnavailable();
+                    frames.Write((byte)1);
+                    frames.Write(exitCode);
+                    Flush();
+                }
+            }
+
+            internal void WriteLimit()
+            {
+                lock (gate)
+                {
+                    ThrowIfUnavailable();
+                    frames.Write((byte)2);
+                    Flush();
+                }
+            }
+
+            private void ThrowIfUnavailable()
+            {
+                if (disposed) throw new ObjectDisposedException(nameof(BufferedOutputWriter));
+                if (failure != null) throw new IOException("The PSCP output pipe is unavailable.", failure);
+            }
+
+            private void Flush()
+            {
+                if (pending.Length == 0) return;
+                destination.Write(pending.GetBuffer(), 0, checked((int)pending.Length));
+                destination.Flush();
+                pending.SetLength(0);
+                pending.Position = 0;
+            }
+
+            private void FlushPending(object state)
+            {
+                lock (gate)
+                {
+                    if (disposed || failure != null) return;
+                    try { Flush(); }
+                    catch (Exception ex) when (ex is IOException || ex is InvalidOperationException)
+                    {
+                        // A disconnected parent must not raise an unhandled timer
+                        // exception. The producer observes this on its next frame.
+                        failure = ex;
+                    }
+                }
+            }
+
+            public void Dispose()
+            {
+                lock (gate)
+                {
+                    if (disposed) return;
+                    disposed = true;
+                    flushTimer.Dispose();
+                    frames.Dispose();
+                    pending.Dispose();
+                }
+                // Completed/status frames flush explicitly. On a failed or cancelled
+                // producer, discard a partial batch instead of masking its exception.
+            }
+        }
+
         private static class Native
         {
+            [DllImport("kernel32.dll", SetLastError = true)]
+            [return: MarshalAs(UnmanagedType.Bool)]
+            internal static extern bool GetNamedPipeClientProcessId(SafePipeHandle pipe, out uint processId);
+            [DllImport("kernel32.dll", SetLastError = true)]
+            [return: MarshalAs(UnmanagedType.Bool)]
+            internal static extern bool IsProcessInJob(IntPtr process, SafeFileHandle job, [MarshalAs(UnmanagedType.Bool)] out bool inJob);
+            [DllImport("user32.dll")] internal static extern IntPtr GetDesktopWindow();
             [StructLayout(LayoutKind.Sequential)] internal struct BasicLimits
             {
                 internal long ProcessTime, JobTime;
@@ -404,12 +578,6 @@ namespace SuperPutty.Scp
             [DllImport("kernel32.dll")] internal static extern bool AttachConsole(uint process);
             [DllImport("kernel32.dll")] internal static extern bool AllocConsole();
             [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] internal static extern bool SetConsoleTitle(string title);
-            [DllImport("user32.dll")] internal static extern bool IsWindow(IntPtr window);
-            [DllImport("user32.dll")] internal static extern IntPtr SetParent(IntPtr window, IntPtr parent);
-            [DllImport("user32.dll")] internal static extern IntPtr GetParent(IntPtr window);
-            [DllImport("user32.dll")] internal static extern int GetWindowLong(IntPtr window, int index);
-            [DllImport("user32.dll")] internal static extern int SetWindowLong(IntPtr window, int index, int value);
-            [DllImport("user32.dll")] internal static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int w, int h, int flags);
             [DllImport("user32.dll")] internal static extern bool ShowWindow(IntPtr window, int command);
             [DllImport("user32.dll")] internal static extern bool MoveWindow(IntPtr window, int x, int y, int w, int h, bool repaint);
             [DllImport("user32.dll")] internal static extern IntPtr SetFocus(IntPtr window);

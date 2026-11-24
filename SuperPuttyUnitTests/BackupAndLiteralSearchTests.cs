@@ -80,8 +80,7 @@ namespace SuperPuttyUnitTests
 
         private static void Backup(string path, int count)
         {
-            typeof(SessionData).GetMethod("BackUpFiles", BindingFlags.NonPublic | BindingFlags.Static)
-                .Invoke(null, new object[] { path, count });
+            SessionData.BackUpFiles(path, count, File.ReadAllBytes(path));
         }
     }
 }

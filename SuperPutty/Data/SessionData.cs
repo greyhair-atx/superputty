@@ -625,9 +625,9 @@ namespace SuperPutty.Data
         {
             new SessionStorage().Save(sessions, fileName);
         }
-        internal static void BackUpFiles(string fileName, int count)
+        internal static void BackUpFiles(string fileName, int count, byte[] snapshot)
         {
-            if (File.Exists(fileName) && count > 0)
+            if (snapshot != null && count > 0)
             {
                 try
                 {
@@ -637,7 +637,8 @@ namespace SuperPutty.Data
                     string backupName = Path.Combine(dirName, string.Format("{0}.{1:yyyyMMdd_HHmmss_fff}_{2}.XML",
                         fileBaseName, DateTime.Now, Guid.NewGuid().ToString("N")));
                     XmlDocument backup = new XmlDocument { XmlResolver = null };
-                    using (XmlReader reader = XmlReader.Create(fileName, new XmlReaderSettings
+                    using (var input = new MemoryStream(snapshot, false))
+                    using (XmlReader reader = XmlReader.Create(input, new XmlReaderSettings
                     {
                         DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null
                     }))
@@ -738,6 +739,16 @@ namespace SuperPutty.Data
             session.CopyFrom(this);
             
             return session;
+        }
+
+        internal SessionData SnapshotForPersistence()
+        {
+            // Catalog fields are values or immutable strings. Detach the clone
+            // from UI observers before handing it to the storage worker.
+            var snapshot = (SessionData)MemberwiseClone();
+            snapshot.OnPropertyChanged = null;
+            snapshot.OnPropertyChanging = null;
+            return snapshot;
         }
 
         public void CopyFrom(SessionData SessionToCopy)

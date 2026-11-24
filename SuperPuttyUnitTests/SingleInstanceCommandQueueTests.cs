@@ -54,6 +54,31 @@ namespace SuperPuttyUnitTests
         }
 
         [Test]
+        public void CancelingShutdownRetainsAndExecutesAcceptedWorkOnce()
+        {
+            var pending = new Queue<Action>();
+            var dispatched = new List<string>();
+            bool ready = true;
+            using (var queue = new SingleInstanceCommandQueue(pending.Enqueue,
+                args => dispatched.Add(args[0]), () => ready, 2))
+            {
+                Assert.AreEqual(SingleInstanceReply.Accepted, queue.TryEnqueue(new[] { "accepted before confirmation" }));
+                ready = false;
+                pending.Dequeue()();
+                Assert.AreEqual(1, queue.PendingCount);
+                Assert.AreEqual(0, dispatched.Count);
+                Assert.AreEqual(SingleInstanceReply.NotReady, queue.TryEnqueue(new[] { "during confirmation" }));
+                ready = true;
+                queue.ResumePending();
+                queue.ResumePending();
+                Assert.AreEqual(1, pending.Count, "Resuming must not post duplicate UI callbacks.");
+                while (pending.Count > 0) pending.Dequeue()();
+                CollectionAssert.AreEqual(new[] { "accepted before confirmation" }, dispatched);
+                Assert.AreEqual(0, queue.PendingCount);
+            }
+        }
+
+        [Test]
         public void AcceptedCommandHasItsOwnArgumentSnapshot()
         {
             Action pending = null;

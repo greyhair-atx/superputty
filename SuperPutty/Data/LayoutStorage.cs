@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 using log4net;
+using SuperPutty.Utils;
 
 namespace SuperPutty.Data
 {
@@ -30,20 +31,16 @@ namespace SuperPutty.Data
 
         private static byte[] ReadValidated(string path, Action<byte[]> validateLayout)
         {
-            byte[] content;
-            using (var input = File.OpenRead(path))
-            using (var output = new MemoryStream())
-            {
-                if (input.Length > MaximumLayoutBytes) throw new InvalidDataException("The layout exceeds the 16 MiB limit.");
-                var buffer = new byte[8192];
-                int read;
-                while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
-                {
-                    if (output.Length + read > MaximumLayoutBytes) throw new InvalidDataException("The layout exceeds the 16 MiB limit.");
-                    output.Write(buffer, 0, read);
-                }
-                content = output.ToArray();
-            }
+            return ValidateContent(SharedFile.Read(path, MaximumLayoutBytes), validateLayout);
+        }
+
+        private static byte[] ReadValidated(string path, Action<byte[]> validateLayout, out SharedFile.FileVersion version)
+        {
+            return ValidateContent(SharedFile.Capture(path, MaximumLayoutBytes, out version), validateLayout);
+        }
+
+        private static byte[] ValidateContent(byte[] content, Action<byte[]> validateLayout)
+        {
             try
             {
                 var settings = new XmlReaderSettings
@@ -104,10 +101,23 @@ namespace SuperPutty.Data
 
         internal static LayoutLoadResult LoadValidated(string filePath, Action<byte[]> validateLayout)
         {
+            using (SharedFile.Lock(filePath))
+            {
+                for (int attempt = 0; ; attempt++)
+                {
+                    try { return LoadValidatedCore(filePath, validateLayout); }
+                    catch (SharedFile.ChangedException) when (attempt < 2) { }
+                }
+            }
+        }
+
+        private static LayoutLoadResult LoadValidatedCore(string filePath, Action<byte[]> validateLayout)
+        {
             if (validateLayout == null) throw new ArgumentNullException(nameof(validateLayout));
+            SharedFile.FileVersion version = new SharedFile.FileVersion { Missing = true };
             bool missing = false;
             Exception failure;
-            try { return new LayoutLoadResult(ReadValidated(filePath, validateLayout)); }
+            try { return new LayoutLoadResult(ReadValidated(filePath, validateLayout, out version)); }
             catch (FileNotFoundException ex) { missing = true; failure = ex; }
             catch (DirectoryNotFoundException ex) { missing = true; failure = ex; }
             catch (InvalidDataException ex) { failure = ex; }
@@ -130,8 +140,7 @@ namespace SuperPutty.Data
                     stream.Write(backup, 0, backup.Length);
                     stream.Flush(true);
                 }
-                if (missing) File.Move(temporary, filePath);
-                else File.Replace(temporary, filePath, preserved);
+                SharedFile.PublishVersion(temporary, filePath, preserved, version);
             }
             finally { RemoveTemporary(temporary); }
 
@@ -142,8 +151,22 @@ namespace SuperPutty.Data
         /// <returns>The preserved filename when an invalid existing layout was replaced.</returns>
         internal static string SaveAtomically(string filePath, Action<string> serialize, Action<byte[]> validateLayout)
         {
+            using (SharedFile.Lock(filePath))
+            {
+                return SaveAtomicallyCore(filePath, serialize, validateLayout);
+            }
+        }
+
+        private static string SaveAtomicallyCore(string filePath, Action<string> serialize, Action<byte[]> validateLayout)
+        {
             if (serialize == null) throw new ArgumentNullException(nameof(serialize));
             if (validateLayout == null) throw new ArgumentNullException(nameof(validateLayout));
+            SharedFile.FileVersion version = new SharedFile.FileVersion { Missing = true };
+            bool invalid = false;
+            try { ReadValidated(filePath, validateLayout, out version); }
+            catch (FileNotFoundException) { version = new SharedFile.FileVersion { Missing = true }; }
+            catch (DirectoryNotFoundException) { version = new SharedFile.FileVersion { Missing = true }; }
+            catch (InvalidDataException) { invalid = true; }
             string temporary = TemporaryPath(filePath);
             try
             {
@@ -151,16 +174,8 @@ namespace SuperPutty.Data
                 ReadValidated(temporary, validateLayout);
                 using (var stream = new FileStream(temporary, FileMode.Open, FileAccess.Write, FileShare.None)) stream.Flush(true);
 
-                bool missing = false;
-                bool invalid = false;
-                try { ReadValidated(filePath, validateLayout); }
-                catch (FileNotFoundException) { missing = true; }
-                catch (DirectoryNotFoundException) { missing = true; }
-                catch (InvalidDataException) { invalid = true; }
-
                 string preserved = invalid ? filePath + ".corrupt." + Guid.NewGuid().ToString("N") : null;
-                if (missing) File.Move(temporary, filePath);
-                else File.Replace(temporary, filePath, invalid ? preserved : filePath + ".bak");
+                SharedFile.PublishVersion(temporary, filePath, invalid ? preserved : filePath + ".bak", version);
                 if (invalid) Log.WarnFormat("Preserved invalid layout at {0}; previous-save backup was not replaced.", preserved);
                 return preserved;
             }
@@ -215,6 +230,27 @@ namespace SuperPutty.Data
 
         internal static void MoveFiles(string oldPath, string newPath)
         {
+            // Every rename takes both locks in canonical order to avoid deadlock.
+            var paths = new[] { Path.GetFullPath(oldPath), Path.GetFullPath(newPath) }.OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToArray();
+            using (SharedFile.Lock(paths[0]))
+            using (SharedFile.Lock(paths[1]))
+                MoveFilesCore(oldPath, newPath);
+        }
+
+        private static void MoveFilesCore(string oldPath, string newPath)
+        {
+            // A layout's primary and backup form one destination. Check both names
+            // even when the source has only one component, so a rename cannot
+            // attach an unrelated existing backup or primary to the moved layout.
+            foreach (string suffix in new[] { String.Empty, ".bak" })
+            {
+                string destination = newPath + suffix;
+                try { File.GetAttributes(destination); }
+                catch (FileNotFoundException) { continue; }
+                catch (DirectoryNotFoundException) { continue; }
+                throw new IOException("A layout or backup already exists at the destination: " + destination);
+            }
+
             var moved = new List<KeyValuePair<string, string>>();
             try
             {
@@ -224,7 +260,7 @@ namespace SuperPutty.Data
                     try { File.GetAttributes(source); }
                     catch (FileNotFoundException) { continue; }
                     catch (DirectoryNotFoundException) { continue; }
-                    File.Move(source, newPath + suffix);
+                    SharedFile.Retry(() => { File.Move(source, newPath + suffix); return true; });
                     moved.Add(new KeyValuePair<string, string>(source, newPath + suffix));
                 }
                 if (moved.Count == 0) throw new FileNotFoundException("The layout and its backup no longer exist.", oldPath);
@@ -233,7 +269,8 @@ namespace SuperPutty.Data
             {
                 try
                 {
-                    foreach (var pair in moved.AsEnumerable().Reverse()) File.Move(pair.Value, pair.Key);
+                    foreach (var pair in moved.AsEnumerable().Reverse())
+                        SharedFile.Retry(() => { File.Move(pair.Value, pair.Key); return true; });
                 }
                 catch (Exception rollbackFailure)
                 {
@@ -241,6 +278,45 @@ namespace SuperPutty.Data
                         new AggregateException(failure, rollbackFailure));
                 }
                 throw;
+            }
+        }
+
+        internal static void DeleteFiles(string filePath)
+        {
+            using (SharedFile.Lock(filePath))
+            {
+                var staged = new List<KeyValuePair<string, string>>();
+                try
+                {
+                    foreach (string suffix in new[] { String.Empty, ".bak" })
+                    {
+                        string source = filePath + suffix;
+                        string removed = TemporaryPath(filePath) + ".deleted";
+                        try { SharedFile.Retry(() => { File.Move(source, removed); return true; }); }
+                        catch (FileNotFoundException) { continue; }
+                        catch (DirectoryNotFoundException) { continue; }
+                        staged.Add(new KeyValuePair<string, string>(source, removed));
+                    }
+                }
+                catch (Exception failure)
+                {
+                    try
+                    {
+                        foreach (var pair in staged.AsEnumerable().Reverse())
+                            SharedFile.Retry(() => { File.Move(pair.Value, pair.Key); return true; });
+                    }
+                    catch (Exception rollbackFailure)
+                    {
+                        throw new IOException("The layout could not be deleted or completely restored. Check the layout folder for preserved files.",
+                            new AggregateException(failure, rollbackFailure));
+                    }
+                    throw;
+                }
+
+                // Both active names have been removed under the destination lock.
+                // Cleanup failure must not turn a committed delete into a partial
+                // restore. Any retained staging file is excluded from discovery.
+                foreach (var pair in staged) RemoveTemporary(pair.Value);
             }
         }
 

@@ -61,11 +61,25 @@ namespace SuperPutty
             }
         }
 
-        public override IntPtr AppWindowHandle { get { return this.consoleWindow; } }
+        public override IntPtr AppWindowHandle { get { return this.ExternalProcessCaptured ? this.consoleWindow : IntPtr.Zero; } }
 
         public override bool ExternalProcessCaptured
         {
-            get { return this.consoleWindow != IntPtr.Zero && ConsoleNativeMethods.IsWindow(this.consoleWindow); }
+            get { return this.IsOwnedConsoleWindow(this.consoleWindow, true); }
+        }
+
+        private bool IsOwnedConsoleWindow(IntPtr window, bool requireParent)
+        {
+            Process process = this.consoleProcess;
+            if (window == IntPtr.Zero || process == null || !ConsoleNativeMethods.IsWindow(window)) return false;
+            try
+            {
+                uint owner;
+                return !process.HasExited &&
+                    ConsoleNativeMethods.GetWindowThreadProcessId(window, out owner) != 0 && owner == (uint)process.Id &&
+                    (!requireParent || (this.IsHandleCreated && ConsoleNativeMethods.GetAncestor(window, 1) == this.Handle));
+            }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Win32Exception) { return false; }
         }
 
         internal static bool Supports(ConnectionProtocol protocol)
@@ -336,6 +350,7 @@ namespace SuperPutty
 
         private bool AttachConsoleWindow()
         {
+            if (!this.IsOwnedConsoleWindow(this.consoleWindow, false)) return false;
             int style = ConsoleNativeMethods.GetWindowLong(this.consoleWindow, ConsoleNativeMethods.GWL_STYLE);
             ConsoleNativeMethods.SetWindowLong(
                 this.consoleWindow,
@@ -394,8 +409,9 @@ namespace SuperPutty
             this.captureCancellation.Cancel();
 
             IntPtr window = this.consoleWindow;
+            bool owned = this.IsOwnedConsoleWindow(window, true);
             this.consoleWindow = IntPtr.Zero;
-            if (window != IntPtr.Zero && ConsoleNativeMethods.IsWindow(window))
+            if (owned)
             {
                 ConsoleNativeMethods.PostMessage(window, ConsoleNativeMethods.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
             }
@@ -478,6 +494,11 @@ namespace SuperPutty
 
         private static CaptureResult FindNewConsoleWindow(CaptureRequest request)
         {
+            // A capture pass can inspect many windows. Snapshot process ancestry
+            // once, so each candidate is a dictionary lookup rather than a full
+            // system process enumeration.
+            IDictionary<uint, uint> parents = CaptureProcessParents();
+            if (parents == null) return null;
             CaptureResult result = null;
             ConsoleNativeMethods.EnumWindows(delegate(IntPtr window, IntPtr parameter)
             {
@@ -495,7 +516,7 @@ namespace SuperPutty
 
                 uint processId;
                 ConsoleNativeMethods.GetWindowThreadProcessId(window, out processId);
-                if (processId == 0 || !IsDescendantProcess(processId, (uint)request.LaunchProcessId))
+                if (processId == 0 || !IsDescendantProcess(processId, (uint)request.LaunchProcessId, parents))
                 {
                     return true;
                 }
@@ -533,13 +554,13 @@ namespace SuperPutty
             return result;
         }
 
-        private static bool IsDescendantProcess(uint processId, uint ancestorProcessId)
+        private static IDictionary<uint, uint> CaptureProcessParents()
         {
             IntPtr snapshot = ConsoleNativeMethods.CreateToolhelp32Snapshot(
                 ConsoleNativeMethods.TH32CS_SNAPPROCESS, 0);
             if (snapshot == ConsoleNativeMethods.INVALID_HANDLE_VALUE)
             {
-                return false;
+                return null;
             }
 
             try
@@ -558,27 +579,27 @@ namespace SuperPutty
                     while (ConsoleNativeMethods.Process32Next(snapshot, ref entry));
                 }
 
-                HashSet<uint> visited = new HashSet<uint>();
-                uint current = processId;
-                while (current != 0 && visited.Add(current))
-                {
-                    uint parent;
-                    if (!parents.TryGetValue(current, out parent))
-                    {
-                        return false;
-                    }
-                    if (parent == ancestorProcessId)
-                    {
-                        return true;
-                    }
-                    current = parent;
-                }
-                return false;
+                return parents;
             }
             finally
             {
                 ConsoleNativeMethods.CloseHandle(snapshot);
             }
+        }
+
+        internal static bool IsDescendantProcess(uint processId, uint ancestorProcessId, IDictionary<uint, uint> parents)
+        {
+            if (processId == 0 || ancestorProcessId == 0 || processId == ancestorProcessId) return false;
+            HashSet<uint> visited = new HashSet<uint>();
+            uint current = processId;
+            while (current != 0 && visited.Add(current))
+            {
+                uint parent;
+                if (!parents.TryGetValue(current, out parent)) return false;
+                if (parent == ancestorProcessId) return true;
+                current = parent;
+            }
+            return false;
         }
 
         private void DisposeProcess(ref Process process)
@@ -697,6 +718,9 @@ namespace SuperPutty
 
             [DllImport("user32.dll", CharSet = CharSet.Auto)]
             internal static extern IntPtr GetParent(IntPtr window);
+
+            [DllImport("user32.dll")]
+            internal static extern IntPtr GetAncestor(IntPtr window, uint flags);
 
             [DllImport("user32.dll", SetLastError = true)]
             [return: MarshalAs(UnmanagedType.Bool)]
