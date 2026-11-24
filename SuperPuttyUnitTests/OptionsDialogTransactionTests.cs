@@ -85,6 +85,33 @@ namespace SuperPuttyUnitTests
         }
 
         [Test]
+        public void LayoutSaveCannotCreateOrReplaceTheActiveSessionCatalog()
+        {
+            string catalog = Path.Combine(first, "Sessions.XML");
+            string alias = Path.Combine(first, ".", "sessions.xml");
+            Assert.Throws<IOException>(() => App.SaveLayoutFile(alias, path => Assert.Fail("Must reject before staging."), bytes => { }));
+            Assert.False(File.Exists(catalog));
+
+            const string original = "<ArrayOfSessionData><SessionData SessionId='Keep' SessionName='Keep'/></ArrayOfSessionData>";
+            File.WriteAllText(catalog, original);
+            Assert.Throws<IOException>(() => App.SaveLayoutFile(alias, path => Assert.Fail("Must reject before staging."), bytes => { }));
+            Assert.AreEqual(original, File.ReadAllText(catalog));
+            Assert.AreEqual(1, Directory.GetFiles(first).Length);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void LayoutSaveCannotReplacePreferencesOrTheirBackup(bool backup)
+        {
+            Assert.AreEqual(preferencesFile, App.Settings.SettingsFilePath);
+            string path = backup ? preferencesFile + ".bak" : preferencesFile;
+            File.WriteAllText(path, "damaged preferences");
+            Assert.Throws<IOException>(() => App.SaveLayoutFile(path, staged => Assert.Fail("Must reject before staging."), bytes => { }));
+            Assert.AreEqual("damaged preferences", File.ReadAllText(path));
+            Assert.AreEqual(1, Directory.GetFiles(directory).Length);
+        }
+
+        [Test]
         public void CancellingModalOptionsDuringCatalogPreparationDoesNotCommitWhenTheReadCompletes()
         {
             var original = new SessionData { SessionId = "Original", SessionName = "Original" };

@@ -196,6 +196,7 @@ namespace SuperPutty
         #region Layouts
 
         public static bool IsLayoutChanging { get; private set; }
+        internal static bool IsLayoutTransitionInProgress { get; private set; }
 
         public static void AddLayout(string file)
         {
@@ -312,6 +313,11 @@ namespace SuperPutty
 
         public static void LoadLayout(LayoutData layout, bool isNewLayoutAlreadyActive)
         {
+            if (IsLayoutTransitionInProgress)
+            {
+                Log.Debug("Ignoring a reentrant layout load. The current transition must finish first.");
+                return;
+            }
             Log.InfoFormat("LoadLayout: layout={0}, isNewLayoutAlreadyActive={1}", layout == null ? "NULL" : layout.Name, isNewLayoutAlreadyActive);
             LayoutChangedEventArgs args = new LayoutChangedEventArgs
             {
@@ -320,28 +326,46 @@ namespace SuperPutty
                 IsNewLayoutAlreadyActive = isNewLayoutAlreadyActive
             };
 
+            IsLayoutTransitionInProgress = true;
             try
             {
                 IsLayoutChanging = true;
-
-                if (LayoutChanging != null)
+                try { LayoutChanging?.Invoke(typeof(SuperPuTTY), args); }
+                finally { IsLayoutChanging = false; }
+                if (!args.Cancel)
                 {
-                    LayoutChanging(typeof(SuperPuTTY), args);
+                    CurrentLayout = args.New;
+                    LayoutChanged?.Invoke(typeof(SuperPuTTY), args);
                 }
-
+                // Modal notices pump the message loop. Hold forwarded commands
+                // until both the save target and the visible workspace are settled.
+                args.CompletionNotice?.Invoke();
             }
             finally
             {
-                IsLayoutChanging = false;
+                IsLayoutTransitionInProgress = false;
+                SingleInstanceHelper.ResumePendingCommands();
             }
+        }
 
-            if (args.Cancel) return;
-
-            CurrentLayout = args.New;
-            if (LayoutChanged != null)
+        internal static string SaveLayoutFile(string path, Action<string> serialize, Action<byte[]> validateLayout)
+        {
+            if (IsLayoutTransitionInProgress)
+                throw new InvalidOperationException("Wait for the layout change to finish before saving it.");
+            string catalogPath = String.IsNullOrWhiteSpace(Settings.SettingsFolder) ? null : SessionsFileName;
+            string settingsPath = Settings.SettingsFilePath;
+            var protectedPaths = new[]
             {
-                LayoutChanged(typeof(SuperPuTTY), args);
-            }
+                catalogPath, acceptedCatalogPath, settingsPath, settingsPath == null ? null : settingsPath + ".bak"
+            }.Where(item => !String.IsNullOrWhiteSpace(item)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            return LayoutStorage.SaveAtomically(path, serialize, validateLayout, destination =>
+            {
+                foreach (string dataFile in protectedPaths)
+                {
+                    if (SharedFile.IsSameDestination(dataFile, destination))
+                        throw new IOException("Choose a different layout filename. This path is reserved for application data.");
+                }
+            });
         }
 
         public static void LoadLayoutInNewInstance(LayoutData layout)

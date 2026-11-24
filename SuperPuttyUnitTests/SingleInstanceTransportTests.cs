@@ -9,9 +9,12 @@ using System.Security;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 using Microsoft.CSharp;
 using NUnit.Framework;
 using SuperPutty.Utils;
+using SuperPutty.Data;
+using App = SuperPutty.SuperPuTTY;
 
 namespace SuperPuttyUnitTests
 {
@@ -120,6 +123,80 @@ namespace SuperPuttyUnitTests
                 Assert.AreSame(server.Completion, await Task.WhenAny(server.Completion, Task.Delay(3000)),
                     "The listener must stop while the stalled client is still connected.");
                 await server.Completion;
+            }
+        }
+
+        [Test]
+        [Apartment(ApartmentState.STA)]
+        public void ForwardedLayoutWaitsUntilTheModalNoticeCloses()
+        {
+            var user = SingleInstanceEndpoint.Current.User;
+            var endpoint = SingleInstanceEndpoint.ForUser(user.Value, Guid.NewGuid().GetHashCode() & Int32.MaxValue);
+            var first = new LayoutData("First.xml");
+            var second = new LayoutData("Second.xml");
+            var original = App.CurrentLayout;
+            Task<SingleInstanceReply> reply = null;
+            int dispatched = 0;
+            int duringNotice = -1;
+            var elapsed = Stopwatch.StartNew();
+
+            using (var main = new Form { ShowInTaskbar = false, Opacity = 0 })
+            using (var notice = new Form { ShowInTaskbar = false, Opacity = 0 })
+            using (var poll = new System.Windows.Forms.Timer { Interval = 20 })
+            using (SingleInstanceHelper.StartReceiving(main, endpoint, args =>
+            {
+                dispatched++;
+                App.LoadLayout(second);
+            }))
+            {
+                notice.Shown += (sender, args) => reply = SingleInstancePipeClient.SendAsync(endpoint,
+                    new[] { "-layout", second.Name }, CancellationToken.None);
+                poll.Tick += (sender, args) =>
+                {
+                    if (reply?.IsCompleted != true && elapsed.ElapsedMilliseconds < 5000) return;
+                    poll.Stop();
+                    // The command's callback was posted before the reply. Let it
+                    // run in this notice's message loop before recording the state.
+                    Application.DoEvents();
+                    duringNotice = dispatched;
+                    notice.Close();
+                };
+                EventHandler<LayoutChangedEventArgs> changing = (sender, args) =>
+                {
+                    if (!ReferenceEquals(args.New, first)) return;
+                    args.CompletionNotice = () =>
+                    {
+                        elapsed.Restart();
+                        poll.Start();
+                        notice.ShowDialog(main);
+                    };
+                };
+                App.LayoutChanging += changing;
+                try
+                {
+                    main.Show();
+                    Application.DoEvents();
+                    App.LoadLayout(first);
+                    Assert.IsNotNull(reply);
+                    Assert.IsTrue(reply.IsCompleted, "The forwarded client did not receive a reply.");
+                    Assert.AreEqual(SingleInstanceReply.Accepted, reply.GetAwaiter().GetResult());
+                    Assert.AreEqual(0, duringNotice);
+                    Assert.AreSame(first, App.CurrentLayout);
+
+                    elapsed.Restart();
+                    while (dispatched == 0 && elapsed.ElapsedMilliseconds < 3000)
+                    {
+                        Application.DoEvents();
+                        Thread.Sleep(10);
+                    }
+                    Assert.AreEqual(1, dispatched);
+                    Assert.AreSame(second, App.CurrentLayout);
+                }
+                finally
+                {
+                    App.LayoutChanging -= changing;
+                    App.LoadLayout(original, true);
+                }
             }
         }
 

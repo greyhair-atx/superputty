@@ -1199,7 +1199,7 @@ namespace SuperPutty
         {
             if (eventArgs.IsNewLayoutAlreadyActive)
             {
-                toolStripStatusLabelLayout.Text = eventArgs.New.Name;
+                toolStripStatusLabelLayout.Text = eventArgs.New?.Name ?? String.Empty;
                 return;
             }
 
@@ -1243,8 +1243,8 @@ namespace SuperPutty
                 string message = teardownStarted
                     ? "The selected layout could not be loaded. SuperPuTTY attempted to open the default workspace. Reconnect any session tabs that were closed."
                     : "The selected layout could not be loaded. The current workspace was kept.";
-                MessageBox.Show(this, message + "\n\n" + failure.Message, "Unable to load layout",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                eventArgs.CompletionNotice = () => MessageBox.Show(this, message + "\n\n" + failure.Message,
+                    "Unable to load layout", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -1254,7 +1254,8 @@ namespace SuperPutty
             {
                 string message = "The layout was recovered from its previous-save backup:\n" + prepared.BackupFilePath;
                 if (prepared.PreservedFilePath != null) message += "\n\nThe damaged original was preserved at:\n" + prepared.PreservedFilePath;
-                MessageBox.Show(this, message, "Layout recovered", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                eventArgs.CompletionNotice = () => MessageBox.Show(this, message, "Layout recovered",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
 
@@ -1354,7 +1355,7 @@ namespace SuperPutty
             if (SuperPuTTY.CurrentLayout != null)
             {
                 String file = SuperPuTTY.CurrentLayout.FilePath;
-                SaveLayout(file, string.Format("Saving layout: {0}", file));
+                TrySaveLayout(file);
             }
             else
             {
@@ -1367,15 +1368,32 @@ namespace SuperPutty
             if (DialogResult.OK == this.saveFileDialogLayout.ShowDialog(this))
             {
                 String file = this.saveFileDialogLayout.FileName;
-                SaveLayout(file, string.Format("Saving layout as: {0}", file));
-                SuperPuTTY.AddLayout(file);
+                if (TrySaveLayout(file)) SuperPuTTY.AddLayout(file);
+            }
+        }
+
+        private bool TrySaveLayout(string file)
+        {
+            try
+            {
+                SaveLayout(file, "Saving layout: " + file);
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException || ex is InvalidDataException || ex is UnauthorizedAccessException ||
+                ex is ArgumentException || ex is InvalidOperationException || ex is System.ComponentModel.Win32Exception ||
+                ex is System.Security.SecurityException)
+            {
+                Log.Warn("Could not save the layout", ex);
+                SuperPuTTY.ReportStatus("The layout was not saved.");
+                MessageBox.Show(this, ex.Message, "Unable to Save Layout", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
             }
         }
 
         void SaveLayout(string file, string statusMsg)
         {
             SuperPuTTY.ReportStatus(statusMsg);
-            string preserved = LayoutStorage.SaveAtomically(file, path => this.DockPanel.SaveAsXml(path), ValidateDockLayout);
+            string preserved = SuperPuTTY.SaveLayoutFile(file, path => this.DockPanel.SaveAsXml(path), ValidateDockLayout);
             if (preserved != null) SuperPuTTY.ReportStatus("Saved layout. The damaged original was preserved at {0}", preserved);
         }
 

@@ -79,6 +79,48 @@ namespace SuperPuttyUnitTests
         }
 
         [Test]
+        public void DeferredLayoutCommandsKeepTheirOrderWhenLaterCallbacksAreAlreadyPosted()
+        {
+            var callbacks = new Queue<Action>();
+            var dispatched = new List<string>();
+            bool layoutInProgress = true;
+            using (var queue = new SingleInstanceCommandQueue(callbacks.Enqueue, args => dispatched.Add(args[0]),
+                () => true, 2, canDispatch: () => !layoutInProgress))
+            {
+                Assert.AreEqual(SingleInstanceReply.Accepted, queue.TryEnqueue(new[] { "first" }));
+                callbacks.Dequeue()(); // A modal recovery notice pumps the UI queue.
+                Assert.AreEqual(SingleInstanceReply.Accepted, queue.TryEnqueue(new[] { "second" }));
+                Assert.AreEqual(SingleInstanceReply.Busy, queue.TryEnqueue(new[] { "excess" }));
+                Assert.IsEmpty(dispatched);
+
+                layoutInProgress = false;
+                queue.ResumePending();
+                while (callbacks.Count > 0) callbacks.Dequeue()();
+                CollectionAssert.AreEqual(new[] { "first", "second" }, dispatched);
+                Assert.AreEqual(0, queue.PendingCount);
+            }
+        }
+
+        [Test]
+        public void AForwardedCommandCannotDispatchAnotherThroughAModalMessageLoop()
+        {
+            var callbacks = new Queue<Action>();
+            var dispatched = new List<string>();
+            using (var queue = new SingleInstanceCommandQueue(callbacks.Enqueue, args =>
+            {
+                dispatched.Add(args[0] + " started");
+                if (args[0] == "first") callbacks.Dequeue()();
+                dispatched.Add(args[0] + " finished");
+            }, () => true))
+            {
+                Assert.AreEqual(SingleInstanceReply.Accepted, queue.TryEnqueue(new[] { "first" }));
+                Assert.AreEqual(SingleInstanceReply.Accepted, queue.TryEnqueue(new[] { "second" }));
+                while (callbacks.Count > 0) callbacks.Dequeue()();
+                CollectionAssert.AreEqual(new[] { "first started", "first finished", "second started", "second finished" }, dispatched);
+            }
+        }
+
+        [Test]
         public void AcceptedCommandHasItsOwnArgumentSnapshot()
         {
             Action pending = null;

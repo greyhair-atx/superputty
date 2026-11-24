@@ -34,12 +34,13 @@ namespace SuperPutty.Data
             return ValidateContent(SharedFile.Read(path, MaximumLayoutBytes), validateLayout);
         }
 
-        private static byte[] ReadValidated(string path, Action<byte[]> validateLayout, out SharedFile.FileVersion version)
+        private static byte[] ReadValidated(string path, Action<byte[]> validateLayout, out SharedFile.FileVersion version,
+            bool protectApplicationData = false)
         {
-            return ValidateContent(SharedFile.Capture(path, MaximumLayoutBytes, out version), validateLayout);
+            return ValidateContent(SharedFile.Capture(path, MaximumLayoutBytes, out version), validateLayout, protectApplicationData);
         }
 
-        private static byte[] ValidateContent(byte[] content, Action<byte[]> validateLayout)
+        private static byte[] ValidateContent(byte[] content, Action<byte[]> validateLayout, bool protectApplicationData = false)
         {
             try
             {
@@ -50,6 +51,9 @@ namespace SuperPutty.Data
                 var document = new XmlDocument { XmlResolver = null };
                 using (var stream = new MemoryStream(content, false))
                 using (var reader = XmlReader.Create(stream, settings)) document.Load(reader);
+                if (protectApplicationData && (document.DocumentElement?.Name == "ArrayOfSessionData" ||
+                    document.DocumentElement?.Name == "Settings"))
+                    throw new IOException("Choose a different layout filename. The selected file contains sessions or preferences.");
                 if (document.DocumentElement == null || document.DocumentElement.Name != "DockPanel" ||
                     document.DocumentElement.NamespaceURI.Length != 0)
                     throw new InvalidDataException("The layout must contain a DockPanel root without a namespace.");
@@ -149,24 +153,30 @@ namespace SuperPutty.Data
         }
 
         /// <returns>The preserved filename when an invalid existing layout was replaced.</returns>
-        internal static string SaveAtomically(string filePath, Action<string> serialize, Action<byte[]> validateLayout)
+        internal static string SaveAtomically(string filePath, Action<string> serialize, Action<byte[]> validateLayout,
+            Action<string> validateDestination = null)
         {
             using (SharedFile.Lock(filePath))
             {
-                return SaveAtomicallyCore(filePath, serialize, validateLayout);
+                validateDestination?.Invoke(filePath);
+                return SaveAtomicallyCore(filePath, serialize, validateLayout, validateDestination);
             }
         }
 
-        private static string SaveAtomicallyCore(string filePath, Action<string> serialize, Action<byte[]> validateLayout)
+        private static string SaveAtomicallyCore(string filePath, Action<string> serialize, Action<byte[]> validateLayout,
+            Action<string> validateDestination)
         {
             if (serialize == null) throw new ArgumentNullException(nameof(serialize));
             if (validateLayout == null) throw new ArgumentNullException(nameof(validateLayout));
             SharedFile.FileVersion version = new SharedFile.FileVersion { Missing = true };
             bool invalid = false;
-            try { ReadValidated(filePath, validateLayout, out version); }
+            try { ReadValidated(filePath, validateLayout, out version, protectApplicationData: true); }
             catch (FileNotFoundException) { version = new SharedFile.FileVersion { Missing = true }; }
             catch (DirectoryNotFoundException) { version = new SharedFile.FileVersion { Missing = true }; }
             catch (InvalidDataException) { invalid = true; }
+            string backup = invalid ? filePath + ".corrupt." + Guid.NewGuid().ToString("N") :
+                version.Missing ? null : filePath + ".bak";
+            if (backup != null) validateDestination?.Invoke(backup);
             string temporary = TemporaryPath(filePath);
             try
             {
@@ -174,8 +184,8 @@ namespace SuperPutty.Data
                 ReadValidated(temporary, validateLayout);
                 using (var stream = new FileStream(temporary, FileMode.Open, FileAccess.Write, FileShare.None)) stream.Flush(true);
 
-                string preserved = invalid ? filePath + ".corrupt." + Guid.NewGuid().ToString("N") : null;
-                SharedFile.PublishVersion(temporary, filePath, invalid ? preserved : filePath + ".bak", version);
+                string preserved = invalid ? backup : null;
+                SharedFile.PublishVersion(temporary, filePath, backup, version);
                 if (invalid) Log.WarnFormat("Preserved invalid layout at {0}; previous-save backup was not replaced.", preserved);
                 return preserved;
             }

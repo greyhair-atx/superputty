@@ -10,6 +10,7 @@ using System.Xml;
 using NUnit.Framework;
 using SuperPutty;
 using SuperPutty.Data;
+using App = SuperPutty.SuperPuTTY;
 
 namespace SuperPuttyUnitTests
 {
@@ -63,6 +64,68 @@ namespace SuperPuttyUnitTests
             CollectionAssert.AreEqual(original, File.ReadAllBytes(layoutPath + ".bak"));
             CollectionAssert.AreEqual(ChangedLayout(), File.ReadAllBytes(layoutPath));
             Assert.IsEmpty(Directory.GetFiles(directory, "*.tmp"));
+        }
+
+        [TestCase("<ArrayOfSessionData><SessionData SessionId='Keep' SessionName='Keep'/></ArrayOfSessionData>")]
+        [TestCase("<Settings><PuttyExe>keep.exe</PuttyExe></Settings>")]
+        public void LayoutWriterNeverTreatsOtherApplicationXmlAsADamagedLayout(string data)
+        {
+            File.WriteAllText(layoutPath, data);
+            File.WriteAllBytes(layoutPath + ".bak", original);
+
+            Assert.Throws<IOException>(() => LayoutStorage.SaveAtomically(layoutPath,
+                path => Assert.Fail("The protected file must be rejected before serialization."), frmSuperPutty.ValidateDockLayout));
+
+            Assert.AreEqual(data, File.ReadAllText(layoutPath));
+            CollectionAssert.AreEqual(original, File.ReadAllBytes(layoutPath + ".bak"));
+            Assert.AreEqual(2, Directory.GetFiles(directory).Length);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void LayoutCompletionNoticeRunsAfterCommitAndCannotReenterTheTransition(bool canceled)
+        {
+            var originalLayout = App.CurrentLayout;
+            var first = new LayoutData(Path.Combine(directory, "First.xml"));
+            var second = new LayoutData(Path.Combine(directory, "Second.xml"));
+            var sequence = new List<string>();
+            EventHandler<LayoutChangedEventArgs> changing = (sender, args) =>
+            {
+                sequence.Add("apply " + args.New.Name);
+                Assert.True(App.IsLayoutChanging);
+                args.Cancel = canceled;
+                args.CompletionNotice = () =>
+                {
+                    Assert.AreSame(canceled ? originalLayout : first, App.CurrentLayout);
+                    Assert.False(App.IsLayoutChanging);
+                    Assert.True(App.IsLayoutTransitionInProgress);
+                    App.LoadLayout(second);
+                    sequence.Add("notice " + args.New.Name);
+                };
+            };
+            EventHandler<LayoutChangedEventArgs> changed = (sender, args) =>
+            {
+                Assert.AreSame(first, App.CurrentLayout);
+                Assert.False(App.IsLayoutChanging, "Embedded panels need to resize after the layout is applied.");
+                App.LoadLayout(second);
+                sequence.Add("commit " + args.New.Name);
+            };
+            App.LayoutChanging += changing;
+            App.LayoutChanged += changed;
+            try
+            {
+                App.LoadLayout(first);
+                Assert.False(App.IsLayoutTransitionInProgress);
+                CollectionAssert.AreEqual(canceled ? new[] { "apply First", "notice First" } :
+                    new[] { "apply First", "commit First", "notice First" }, sequence);
+                Assert.AreSame(canceled ? originalLayout : first, App.CurrentLayout);
+            }
+            finally
+            {
+                App.LayoutChanging -= changing;
+                App.LayoutChanged -= changed;
+                App.LoadLayout(originalLayout, true);
+            }
         }
 
         [TestCase(false)]

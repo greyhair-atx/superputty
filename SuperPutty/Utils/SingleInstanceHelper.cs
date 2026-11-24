@@ -43,6 +43,7 @@ namespace SuperPutty.Utils
 
         internal static void PauseReceiving() { registration?.Pause(); }
         internal static void ResumeReceiving() { registration?.Resume(); }
+        internal static void ResumePendingCommands() { registration?.ResumePending(); }
         internal static void StopReceiving() { registration?.Dispose(); }
 
         private static void DispatchToApplication(string[] args)
@@ -74,7 +75,8 @@ namespace SuperPutty.Utils
                 if (endpoint == null) throw new ArgumentNullException(nameof(endpoint));
                 queue = new SingleInstanceCommandQueue(action => form.BeginInvoke(action), dispatch,
                     () => receiving && !form.IsDisposed && !form.Disposing && form.IsHandleCreated,
-                    reportFailure: error => Log.Warn("A forwarded command could not be executed (" + error.GetType().Name + ")."));
+                    reportFailure: error => Log.Warn("A forwarded command could not be executed (" + error.GetType().Name + ")."),
+                    canDispatch: () => !SuperPuTTY.IsLayoutTransitionInProgress);
                 try { server = new SingleInstancePipeServer(endpoint.PipeName, queue.TryEnqueue); }
                 catch { queue.Dispose(); throw; }
                 form.Shown += FormShown;
@@ -96,6 +98,7 @@ namespace SuperPutty.Utils
             }
 
             internal void Pause() { paused = true; receiving = false; }
+            internal void ResumePending() { queue.ResumePending(); }
             internal void Resume()
             {
                 paused = false;

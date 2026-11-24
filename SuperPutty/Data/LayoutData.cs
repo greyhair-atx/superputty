@@ -50,5 +50,6 @@ namespace SuperPutty.Data
         public LayoutData Old { get; set; }
         public bool IsNewLayoutAlreadyActive { get; set; }
         public bool Cancel { get; set; }
+        internal Action CompletionNotice { get; set; }
     }
 }
