@@ -12,6 +12,7 @@ using SuperPutty;
 using SuperPutty.Data;
 using SuperPutty.Utils;
 using WeifenLuo.WinFormsUI.Docking;
+using App = SuperPutty.SuperPuTTY;
 
 namespace SuperPuttyUnitTests
 {
@@ -196,6 +197,57 @@ class HostedWindow : Form {
             Assert.IsTrue(NativeMethods.GetWindowRect(child, ref bounds));
             var expected = client.RectangleToScreen(client.HostedWindowBounds);
             Assert.AreEqual(expected, System.Drawing.Rectangle.FromLTRB(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom));
+        }
+
+        [Test]
+        public void FailedRestoreOffersRetryAndCloseAfterStartupHasSucceeded()
+        {
+            using (var tab = new ctlPuttyPanel(new SessionData { Proto = ConnectionProtocol.SSH, SessionName = "Restore failure" }, null))
+            {
+                void ConfigureClient(ApplicationPanel panel)
+                {
+                    string marker = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".window");
+                    panel.ApplicationName = executable;
+                    panel.ApplicationParameters = CommandLineOptions.QuoteArgument(marker) + " " + NativeMethods.WM_CLOSE + " 0";
+                    panel.ApplicationCloseWithDestroy = false;
+                }
+
+                var client = tab.AppPanel;
+                ConfigureClient(client);
+                tab.Show();
+                tab.WatchStartup();
+                var originalStartup = tab.Startup;
+                PumpUntil(() => originalStartup.IsCompleted);
+                Assert.IsNull(originalStartup.Result);
+                Assert.IsTrue(client.ExternalProcessCaptured);
+
+                const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var parkedWindow = typeof(ApplicationPanel).GetField("recreationWindow", flags);
+                // Simulate the parked window becoming invalid before reattachment.
+                client.HandleCreated += (sender, e) => parkedWindow.SetValue(client, IntPtr.Zero);
+                typeof(Control).GetMethod("RecreateHandle", flags).Invoke(client, null);
+                PumpUntil(() => client.IsDisposed);
+                Assert.IsFalse(tab.IsDisposed);
+                Assert.IsNull(originalStartup.Result);
+                var error = tab.Controls.OfType<FlowLayoutPanel>().Single();
+                StringAssert.Contains("could not be restored", error.Controls.OfType<Label>().Single().Text);
+                CollectionAssert.AreEquivalent(new[] { "Retry", "Close" }, error.Controls.OfType<Button>().Select(button => button.Text));
+
+                string originalExecutable = App.Settings.PuttyExe;
+                try
+                {
+                    App.Settings.PuttyExe = Path.Combine(directory, "missing-client.exe");
+                    error.Controls.OfType<Button>().Single(button => button.Text == "Retry").PerformClick();
+                    Assert.AreNotSame(client, tab.AppPanel);
+                    Assert.AreNotSame(originalStartup, tab.Startup);
+                    PumpUntil(() => tab.Startup.IsCompleted);
+                    StringAssert.Contains("executable is missing", tab.Startup.Result);
+                    var retryError = tab.Controls.OfType<FlowLayoutPanel>().Single();
+                    retryError.Controls.OfType<Button>().Single(button => button.Text == "Close").PerformClick();
+                    Assert.IsTrue(tab.IsDisposed);
+                }
+                finally { App.Settings.PuttyExe = originalExecutable; }
+            }
         }
 
         [TestCase(false, false)]

@@ -160,7 +160,7 @@ namespace SuperPutty
             client.Dock = DockStyle.Fill;
             client.Name = Session.SessionId;
             client.Size = Size;
-            client.StartupFailed = message => PostClientCallback(client, () => FailStartup(message));
+            client.StartupFailed = message => PostClientCallback(client, () => ShowClientFailure(message));
             client.StartupInputChanged = waiting =>
             {
                 if (!ReferenceEquals(client, AppPanel) || IsDisposed || Disposing || Startup.IsCompleted) return;
@@ -212,8 +212,15 @@ namespace SuperPutty
 
         private void FailStartup(string message)
         {
-            if (!startup.TrySetResult(message)) return;
+            if (!Startup.IsCompleted) ShowClientFailure(message);
+        }
+
+        private void ShowClientFailure(string message)
+        {
+            if (startupError != null) return;
+            startup.TrySetResult(message);
             startupTimer.Stop();
+            focusRetry.Stop();
             AppPanel?.Dispose();
             startupError = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12) };
             var label = new Label { AutoSize = true, Text = message };

@@ -51,7 +51,7 @@ namespace SuperPutty
         protected override void FailHandleRecreation()
         {
             CloseClient();
-            ReportStartupFailure("The RDP control could not be restored. Close and reopen the session to retry.");
+            ReportStartupFailure("The RDP control could not be restored.");
         }
 
         public override SessionConnectionState ConnectionState

@@ -6,6 +6,7 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using NUnit.Framework;
 using SuperPutty;
@@ -176,6 +177,48 @@ namespace SuperPuttyUnitTests
                 SetCapturedWindow(panel, window.Handle, new Process());
                 Assert.IsFalse(panel.ExternalProcessCaptured);
                 Assert.AreEqual(IntPtr.Zero, panel.AppWindowHandle);
+            }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void CaptureCompletionWithoutAHandleIsDeliveredWhenTheHostIsCreated(bool captureSucceeded)
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            using (var window = new ConsoleWindow())
+            using (var panel = new ConsoleApplicationPanel(ConnectionProtocol.WINCMD))
+            {
+                typeof(ConsoleApplicationPanel).GetField("started", flags).SetValue(panel, true);
+                var resultType = typeof(ConsoleApplicationPanel).GetNestedType("CaptureResult", BindingFlags.NonPublic);
+                var result = captureSucceeded ? Activator.CreateInstance(resultType, true) : null;
+                if (captureSucceeded)
+                {
+                    resultType.GetProperty("Process").SetValue(result, Process.GetCurrentProcess());
+                    resultType.GetProperty("WindowHandle").SetValue(result, window.Handle);
+                }
+                var failures = 0;
+                panel.StartupFailed = message => failures++;
+                var captures = 0;
+                panel.WhenCaptured(() => captures++);
+                var queue = typeof(ConsoleApplicationPanel).GetMethod("QueueCaptureResult", flags);
+                Assert.IsFalse(panel.IsHandleCreated);
+                Task.Run(() => queue.Invoke(panel, new[] { result })).GetAwaiter().GetResult();
+                Assert.IsFalse(panel.IsHandleCreated, "The worker must leave handle creation to the UI thread.");
+                Assert.AreEqual(0, failures + captures);
+
+                var handle = panel.Handle;
+                Application.DoEvents();
+                Assert.AreEqual(captureSucceeded ? 1 : 0, captures);
+                Assert.AreEqual(captureSucceeded ? 0 : 1, failures);
+                if (captureSucceeded)
+                {
+                    Assert.AreEqual(window.Handle, panel.AppWindowHandle);
+                    Assert.AreEqual(handle, NativeMethods.GetAncestor(window.Handle, 1));
+                }
+
+                typeof(Control).GetMethod("RecreateHandle", flags).Invoke(panel, null);
+                Application.DoEvents();
+                Assert.AreEqual(1, failures + captures, "Recreation must not deliver the result twice.");
             }
         }
 

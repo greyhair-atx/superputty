@@ -73,7 +73,7 @@ namespace SuperPutty
             StopHostedProcess();
             StopVncWindowTracker();
             ReleaseWindowEventHooks();
-            ReportStartupFailure("The client window could not be restored. Close and reopen the session to retry.");
+            ReportStartupFailure("The client window could not be restored.");
         }
         private readonly List<NativeHookRegistration> windowEventHooks = new List<NativeHookRegistration>();
         private bool windowEventHooksDisabled;

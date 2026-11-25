@@ -33,6 +33,7 @@ namespace SuperPutty
         private Process launchProcess;
         private Process consoleProcess;
         private CaptureResult pendingCapture;
+        private bool captureReady;
         private bool captureRunning;
         private IntPtr consoleWindow;
         private bool started;
@@ -176,6 +177,12 @@ namespace SuperPutty
             base.OnHandleDestroyed(e);
         }
 
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            CompletePendingCapture();
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
@@ -277,23 +284,13 @@ namespace SuperPutty
                     }
                 }
 
-                lock (launchProcessLock)
-                {
-                    if (closing)
-                    {
-                        result?.Process.Dispose();
-                        return;
-                    }
-                    pendingCapture = result;
-                }
-
-                RunOnUiThread(() => CompleteCapture(TakePendingCapture()), () => TakePendingCapture()?.Process.Dispose());
+                QueueCaptureResult(result);
             }
             catch (Exception ex) when (ex is Win32Exception || ex is InvalidOperationException)
             {
                 result?.Process.Dispose();
                 Log.Warn("Unable to discover the console window.", ex);
-                this.RunOnUiThread(() => this.CompleteCapture(null));
+                QueueCaptureResult(null);
             }
             finally
             {
@@ -305,14 +302,35 @@ namespace SuperPutty
             }
         }
 
-        private CaptureResult TakePendingCapture()
+        private void QueueCaptureResult(CaptureResult result)
         {
             lock (launchProcessLock)
             {
-                var result = pendingCapture;
-                pendingCapture = null;
-                return result;
+                if (closing)
+                {
+                    result?.Process.Dispose();
+                    return;
+                }
+                pendingCapture = result;
+                captureReady = true;
             }
+
+            // Handle creation also drains this result if BeginInvoke cannot post yet.
+            RunOnUiThread(CompletePendingCapture);
+        }
+
+        private void CompletePendingCapture()
+        {
+            if (!IsHandleCreated || IsDisposed || Disposing) return;
+            CaptureResult result;
+            lock (launchProcessLock)
+            {
+                if (!captureReady || closing) return;
+                result = pendingCapture;
+                pendingCapture = null;
+                captureReady = false;
+            }
+            CompleteCapture(result);
         }
 
         private void CompleteCapture(CaptureResult result)
@@ -427,6 +445,7 @@ namespace SuperPutty
                 if (!captureRunning) captureCancellation.Dispose();
                 pendingCapture?.Process.Dispose();
                 pendingCapture = null;
+                captureReady = false;
             }
 
             IntPtr window = this.consoleWindow;
@@ -475,13 +494,9 @@ namespace SuperPutty
             }
         }
 
-        private void RunOnUiThread(Action action, Action discarded = null)
+        private void RunOnUiThread(Action action)
         {
-            if (this.IsDisposed || this.Disposing || !this.IsHandleCreated)
-            {
-                discarded?.Invoke();
-                return;
-            }
+            if (this.IsDisposed || this.Disposing || !this.IsHandleCreated) return;
 
             try
             {
@@ -491,14 +506,11 @@ namespace SuperPutty
                     {
                         action();
                     }
-                    else
-                        discarded?.Invoke();
                 }));
             }
             catch (InvalidOperationException)
             {
-                // The panel was destroyed after capture completed.
-                discarded?.Invoke();
+                // The handle may have been destroyed between the check and BeginInvoke.
             }
         }
 
