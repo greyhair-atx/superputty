@@ -1,81 +1,47 @@
 ﻿using System.Windows.Forms;
+using SuperPutty.Data;
 using WeifenLuo.WinFormsUI.Docking;
 
 namespace SuperPutty
 {
     /// <summary>
-    /// ToolWindow that supports an MRU tab switching
+    /// A session tab in the workspace.
     /// </summary>
     public partial class ToolWindowDocument : ToolWindow
     {
         public ToolWindowDocument()
         {
             InitializeComponent();
-            if (SuperPuTTY.MainForm == null) return;
-            
-            // Insert this panel into the list used for Ctrl-Tab handling.
-            if (SuperPuTTY.MainForm.CurrentPanel == null)
+            DockStateChanged += (sender, e) =>
             {
-                // First panel to be created
-                SuperPuTTY.MainForm.CurrentPanel = this.PreviousPanel = this.NextPanel = this;
-            }
-            else
-            {
-                // Other panels exist. Tie ourselves into list ahead of current panel.
-                this.PreviousPanel = SuperPuTTY.MainForm.CurrentPanel;
-                this.NextPanel = SuperPuTTY.MainForm.CurrentPanel.NextPanel;
-                SuperPuTTY.MainForm.CurrentPanel.NextPanel = this;
-                this.NextPanel.PreviousPanel = this;
-
-                // We are now the current panel
-                SuperPuTTY.MainForm.CurrentPanel = this;
-            }
+                if (SessionDockingHistory.IsDockPosition(DockState)) LastDockPosition = DockState;
+            };
         }
 
-        // Make this panel the current one. Remove from previous
-        // position in list and re-add in front of current panel
-        public void MakePanelCurrent()
+        internal SessionData SavedSession { get; private set; }
+        internal string SessionWorkspace { get; private set; }
+        internal DockState LastDockPosition { get; private set; } = DockState.Unknown;
+
+        internal void AssociateSavedSession(SessionData session)
         {
-            if (SuperPuTTY.MainForm.CurrentPanel == this)
+            if (session == null || !object.ReferenceEquals(SuperPuTTY.GetSessionById(session.SessionId), session))
                 return;
+            SavedSession = session;
+            SessionWorkspace = SuperPuTTY.Settings.SettingsFolder;
+        }
 
-            // Remove ourselves from our position in chain
-            this.PreviousPanel.NextPanel = this.NextPanel;
-            this.NextPanel.PreviousPanel = this.PreviousPanel;
-
-            this.PreviousPanel = SuperPuTTY.MainForm.CurrentPanel;
-            this.NextPanel = SuperPuTTY.MainForm.CurrentPanel.NextPanel;
-            SuperPuTTY.MainForm.CurrentPanel.NextPanel = this;
-            this.NextPanel.PreviousPanel = this;
-
-            SuperPuTTY.MainForm.CurrentPanel = this;
+        internal SessionData GetCurrentSavedSession()
+        {
+            return SavedSession != null &&
+                Utils.SettingsFolderResolver.PathsEqual(SessionWorkspace, SuperPuTTY.Settings.SettingsFolder) &&
+                object.ReferenceEquals(SuperPuTTY.GetSessionById(SavedSession.SessionId), SavedSession)
+                ? SavedSession : null;
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
+            SuperPuTTY.MainForm?.RememberSessionDocking(this);
             base.OnFormClosed(e);
-
-            if (SuperPuTTY.MainForm == null) return;
-
-            // only 1 panel
-            if (SuperPuTTY.MainForm.CurrentPanel == this && this.NextPanel == this && this.PreviousPanel == this)
-            {
-                SuperPuTTY.MainForm.CurrentPanel = null;
-                return;
-            }
-
-            // Remove ourselves from our position in chain and set last active tab as current
-            if (this.PreviousPanel != null)
-            {
-                this.PreviousPanel.NextPanel = this.NextPanel;
-            }
-            if (this.NextPanel != null)
-            {
-                this.NextPanel.PreviousPanel = this.PreviousPanel;
-            }
-            SuperPuTTY.MainForm.CurrentPanel = this.PreviousPanel;
-
-            // manipulate tabs
             if (this.DockHandler.Pane != null)
             {
                 int idx = this.DockHandler.Pane.Contents.IndexOf(this);
@@ -86,9 +52,5 @@ namespace SuperPutty
                 }
             }
         }
-
-
-        public ToolWindowDocument PreviousPanel { get; set; }
-        public ToolWindowDocument NextPanel { get; set; }
     }
 }

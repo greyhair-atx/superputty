@@ -33,6 +33,7 @@ using SuperPutty.Data;
 using WeifenLuo.WinFormsUI.Docking;
 using SuperPutty.Utils;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Configuration;
 using SuperPutty.Gui;
 using log4net.Core;
@@ -49,32 +50,34 @@ namespace SuperPutty
         private static int RefocusIntervalMs = Convert.ToInt32(ConfigurationManager.AppSettings["SuperPuTTY.RefocusIntervalMs"] ?? "40");
         private bool closeWithoutConfirmation;
         private readonly ChildFocusRetry focusRetry;
-
-        private PuttyStartInfo m_puttyStartInfo;
-        private PuttyClosedCallback m_ApplicationExit;
-        private bool m_useRdpActiveX;
+        private readonly PuttyClosedCallback applicationExit;
+        private readonly System.Windows.Forms.Timer startupTimer;
+        private readonly ToolStripMenuItem reconnectMenuItem;
+        private TaskCompletionSource<string> startup;
+        private FlowLayoutPanel startupError;
+        private bool reconnecting;
+        internal Task<string> Startup { get { return startup.Task; } }
+        internal bool ReportOpened { get; set; }
 
         public ctlPuttyPanel(SessionData session, PuttyClosedCallback callback)
         {
-            Session = session;
-            m_ApplicationExit = callback;
-            string executable = PuttyStartInfo.GetExecutable(session);
-            m_useRdpActiveX = RdpClientPanel.ShouldUseActiveX(session, executable);
-            if (!m_useRdpActiveX)
-            {
-                m_puttyStartInfo = new PuttyStartInfo(session);
-            }
-
+            Session = session.CreateSnapshot();
+            AssociateSavedSession(session);
+            applicationExit = callback;
             InitializeComponent();
+            reconnectMenuItem = new ToolStripMenuItem("Reconnect with Saved Settings", null, ReconnectWithSavedSettings);
+            contextMenuStrip1.Items.Insert(contextMenuStrip1.Items.IndexOf(restartSessionToolStripMenuItem) + 1, reconnectMenuItem);
             focusRetry = new ChildFocusRetry();
             components.Add(focusRetry);
+            startupTimer = new System.Windows.Forms.Timer(components) { Interval = 120000 };
+            startupTimer.Tick += (sender, e) => FailStartup("Session startup timed out.");
+            Disposed += (sender, e) => startup.TrySetResult("The tab closed during startup.");
 
             this.Text = session.SessionName;
             this.TabText = session.SessionName;
             this.TextOverride = session.SessionName;
 
-            CreatePanel();
-            AdjustMenu();
+            StartClient();
         }
 
         /// <summary>Gets or sets the text displayed on a tab.</summary>
@@ -102,67 +105,165 @@ namespace SuperPutty
             this.ToolTipText = this.Text;
         }
 
+        internal void WatchStartup()
+        {
+            if (!Startup.IsCompleted && !IsDisposed && !Disposing)
+            {
+                startupTimer.Start();
+                AppPanel?.EnsureStarted();
+            }
+        }
+
+        private void StartClient()
+        {
+            startup = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            AppPanel = null;
+            try
+            {
+                CreatePanel();
+                AdjustMenu();
+            }
+            catch (Exception ex) when (SuperPuTTY.IsSessionLaunchError(ex))
+            {
+                Log.Warn("Could not configure the session client.", ex);
+                FailStartup("The client could not be configured. Check the connection and client settings.");
+            }
+        }
+
         private void CreatePanel()
         {
-            if (this.m_useRdpActiveX)
+            string executable = PuttyStartInfo.GetExecutable(Session);
+            if (RdpClientPanel.ShouldUseActiveX(Session, executable))
             {
                 RdpClientPanel rdpPanel;
-                if (RdpClientPanel.TryCreate(this.Session, this.m_ApplicationExit, out rdpPanel))
-                {
-                    this.AppPanel = rdpPanel;
-                }
+                if (RdpClientPanel.TryCreate(Session, null, out rdpPanel))
+                    AppPanel = rdpPanel;
                 else
-                {
                     Log.Warn("Falling back to external MSTSC hosting because the RDP ActiveX control is unavailable.");
-                }
             }
-
             if (this.AppPanel == null)
             {
-                if (this.m_puttyStartInfo == null)
-                {
-                    this.m_puttyStartInfo = new PuttyStartInfo(this.Session);
-                }
+                var startInfo = new PuttyStartInfo(Session);
                 this.AppPanel = ConsoleApplicationPanel.Supports(this.Session.Proto)
                     ? new ConsoleApplicationPanel(this.Session.Proto)
                     : new ApplicationPanel(this.Session.Proto);
+                this.AppPanel.ApplicationName = startInfo.Executable;
+                this.AppPanel.ApplicationParameters = startInfo.Args;
+                this.AppPanel.ApplicationWorkingDirectory = startInfo.WorkingDir;
+                this.AppPanel.ApplicationCloseWithDestroy = this.Session.Proto != ConnectionProtocol.Mintty;
             }
 
-            this.SuspendLayout();
-            this.AppPanel.Dock = System.Windows.Forms.DockStyle.Fill;
-            if (!(this.AppPanel is RdpClientPanel))
+            ApplicationPanel client = AppPanel;
+            client.Dock = DockStyle.Fill;
+            client.Name = Session.SessionId;
+            client.Size = Size;
+            client.StartupFailed = message => PostClientCallback(client, () => FailStartup(message));
+            client.m_CloseCallback = error => PostClientCallback(client, () =>
             {
-                this.AppPanel.ApplicationName = this.m_puttyStartInfo.Executable;
-                this.AppPanel.ApplicationParameters = this.m_puttyStartInfo.Args;
-                this.AppPanel.ApplicationWorkingDirectory = this.m_puttyStartInfo.WorkingDir;
-                this.AppPanel.ApplicationCloseWithDestroy = this.Session.Proto == ConnectionProtocol.Mintty ? false : true;
-            }
-            this.AppPanel.Location = new System.Drawing.Point(0, 0);
-            this.AppPanel.Name = this.Session.SessionId; // "applicationControl1";
-            this.AppPanel.Size = new System.Drawing.Size(this.Width, this.Height);
-            this.AppPanel.TabIndex = 0;            
-            this.AppPanel.m_CloseCallback = this.m_ApplicationExit;
-            this.Controls.Add(this.AppPanel);
+                if (Startup.IsCompleted)
+                {
+                    if (startupError == null)
+                    {
+                        if (applicationExit != null) applicationExit(error);
+                        else CloseWithoutConfirmation();
+                    }
+                }
+                else FailStartup("The client disconnected before session startup completed.");
+            });
+            client.WhenCaptured(() => PostClientCallback(client, CompleteStartup));
+            Controls.Add(client);
+        }
 
-            this.ResumeLayout();
+        private void PostClientCallback(ApplicationPanel client, Action callback)
+        {
+            if (IsDisposed || Disposing || !IsHandleCreated) return;
+            try
+            {
+                BeginInvoke((Action)(() =>
+                {
+                    if (!IsDisposed && !Disposing && ReferenceEquals(client, AppPanel) && !client.IsDisposed)
+                        callback();
+                }));
+            }
+            catch (InvalidOperationException) { }
+        }
+
+        private void CompleteStartup()
+        {
+            if (!startup.TrySetResult(null)) return;
+            startupTimer.Stop();
+            if (ReportOpened) SuperPuTTY.ReportStatus("Opened session {0} [{1}]", Session.SessionId, Session.Proto);
+            if (!String.IsNullOrWhiteSpace(Session.SPSLFileName))
+                SuperPuTTY.StartSessionScript(this, Session.SPSLFileName);
+        }
+
+        private void FailStartup(string message)
+        {
+            if (!startup.TrySetResult(message)) return;
+            startupTimer.Stop();
+            AppPanel?.Dispose();
+            startupError = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12) };
+            var label = new Label { AutoSize = true, Text = message };
+            var retry = new Button { AutoSize = true, Text = "Retry" };
+            var close = new Button { AutoSize = true, Text = "Close" };
+            startupError.Controls.Add(label);
+            startupError.SetFlowBreak(label, true);
+            startupError.Controls.Add(retry);
+            startupError.Controls.Add(close);
+            retry.Click += (sender, e) => RetryStartup();
+            close.Click += (sender, e) => CloseWithoutConfirmation();
+            Controls.Add(startupError);
+            SuperPutty.Gui.ThemeManager.Apply(startupError);
+        }
+
+        internal void RetryStartup()
+        {
+            if (startupError == null || IsDisposed || Disposing) return;
+            startupError.Dispose();
+            startupError = null;
+            StartClient();
+            WatchStartup();
+        }
+
+        private async void ReconnectWithSavedSettings(object sender, EventArgs e)
+        {
+            SessionData saved = GetCurrentSavedSession();
+            if (saved == null || SuperPuTTY.IsScpSession(saved) || !Startup.IsCompleted || reconnecting) return;
+            if (AppPanel != null && AppPanel.ConnectionState != SessionConnectionState.Disconnected &&
+                MessageBox.Show(this, $"Reconnect '{TextOverride ?? Text}' with its saved settings?",
+                    "Reconnect Session", MessageBoxButtons.OKCancel, MessageBoxIcon.Question,
+                    MessageBoxDefaultButton.Button2) != DialogResult.OK)
+                return;
+            saved = GetCurrentSavedSession();
+            if (IsDisposed || Disposing || saved == null || SuperPuTTY.IsScpSession(saved) || reconnecting) return;
+
+            reconnecting = true;
+            focusRetry.Stop();
+            ApplicationPanel previousClient = AppPanel;
+            previousClient?.Dispose();
+            startupError?.Dispose();
+            startupError = null;
+            Session = saved.CreateSnapshot();
+            reconnectMenuItem.Enabled = false;
+            if (previousClient != null) await previousClient.ProcessCleanup;
+            reconnecting = false;
+            if (IsDisposed || Disposing || !ReferenceEquals(previousClient, AppPanel)) return;
+            StartClient();
+            WatchStartup();
         }
 
         void AdjustMenu()
         {
-            this.restartSessionToolStripMenuItem.Enabled = SupportsPuttyRestart(this.Session.Proto);
-            // These sessions are not controlled by PuTTY's WM_SYSCOMMAND menu commands.
-            if (this.Session.Proto == ConnectionProtocol.Mintty ||
-                ConsoleApplicationPanel.Supports(this.Session.Proto))
-            {
-                this.toolStripPuttySep1.Visible = false;
-                this.eventLogToolStripMenuItem.Visible = false;
-                this.toolStripPuttySep2.Visible = false;
-                this.changeSettingsToolStripMenuItem.Visible = false;
-                this.copyAllToClipboardToolStripMenuItem.Visible = false;
-                this.restartSessionToolStripMenuItem.Visible = false;
-                this.clearScrollbackToolStripMenuItem.Visible = false;
-                this.resetTerminalToolStripMenuItem.Visible = false;
-            }
+            bool puttyCommands = SupportsPuttyRestart(Session.Proto);
+            toolStripPuttySep1.Visible = puttyCommands;
+            eventLogToolStripMenuItem.Visible = puttyCommands;
+            toolStripPuttySep2.Visible = puttyCommands;
+            changeSettingsToolStripMenuItem.Visible = puttyCommands;
+            copyAllToClipboardToolStripMenuItem.Visible = puttyCommands;
+            restartSessionToolStripMenuItem.Visible = puttyCommands;
+            clearScrollbackToolStripMenuItem.Visible = puttyCommands;
+            resetTerminalToolStripMenuItem.Visible = puttyCommands;
+            resetAndClearScrollbackToolStripMenuItem.Visible = puttyCommands;
         }
 
         private void InitNewSessionToolStripMenuItems()
@@ -198,6 +299,8 @@ namespace SuperPutty
 
         void CreateMenu()
         {
+            SessionData saved = GetCurrentSavedSession();
+            reconnectMenuItem.Enabled = saved != null && !SuperPuTTY.IsScpSession(saved) && Startup.IsCompleted && !reconnecting;
             this.newSessionToolStripMenuItem.Enabled = SuperPuTTY.Settings.PuttyPanelShowNewSessionMenu;
             if (SuperPuTTY.Settings.PuttyPanelShowNewSessionMenu)
             {
@@ -257,7 +360,7 @@ namespace SuperPutty
 
         internal bool RestartSession()
         {
-            if (!SupportsPuttyRestart(Session.Proto) || !AppPanel.ExternalProcessCaptured)
+            if (!SupportsPuttyRestart(Session.Proto) || AppPanel?.ExternalProcessCaptured != true)
                 return false;
             puTTYMenuTSMI_Click(restartSessionToolStripMenuItem, EventArgs.Empty);
             return true;
@@ -360,7 +463,7 @@ namespace SuperPutty
                 return;
             }
             focusRetry.Request(
-                () => !IsDisposed && !Disposing && Visible && AppPanel.ExternalProcessCaptured &&
+                () => !IsDisposed && !Disposing && Visible && AppPanel?.ExternalProcessCaptured == true &&
                     (DockPanel == null || DockPanel.ActiveContent == this) &&
                     (SuperPuTTY.MainForm == null || SuperPuTTY.MainForm.IsForegroundWindow(true)),
                 () => NativeMethods.GetForegroundWindow() == AppPanel.AppWindowHandle || AppPanel.ReFocusPuTTY(caller),
@@ -384,7 +487,7 @@ namespace SuperPutty
         {
             string str = String.Format("{0}?SessionId={1}&TabName={2}", 
                 this.GetType().FullName, 
-                HttpUtility.UrlEncode(this.Session.SessionId), 
+                HttpUtility.UrlEncode((GetCurrentSavedSession() ?? Session).SessionId),
                 HttpUtility.UrlEncode(this.TextOverride));
             return str;
         }
@@ -456,7 +559,7 @@ namespace SuperPutty
  
         private void duplicateSessionToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            SuperPuTTY.OpenProtoSession(this.Session);
+            SuperPuTTY.OpenProtoSession(GetCurrentSavedSession() ?? Session);
         }
 
         private void renameTabToolStripMenuItem_Click(object sender, EventArgs e)
@@ -482,7 +585,7 @@ namespace SuperPutty
             }
         }
 
-        public SessionData Session { get; set; }
+        public SessionData Session { get; private set; }
         public ApplicationPanel AppPanel { get; private set; }
         public ctlPuttyPanel previousPanel { get; set; }
         public ctlPuttyPanel nextPanel { get; set; }
@@ -504,6 +607,8 @@ namespace SuperPutty
 
         private void puTTYMenuTSMI_Click(object sender, EventArgs e)
         {
+            ApplicationPanel client = AppPanel;
+            if (client?.ExternalProcessCaptured != true) return;
             ToolStripMenuItem menuItem = (ToolStripMenuItem) sender;
             string[] tags = ((ToolStripMenuItem)sender).Tag.ToString().Split(';');
             uint[] commands = new uint[tags.Length];
@@ -520,7 +625,9 @@ namespace SuperPutty
                 {
                     for (int i = 0; i < commands.Length; ++i)
                     {
-                        NativeMethods.SendMessage(AppPanel.AppWindowHandle, (uint)NativeMethods.WM.SYSCOMMAND, commands[i], 0);
+                        IntPtr handle = client.AppWindowHandle;
+                        if (handle == IntPtr.Zero) break;
+                        NativeMethods.SendMessage(handle, (uint)NativeMethods.WM.SYSCOMMAND, commands[i], 0);
                     }
                 }
                 catch (Exception ex)

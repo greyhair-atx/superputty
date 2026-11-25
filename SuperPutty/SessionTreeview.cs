@@ -33,6 +33,7 @@ using SuperPutty.Utils;
 using WeifenLuo.WinFormsUI.Docking;
 using SuperPutty.Gui;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 
 
@@ -48,6 +49,9 @@ namespace SuperPutty
         // Legacy configuration name: this prompts before a large Connect All
         // operation; it never caps the number of sessions or open tabs.
         private static readonly int ConnectAllConfirmationThreshold = Convert.ToInt32(ConfigurationManager.AppSettings["SuperPuTTY.MaxSessionsToOpen"] ?? "10");
+        internal const int ConnectAllParallelStartups = 3;
+        private static readonly TimeSpan ConnectAllLaunchInterval = TimeSpan.FromMilliseconds(150);
+        private CancellationTokenSource connectAllCancellation;
 
         public const string SessionIdDelim = "/";
         public const string ImageKeySession = "computer";
@@ -674,30 +678,119 @@ namespace SuperPutty
             }
         }
 
-        private void connectAllToolStripMenuItem_Click(object sender, EventArgs e)
+        private async void connectAllToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            TreeNode node = this.treeView1.SelectedNode;
-            if (node != null && !IsSessionNode(node))
+            if (connectAllCancellation != null)
             {
-                List<SessionData> sessions = new List<SessionData>();
-                GetAllSessions(node, sessions);
-                Log.InfoFormat("Found {0} sessions", sessions.Count);
+                connectAllCancellation.Cancel();
+                SuperPuTTY.ReportStatus("Pending Connect All launches canceled. Waiting for tabs already started.");
+                return;
+            }
 
-                if (sessions.Count > ConnectAllConfirmationThreshold)
+            TreeNode node = this.treeView1.SelectedNode;
+            if (node == null || IsSessionNode(node)) return;
+            var sessions = new List<SessionData>();
+            GetAllSessions(node, sessions);
+            if (sessions.Count == 0) return;
+
+            int available = SuperPuTTY.AvailableSessionTabs(m_DockPanel);
+            if (sessions.Count > available)
+            {
+                MessageBox.Show(this, $"This folder contains {sessions.Count} sessions and there are {available} available tab slots. Select a smaller folder or close some tabs.",
+                    "Connect All", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            if (sessions.Count > ConnectAllConfirmationThreshold &&
+                MessageBox.Show(this, $"Open all {sessions.Count} sessions?", "Connect All",
+                    MessageBoxButtons.OKCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.OK)
+                return;
+
+            using (var cancellation = new CancellationTokenSource())
+            {
+                connectAllCancellation = cancellation;
+                connectAllToolStripMenuItem.Text = "Cancel Connect All";
+                SuperPuTTY.ReportStatus("Starting {0} sessions. To stop pending launches, choose Cancel Connect All from the folder menu.", sessions.Count);
+                try
                 {
-                    if (DialogResult.Cancel == MessageBox.Show(
-                        "Open All " + sessions.Count + " sessions?", 
-                        "WARNING", 
-                        MessageBoxButtons.OKCancel, MessageBoxIcon.Warning))
+                    var result = await RunConnectAllAsync(sessions, SuperPuTTY.OpenBatchSessionAsync, ConnectAllLaunchInterval, cancellation.Token);
+                    if (IsDisposed || Disposing || (SuperPuTTY.MainForm?.IsShuttingDown ?? false)) return;
+
+                    string summary = $"Connect All finished. {result.Opened} started, {result.Failures.Length} failed, {result.Canceled} canceled.";
+                    SuperPuTTY.ReportStatus(summary);
+                    if (result.Failures.Length > 0)
                     {
-                        // The user canceled the batch; confirming opens every session.
-                        return;
+                        foreach (string failure in result.Failures) Log.Warn(failure);
+                        string details = String.Join(Environment.NewLine, result.Failures.Take(8));
+                        if (result.Failures.Length > 8) details += Environment.NewLine + $"And {result.Failures.Length - 8} more. See the application log.";
+                        MessageBox.Show(this, summary + Environment.NewLine + Environment.NewLine + details,
+                            "Connect All", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     }
                 }
-                foreach (SessionData session in sessions)
+                finally
                 {
-                    SuperPuTTY.OpenSession(new SessionDataStartInfo { Session = session });
+                    connectAllCancellation = null;
+                    if (!IsDisposed && !Disposing) connectAllToolStripMenuItem.Text = "Connect All";
                 }
+            }
+        }
+
+        internal sealed class ConnectAllResult
+        {
+            internal int Opened { get; }
+            internal int Canceled { get; }
+            internal string[] Failures { get; }
+
+            internal ConnectAllResult(int requested, string[] outcomes)
+            {
+                Failures = outcomes.Where(outcome => outcome != null).ToArray();
+                Opened = outcomes.Length - Failures.Length;
+                Canceled = requested - outcomes.Length;
+            }
+        }
+
+        internal static async Task<ConnectAllResult> RunConnectAllAsync(IReadOnlyList<SessionData> sessions,
+            Func<SessionData, Task<string>> launch, TimeSpan interval, CancellationToken cancellation)
+        {
+            var active = new List<Task<string>>();
+            var attempts = new List<Task<string>>();
+            var canceled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using (cancellation.Register(() => canceled.TrySetResult(true)))
+            {
+                foreach (var session in sessions)
+                {
+                    active.RemoveAll(attempt => attempt.IsCompleted);
+                    if (active.Count == ConnectAllParallelStartups)
+                    {
+                        await Task.WhenAny(Task.WhenAny(active), canceled.Task);
+                        active.RemoveAll(attempt => attempt.IsCompleted);
+                    }
+                    if (cancellation.IsCancellationRequested) break;
+
+                    Task<string> launchTask = LaunchForBatchAsync(session, launch);
+                    active.Add(launchTask);
+                    attempts.Add(launchTask);
+                    if (attempts.Count < sessions.Count && interval > TimeSpan.Zero)
+                    {
+                        try { await Task.Delay(interval, cancellation); }
+                        catch (OperationCanceledException) { break; }
+                    }
+                }
+                return new ConnectAllResult(sessions.Count, await Task.WhenAll(attempts));
+            }
+        }
+
+        private static async Task<string> LaunchForBatchAsync(SessionData session, Func<SessionData, Task<string>> launch)
+        {
+            string id = session.SessionId;
+            try
+            {
+                string error = await launch(session);
+                return error == null ? null : $"{id}: {error}";
+            }
+            catch (Exception ex) when (SuperPuTTY.IsSessionLaunchError(ex))
+            {
+                Log.Warn("Could not start a session from Connect All.", ex);
+                return $"{id}: The session could not be started.";
             }
         }
 

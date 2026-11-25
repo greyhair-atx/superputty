@@ -182,7 +182,11 @@ namespace SuperPutty
         protected override void OnVisibleChanged(EventArgs e)
         {
             base.OnVisibleChanged(e);
+            EnsureStarted();
+        }
 
+        internal override void EnsureStarted()
+        {
             if (!this.Visible ||
                 !this.configured ||
                 this.connecting ||
@@ -214,7 +218,7 @@ namespace SuperPutty
 
                 if (!this.closing && !this.IsDisposed && !this.Disposing)
                 {
-                    this.NotifyClosed(true);
+                    this.ReportStartupFailure("The RDP client became unavailable during startup.");
                 }
             }
             catch (COMException ex)
@@ -222,7 +226,7 @@ namespace SuperPutty
                 this.connecting = false;
                 this.connectionState.Disconnected();
                 Log.Error("Unable to connect the RDP ActiveX control.", ex);
-                this.NotifyClosed(true);
+                this.ReportStartupFailure("The RDP client could not connect. Check the connection settings.");
             }
         }
 
@@ -402,6 +406,7 @@ namespace SuperPutty
 
         private void Client_OnDisconnected(object sender, IMsTscAxEvents_OnDisconnectedEvent e)
         {
+            bool wasConnected = this.loginComplete;
             this.loginComplete = false;
             this.connecting = false;
             this.connectionState.Disconnected();
@@ -429,16 +434,21 @@ namespace SuperPutty
                 e.discReason,
                 extendedReason,
                 description);
-            this.NotifyClosed(e.discReason != 1 && e.discReason != 3);
+            if (wasConnected)
+                this.NotifyClosed(e.discReason != 1 && e.discReason != 3);
+            else
+                this.ReportStartupFailure("The RDP client disconnected before login completed.");
         }
 
         private void Client_OnFatalError(object sender, IMsTscAxEvents_OnFatalErrorEvent e)
         {
+            bool wasConnected = this.loginComplete;
             this.loginComplete = false;
             this.connecting = false;
             this.connectionState.Disconnected();
             Log.ErrorFormat("RDP ActiveX fatal error {0}", e.errorCode);
-            this.NotifyClosed(true);
+            if (wasConnected) this.NotifyClosed(true);
+            else this.ReportStartupFailure("The RDP client reported a fatal error during startup.");
         }
 
         private void CloseClient()

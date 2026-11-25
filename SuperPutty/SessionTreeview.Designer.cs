@@ -15,6 +15,7 @@
         {
             if (disposing)
             {
+                connectAllCancellation?.Cancel();
                 FlushPendingSessionSave();
                 ReleaseSessionSubscriptions();
             }

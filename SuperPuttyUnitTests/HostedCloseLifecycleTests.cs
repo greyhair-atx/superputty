@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using System.Windows.Forms;
 using Microsoft.CSharp;
 using NUnit.Framework;
 using SuperPutty;
@@ -42,7 +43,7 @@ class HostedWindow : Form {
  readonly string marker; readonly int closeMessage, delay; bool armed;
  HostedWindow(string path, int message, int milliseconds) {
   marker=path; closeMessage=message; delay=milliseconds;
-  ShowInTaskbar=false; StartPosition=FormStartPosition.Manual;
+  StartPosition=FormStartPosition.Manual;
   Location=new System.Drawing.Point(-20000,-20000);
   Shown += delegate {
    armed=true;
@@ -59,6 +60,7 @@ class HostedWindow : Form {
   base.WndProc(ref message);
  }
  [STAThread] static void Main(string[] args) {
+  if(args[0]==""exit"") return;
   Application.Run(new HostedWindow(args[0], Int32.Parse(args[1]), Int32.Parse(args[2])));
  }
 }");
@@ -71,6 +73,67 @@ class HostedWindow : Form {
         public void RemoveHostedWindowFixture()
         {
             if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ExitingClientClosesItsTabAndUnresponsiveClientIsTerminated(bool ignoresClose)
+        {
+            string marker = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".window");
+            var session = new SessionData { Proto = ConnectionProtocol.SSH, SessionName = "Hosted lifecycle test" };
+            using (var tab = new ctlPuttyPanel(session, null))
+            {
+                var client = tab.AppPanel;
+                client.ApplicationName = executable;
+                client.ApplicationParameters = CommandLineOptions.QuoteArgument(marker) + " " +
+                    NativeMethods.WM_CLOSE + " " + (ignoresClose ? 60000 : 0);
+                client.ApplicationCloseWithDestroy = false;
+                tab.Show();
+                tab.WatchStartup();
+                PumpUntil(() => tab.Startup.IsCompleted);
+                Assert.IsNull(tab.Startup.Result);
+                Assert.IsTrue(client.ExternalProcessCaptured);
+
+                uint pid;
+                NativeMethods.GetWindowThreadProcessId(client.AppWindowHandle, out pid);
+                using (var process = Process.GetProcessById((int)pid))
+                {
+                    if (ignoresClose)
+                        tab.CloseWithoutConfirmation();
+                    else
+                        Assert.IsTrue(NativeMethods.PostMessage(client.AppWindowHandle, NativeMethods.WM_CLOSE, IntPtr.Zero, IntPtr.Zero));
+                    PumpUntil(() => tab.IsDisposed);
+                    Assert.IsTrue(process.WaitForExit(5000), "The owned child was left running.");
+                    PumpUntil(() => client.ProcessCleanup.IsCompleted);
+                }
+            }
+        }
+
+        [Test]
+        public void ProcessExitBeforeWindowCaptureLeavesARetryableTab()
+        {
+            using (var tab = new ctlPuttyPanel(new SessionData { Proto = ConnectionProtocol.SSH, SessionName = "Early exit" }, null))
+            {
+                tab.AppPanel.ApplicationName = executable;
+                tab.AppPanel.ApplicationParameters = "exit";
+                tab.Show();
+                tab.WatchStartup();
+                PumpUntil(() => tab.Startup.IsCompleted);
+                Assert.IsNotNull(tab.Startup.Result);
+                Assert.IsTrue(tab.AppPanel.IsDisposed);
+                Assert.IsFalse(tab.IsDisposed);
+            }
+        }
+
+        private static void PumpUntil(Func<bool> condition)
+        {
+            var timer = Stopwatch.StartNew();
+            while (!condition() && timer.ElapsedMilliseconds < 5000)
+            {
+                Application.DoEvents();
+                Thread.Sleep(10);
+            }
+            Assert.IsTrue(condition(), "The hosted client did not reach the expected state.");
         }
 
         [TestCase(false, false, 0)]

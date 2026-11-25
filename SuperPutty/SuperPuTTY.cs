@@ -185,6 +185,7 @@ namespace SuperPutty
         {
             WindowEvents?.Dispose();
             WindowEvents = null;
+            ApplicationPanel.WaitForProcessCleanups();
             Log.Info("Shutting down...");
         }
 
@@ -372,7 +373,8 @@ namespace SuperPutty
             string settingsPath = Settings.SettingsFilePath;
             var protectedPaths = new[]
             {
-                catalogPath, acceptedCatalogPath, settingsPath, settingsPath == null ? null : settingsPath + ".bak"
+                catalogPath, acceptedCatalogPath, settingsPath, settingsPath == null ? null : settingsPath + ".bak",
+                catalogPath == null ? null : SessionDockingHistory.FilePath(Settings.SettingsFolder)
             }.Where(item => !String.IsNullOrWhiteSpace(item)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
             return LayoutStorage.SaveAtomically(path, serialize, validateLayout, destination =>
             {
@@ -855,6 +857,7 @@ namespace SuperPutty
             EnsureSessionCatalogIdle();
             string configuredFolder = Settings.SettingsFolder;
             string active = String.IsNullOrWhiteSpace(configuredFolder) ? null : SessionsFileName;
+            string docking = active == null ? null : SessionDockingHistory.FilePath(configuredFolder);
             string accepted = acceptedCatalogPath;
             var snapshot = CloneSessions();
             sessionWriteInProgress = true;
@@ -862,6 +865,8 @@ namespace SuperPutty
             {
                 await Task.Run(() =>
                 {
+                    if (docking != null && SharedFile.IsSameDestination(docking, destination))
+                        throw new InvalidOperationException("Choose a different file. This path stores session docking history.");
                     if ((active != null && SharedFile.IsSameDestination(active, destination)) ||
                         (accepted != null && !String.Equals(active, accepted, StringComparison.OrdinalIgnoreCase) &&
                             SharedFile.IsSameDestination(accepted, destination)))
@@ -874,7 +879,7 @@ namespace SuperPutty
 
         private static List<SessionData> CloneSessions()
         {
-            return sessionsList.Select(session => session.SnapshotForPersistence()).ToList();
+            return sessionsList.Select(session => session.CreateSnapshot()).ToList();
         }
 
         private static void MarkSessionMovesSaved()
@@ -987,126 +992,113 @@ namespace SuperPutty
 
         internal const int MaximumOpenSessions = 200;
 
-        internal static bool HasSessionCapacity(DockPanel panel)
+        internal static int AvailableSessionTabs(DockPanel panel)
         {
-            return panel != null && !panel.IsDisposed && panel.Contents.OfType<ToolWindowDocument>()
-                .Count(content => !content.IsDisposed) < MaximumOpenSessions;
+            return panel == null || panel.IsDisposed ? 0 : Math.Max(0, MaximumOpenSessions -
+                panel.Contents.OfType<ToolWindowDocument>().Count(content => !content.IsDisposed));
         }
 
-        private static bool CanOpenAnotherSession()
+        internal static bool HasSessionCapacity(DockPanel panel)
         {
-            if (MainForm != null && HasSessionCapacity(MainForm.DockPanel)) return true;
-            ReportStatus("The maximum of {0} open session tabs has been reached. Close a tab before opening another.", MaximumOpenSessions);
-            return false;
+            return AvailableSessionTabs(panel) > 0;
         }
 
         /// <summary>Open a new putty window with its settings being passed in a <seealso cref="SessionData"/> object</summary>
         /// <param name="session">The <seealso cref="SessionData"/> object containing the settings</param>
         public static ctlPuttyPanel OpenProtoSession(SessionData session)
         {
-            if (IsScpSession(session))
-            {
-                OpenScpSession(session);
-                return null;
-            }
+            return OpenSessionTab(session, IsScpSession(session), false) as ctlPuttyPanel;
+        }
 
-            if (session != null && !CanOpenAnotherSession()) return null;
-
-            Log.InfoFormat("Opening putty session, id={0}", session == null ? "" : session.SessionId);
-            ctlPuttyPanel panel = null;
-            if (session != null)
-            {
-                string Executable = PuttyStartInfo.GetExecutable(session);
-                if (string.IsNullOrEmpty(Executable))
-                {
-                    MessageBox.Show("Error trying to create session: " + session.ToString() +
-                        "\nExecutable not set for " + session.Proto.ToString() + " protocol." +
-                        "\nGo to tools->options->General tab to set the path to the executable."
-                        , "Failed to create a session", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return null;
-                }
-                if (!File.Exists(Executable))
-                {
-                    MessageBox.Show("Error trying to create session: " + session.ToString() +
-                        "\nExecutable not found for " + session.Proto.ToString() + " protocol." +
-                        "\nThe path for the executable was set as \"" + Executable + "\"." +
-                        "\nGo to tools->options->General tab to set the path to the executable."
-                        , "Failed to create a session", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return null;
-                }
-
-                // This is the callback fired when the panel containing the terminal is closed
-                // We use this to save the last docking location and to close the panel
-                PuttyClosedCallback callback = delegate
-                {
-                    _ = CloseExitedSessionAsync(panel, session, SaveSessionsAsync);
-                };
-
-                try {
-                    panel = new ctlPuttyPanel(session, callback);
-
-                    ApplyDockRestrictions(panel);
-                    ApplyIconForWindow(panel, session);
-                    panel.Show(MainForm.DockPanel, session.LastDockstate);
-                    ReportStatus($"Opened session: {session.SessionId} [{session.Proto}]");
-
-                    if (!string.IsNullOrWhiteSpace(session.SPSLFileName))
-                        StartSessionScript(panel, session.SPSLFileName);
-                } catch (InvalidOperationException ex)
-                {
-                    MessageBox.Show("Error trying to create session " + ex.Message, "Failed to create session panel", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
+        private static ToolWindowDocument OpenSessionTab(SessionData session, bool scp, bool batch)
+        {
+            string error;
+            var panel = TryOpenSessionTab(session, scp, batch, out error);
+            if (error != null) ReportStatus(error);
             return panel;
         }
 
-        internal static void CloseExitedSession(ctlPuttyPanel panel, SessionData session, Action persist)
+        private static ToolWindowDocument TryOpenSessionTab(SessionData session, bool scp, bool batch, out string error)
         {
-            CloseExitedSessionAsync(panel, session, AsCompletedTask(persist)).GetAwaiter().GetResult();
-        }
-
-        private static async Task CloseExitedSessionAsync(ctlPuttyPanel panel, SessionData session, Func<Task> persist)
-        {
-            if (panel == null || panel.IsDisposed || panel.Disposing || !panel.IsHandleCreated) return;
-            if (panel.InvokeRequired)
+            error = null;
+            if (session == null) return null;
+            var form = MainForm;
+            if (form == null || form.IsDisposed || form.IsShuttingDown)
             {
-                try { panel.BeginInvoke((Action)(() => { _ = CloseExitedSessionAsync(panel, session, persist); })); }
-                catch (InvalidOperationException) { } // The tab closed before the post.
-                return;
+                error = "The workspace is closing.";
+                return null;
             }
+            if (!HasSessionCapacity(form.DockPanel))
+            {
+                error = $"The maximum of {MaximumOpenSessions} open session tabs has been reached.";
+                return null;
+            }
+            if (scp && !IsScpEnabled)
+            {
+                error = "The PSCP executable is missing. Check its path in Tools > Options.";
+                return null;
+            }
+
+            ToolWindowDocument panel = null;
             try
             {
-                if (session.LastDockstate != panel.DockState && panel.DockState != DockState.Unknown &&
-                    panel.DockState != DockState.Hidden)
+                Log.InfoFormat("Opening session, id={0}, protocol={1}", session.SessionId, scp ? "SCP" : session.Proto.ToString());
+                if (scp)
                 {
-                    var previous = session.LastDockstate;
-                    session.LastDockstate = panel.DockState;
-                    // A pending move is written only by its save or the next
-                    // explicit catalog edit, never as a tab-close side effect.
-                    if (HasPendingSessionMoves) return;
-                    try { await persist(); }
-                    catch
-                    {
-                        session.LastDockstate = previous;
-                        throw;
-                    }
+                    string homePrefix = String.Equals(session.Username, "root", StringComparison.OrdinalIgnoreCase)
+                        ? Settings.PscpRootHomePrefix : Settings.PscpHomePrefix;
+                    panel = new PscpBrowserPanel(session,
+                        new PscpOptions { PscpLocation = Settings.PscpExe, PscpHomePrefix = homePrefix }, null, batch);
                 }
+                else panel = new ctlPuttyPanel(session, null) { ReportOpened = !batch };
+
+                ApplyDockRestrictions(panel);
+                ApplyIconForWindow(panel, session);
+                DockState position = session.LastDockstate;
+                if (panel.SavedSession != null)
+                    position = form.SessionDocking.Get(panel.SessionWorkspace, session.SessionId, position);
+                if (!SessionDockingHistory.IsDockPosition(position) || !panel.DockHandler.IsDockStateValid(position))
+                    position = DockState.Document;
+                panel.Show(form.DockPanel, position);
+                (panel as ctlPuttyPanel)?.WatchStartup();
+                if (scp && !batch) ReportStatus("Opened session {0} [SCP]", session.SessionId);
+                return panel;
             }
-            catch (Exception ex) when (ex is IOException || ex is InvalidDataException || ex is UnauthorizedAccessException ||
-                ex is System.Security.SecurityException || ex is InvalidOperationException)
+            catch (Exception ex) when (IsSessionLaunchError(ex))
             {
-                Log.Warn("Unable to save the exited session's docking position.", ex);
-                ReportStatus("The session closed, but its docking position could not be saved.");
+                panel?.Dispose();
+                Log.Warn("Unable to open a session tab.", ex);
+                error = "The session tab could not be opened. Check its connection and client settings.";
+                return null;
             }
-            finally { if (!panel.IsDisposed && !panel.Disposing) panel.CloseWithoutConfirmation(); }
         }
 
-        private static async void StartSessionScript(ctlPuttyPanel panel, string fileName)
+        internal static bool IsSessionLaunchError(Exception ex)
         {
+            return ex is IOException || ex is ArgumentException || ex is InvalidOperationException ||
+                ex is UnauthorizedAccessException || ex is System.Security.SecurityException ||
+                ex is Win32Exception || ex is System.Runtime.InteropServices.COMException || ex is TargetInvocationException;
+        }
+
+        internal static Task<string> OpenBatchSessionAsync(SessionData session)
+        {
+            if (!Object.ReferenceEquals(GetSessionById(session.SessionId), session))
+                return Task.FromResult("The saved session is no longer in this workspace.");
+            string error;
+            var panel = TryOpenSessionTab(session, IsScpSession(session), true, out error);
+            var terminal = panel as ctlPuttyPanel;
+            if (terminal != null) return terminal.Startup;
+            var browser = panel as PscpBrowserPanel;
+            return browser != null ? browser.Startup : Task.FromResult(error);
+        }
+
+        internal static async void StartSessionScript(ctlPuttyPanel panel, string fileName)
+        {
+            ApplicationPanel client = panel.AppPanel;
             using (var cancellation = new CancellationTokenSource())
             {
                 EventHandler closed = (sender, args) => cancellation.Cancel();
-                panel.Disposed += closed;
+                client.Disposed += closed;
                 try
                 {
                     string script = string.Empty;
@@ -1139,7 +1131,7 @@ namespace SuperPutty
                             catch(Exception ex)
                             {
                                 Log.Warn("Unable to securely download remote SPSL script from host " + scriptUri.Host, ex);
-                                if (panel.IsDisposed || panel.Disposing) return;
+                                if (client.IsDisposed || client.Disposing) return;
                                 MessageBox.Show(
                                     "The remote SPSL script could not be downloaded securely and was not executed.",
                                     "Remote Script Error",
@@ -1161,24 +1153,21 @@ namespace SuperPutty
                         }
                     }
 
-                    if (panel.IsDisposed || panel.Disposing || cancellation.IsCancellationRequested) return;
+                    if (client.IsDisposed || client.Disposing || cancellation.IsCancellationRequested) return;
                     if (!String.IsNullOrEmpty(script))
                     {
-                        panel.AppPanel.WhenCaptured(() =>
-                        {
-                            ExecuteScriptEventArgs scriptArgs = new ExecuteScriptEventArgs() { Script = script, Targets = new[] { SPSL.ScriptTarget.ForPanel(panel.AppPanel) } };
-                            SPSL.BeginExecuteScript(scriptArgs);
-                        });
+                        var scriptArgs = new ExecuteScriptEventArgs { Script = script, Targets = new[] { SPSL.ScriptTarget.ForPanel(client) } };
+                        SPSL.BeginExecuteScript(scriptArgs);
                     }
                 }
                 catch (OperationCanceledException) { }
                 catch (Exception ex)
                 {
                     Log.Warn("Unable to load startup script", ex);
-                    if (!panel.IsDisposed && !panel.Disposing)
+                    if (!client.IsDisposed && !client.Disposing)
                         ReportStatus("Startup script could not be loaded.");
                 }
-                finally { panel.Disposed -= closed; }
+                finally { client.Disposed -= closed; }
             }
         }
 
@@ -1193,28 +1182,7 @@ namespace SuperPutty
         /// <param name="session">The <seealso cref="SessionData"/> object containing the settings</param>
         public static void OpenScpSession(SessionData session)
         {
-            if (session != null && !CanOpenAnotherSession()) return;
-            Log.InfoFormat("Opening scp session, id={0}", session == null ? "" : session.SessionId);
-            if (session == null)
-            {
-                Log.Warn("Could not open null session");
-            }
-            else if (!IsScpEnabled)
-            {
-                ReportStatus($"Could not open session, pscp not found: {session.SessionId} [SCP]");
-            }
-            else
-            {
-                var homePrefix = String.Equals(session.Username, "root", StringComparison.OrdinalIgnoreCase)
-                    ? Settings.PscpRootHomePrefix
-                    : Settings.PscpHomePrefix;
-                PscpBrowserPanel panel = new PscpBrowserPanel(
-                    session, new PscpOptions { PscpLocation = Settings.PscpExe, PscpHomePrefix = homePrefix });
-                ApplyDockRestrictions(panel);
-                ApplyIconForWindow(panel, session);
-                panel.Show(MainForm.DockPanel, session.LastDockstate);
-                ReportStatus($"Opened session: {session.SessionId} [SCP]");
-            }
+            OpenSessionTab(session, true, false);
         }
 
         /// <summary>Apply docking restrictions to a <seealso cref="ToolWindowDocument"/> window such as preventing a window opening from outside the tabbed interface</summary>
@@ -1251,23 +1219,14 @@ namespace SuperPutty
 
         public static void OpenSession(SessionDataStartInfo ssi)
         {
+            if (MainForm == null || MainForm.IsDisposed || ssi == null || ssi.Session == null) return;
             if (MainForm.InvokeRequired)
             {
-                MainForm.BeginInvoke(new Action<SessionDataStartInfo>(OpenSession), ssi);
+                try { MainForm.BeginInvoke(new Action<SessionDataStartInfo>(OpenSession), ssi); }
+                catch (InvalidOperationException) { }
                 return;
             }
-
-            if (ssi != null)
-            {
-                if (ssi.UseScp || IsScpSession(ssi.Session))
-                {
-                    OpenScpSession(ssi.Session);
-                }
-                else
-                {
-                    OpenProtoSession(ssi.Session);
-                }
-            }
+            OpenSessionTab(ssi.Session, ssi.UseScp || IsScpSession(ssi.Session), false);
         }
 
         /// <summary>Import sessions from the specified file into the in-application database</summary>

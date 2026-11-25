@@ -1,9 +1,11 @@
 using System;
 using System.Collections;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using log4net.Appender;
 using log4net.Core;
@@ -11,6 +13,7 @@ using log4net.Repository.Hierarchy;
 using NUnit.Framework;
 using SuperPutty;
 using SuperPutty.Data;
+using SuperPutty.Scp;
 using WeifenLuo.WinFormsUI.Docking;
 using App = SuperPutty.SuperPuTTY;
 
@@ -21,32 +24,142 @@ namespace SuperPuttyUnitTests
     {
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
-        private sealed class SessionPanel : ctlPuttyPanel
+        [Test]
+        public void MissingTerminalExecutableAllowsRetryAndCloseInTheSameTab()
         {
-            internal SessionPanel(SessionData session) : base(session, null) { }
-            protected override void OnLoad(EventArgs e) { } // No external process in this fixture.
+            string originalPath = App.Settings.PuttyExe;
+            App.Settings.PuttyExe = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".exe");
+            try
+            {
+                var session = new SessionData { SessionId = "test", SessionName = "test", Host = "test",
+                    Proto = ConnectionProtocol.SSH, LastDockstate = DockState.DockLeft };
+                using (var panel = new ctlPuttyPanel(session, null))
+                {
+                    panel.Show();
+                    panel.WatchStartup();
+                    var firstClient = panel.AppPanel;
+                    PumpUntil(() => panel.Startup.IsCompleted);
+                    StringAssert.Contains("executable is missing", panel.Startup.Result);
+                    Assert.IsTrue(firstClient.IsDisposed);
+                    Assert.IsFalse(panel.IsDisposed);
+
+                    panel.RetryStartup();
+                    Assert.AreNotSame(firstClient, panel.AppPanel);
+                    PumpUntil(() => panel.Startup.IsCompleted);
+                    Assert.IsFalse(panel.IsDisposed);
+                    Assert.IsNotNull(panel.Startup.Result);
+                    panel.Close();
+                    Assert.IsTrue(panel.IsDisposed);
+                    Assert.AreEqual(DockState.DockLeft, session.LastDockstate);
+                }
+            }
+            finally { App.Settings.PuttyExe = originalPath; }
         }
 
         [Test]
-        public void ExitedTabClosesEvenWhenDockPositionCannotBeSaved()
+        public void TerminalAndScpTabsKeepTheirConnectionAfterASavedProfileEdit()
         {
-            var session = new SessionData { SessionId = "test", SessionName = "test", Host = "test",
-                Proto = ConnectionProtocol.SSH, LastDockstate = DockState.DockLeft };
-            using (var theme = new VS2015LightTheme())
-            using (var docking = new DockPanel { Theme = theme })
-            using (var panel = new SessionPanel(session))
+            var original = App.GetAllSessions();
+            var session = new SessionData { SessionId = "test", SessionName = "test", Host = "first.invalid",
+                Port = 2222, Username = "first", Proto = ConnectionProtocol.SSH, RemotePath = "/" };
+            try
             {
-                panel.AppPanel.ApplicationName = String.Empty;
-                panel.DockPanel = docking;
-                panel.DockState = DockState.DockRight;
-                var handle = panel.Handle;
-                int attempts = 0;
-                App.CloseExitedSession(panel, session, () => { attempts++; throw new IOException("Read-only settings"); });
-                Assert.AreEqual(1, attempts);
-                Assert.IsTrue(panel.IsDisposed);
-                Assert.AreEqual(DockState.DockLeft, session.LastDockstate);
-                Assert.DoesNotThrow(() => App.CloseExitedSession(panel, session, () => Assert.Fail("Already closed")));
+                App.ReplaceSessionCatalog(new[] { session });
+                var options = new PscpOptions { PscpLocation = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".exe") };
+                using (var terminal = new ctlPuttyPanel(session, null))
+                using (var browser = new PscpBrowserPanel(session, options, Path.GetTempPath()))
+                {
+                    session.Host = "second.invalid";
+                    session.Port = 2200;
+                    session.Proto = ConnectionProtocol.Telnet;
+                    Assert.AreSame(session, terminal.GetCurrentSavedSession());
+                    Assert.AreSame(session, browser.GetCurrentSavedSession());
+                    Assert.AreEqual("first.invalid", terminal.Session.Host);
+                    Assert.AreEqual(ConnectionProtocol.SSH, terminal.Session.Proto);
+                    var remote = (BrowserPresenter)typeof(PscpBrowserPanel).GetField("remoteBrowserPresenter", Private).GetValue(browser);
+                    Assert.AreSame(browser.Session, remote.Session);
+                    Assert.AreEqual("first.invalid", remote.Session.Host);
+                    Assert.AreEqual(2222, remote.Session.Port);
+                    remote.Session.Username = "tab-auth";
+                    var transfer = new FileTransfer(options, new FileTransferRequest { Session = remote.Session });
+                    remote.Session.Username = "next-auth";
+                    Assert.AreEqual("tab-auth", transfer.Request.Session.Username);
+                    Assert.AreEqual("first", session.Username);
+                    using (var reopened = new ctlPuttyPanel(session, null))
+                        Assert.AreEqual("second.invalid", reopened.Session.Host);
+                }
             }
+            finally { App.ReplaceSessionCatalog(original); }
+        }
+
+        [Test]
+        public void ConnectAllLimitsConcurrentStartsAndSkipsPendingTabsWhenCanceled()
+        {
+            var sessions = Enumerable.Range(1, 8).Select(index => new SessionData { SessionId = "test/" + index }).ToArray();
+            var launches = new System.Collections.Generic.List<TaskCompletionSource<string>>();
+            using (var cancellation = new CancellationTokenSource())
+            {
+                var result = SessionTreeview.RunConnectAllAsync(sessions, session =>
+                {
+                    var launch = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    launches.Add(launch);
+                    return launch.Task;
+                }, TimeSpan.Zero, cancellation.Token);
+
+                Assert.AreEqual(SessionTreeview.ConnectAllParallelStartups, launches.Count);
+                launches[0].SetResult("Missing client");
+                PumpUntil(() => launches.Count == SessionTreeview.ConnectAllParallelStartups + 1);
+                cancellation.Cancel();
+                foreach (var launch in launches.Skip(1)) launch.SetResult(null);
+                PumpUntil(() => result.IsCompleted);
+                Assert.AreEqual(3, result.Result.Opened);
+                Assert.AreEqual(4, result.Result.Canceled);
+                CollectionAssert.AreEqual(new[] { "test/1: Missing client" }, result.Result.Failures);
+            }
+        }
+
+        [Test]
+        public void SavesOnlyDockHistoryAndMergesChangesFromTwoInstances()
+        {
+            string folder = Path.Combine(Path.GetTempPath(), "SuperPuttyDockHistory-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            string catalog = Path.Combine(folder, "Sessions.XML");
+            string history = SessionDockingHistory.FilePath(folder);
+            try
+            {
+                File.WriteAllText(catalog, "Session data");
+                var first = new SessionDockingHistory();
+                var second = new SessionDockingHistory();
+                Assert.AreEqual(DockState.DockTop, first.Get(folder, "legacy", DockState.DockTop));
+                first.Remember(folder, "First", DockState.DockLeft, DockState.Document);
+                second.Remember(folder, "Second", DockState.DockRight, DockState.Document);
+                second.Remember(folder, "Hidden", DockState.Hidden, DockState.Document);
+                first.Save();
+                second.Save();
+
+                var reopened = new SessionDockingHistory();
+                Assert.AreEqual(DockState.DockLeft, reopened.Get(folder, "first", DockState.Document));
+                Assert.AreEqual(DockState.DockRight, reopened.Get(folder, "Second", DockState.Document));
+                Assert.AreEqual(DockState.Document, reopened.Get(folder, "Hidden", DockState.Document));
+                Assert.AreEqual("Session data", File.ReadAllText(catalog));
+            }
+            finally
+            {
+                File.Delete(history);
+                File.Delete(catalog);
+                Directory.Delete(folder);
+            }
+        }
+
+        private static void PumpUntil(Func<bool> condition)
+        {
+            var elapsed = Stopwatch.StartNew();
+            while (!condition() && elapsed.ElapsedMilliseconds < 5000)
+            {
+                Application.DoEvents();
+                Thread.Sleep(10);
+            }
+            Assert.IsTrue(condition(), "The operation did not complete.");
         }
 
         private sealed class Detail : SessionDetail

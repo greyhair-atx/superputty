@@ -741,10 +741,10 @@ namespace SuperPutty.Data
             return session;
         }
 
-        internal SessionData SnapshotForPersistence()
+        internal SessionData CreateSnapshot()
         {
-            // Catalog fields are values or immutable strings. Detach the clone
-            // from UI observers before handing it to the storage worker.
+            // Session fields are values or immutable strings. A snapshot has
+            // its own observers, whether used by a tab or by a storage worker.
             var snapshot = (SessionData)MemberwiseClone();
             snapshot.OnPropertyChanged = null;
             snapshot.OnPropertyChanging = null;

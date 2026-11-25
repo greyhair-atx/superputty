@@ -27,7 +27,12 @@ namespace SuperPutty.Scp
         public FileTransfer(PscpOptions options, FileTransferRequest request)
         {
             this.Options = options;
-            this.Request = request;
+            this.Request = new FileTransferRequest
+            {
+                Session = request.Session?.CreateSnapshot(),
+                SourceFiles = new List<BrowserFileInfo>(request.SourceFiles),
+                TargetFile = request.TargetFile
+            };
 
             this.Id = Interlocked.Increment(ref idSeed);
         }

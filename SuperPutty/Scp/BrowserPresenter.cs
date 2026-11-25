@@ -24,6 +24,7 @@ using System.ComponentModel;
 using SuperPutty.Data;
 using SuperPutty.Gui;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace SuperPutty.Scp
 {
@@ -34,6 +35,10 @@ namespace SuperPutty.Scp
         private readonly CancellationTokenSource cancellation = new CancellationTokenSource();
         private volatile bool disposed;
         private BrowserFileInfo lastRequestedDirectory;
+        private readonly TaskCompletionSource<string> firstLoad =
+            new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal Task<string> FirstLoad { get { return firstLoad.Task; } }
+        internal bool DeferInitialAuthentication { get; set; }
         private static readonly ILog Log = LogManager.GetLogger(typeof(BrowserPresenter));
 
         /// <summary>Raised when login and password information is required to authenticate against a ssh server serving files via scp</summary>
@@ -123,6 +128,7 @@ namespace SuperPutty.Scp
                 string msg = string.Format("System error while loading directory: {0}", e.Error.Message);
                 Log.Error(msg, e.Error);
                 this.ViewModel.Status = msg;
+                firstLoad.TrySetResult("The initial directory could not be loaded.");
             }
             else
             {
@@ -130,6 +136,13 @@ namespace SuperPutty.Scp
                 switch (result.StatusCode)
                 {
                     case ResultStatusCode.RetryAuthentication:
+                        if (DeferInitialAuthentication && !FirstLoad.IsCompleted)
+                        {
+                            const string message = "Authentication required. Refresh the remote browser to sign in.";
+                            this.ViewModel.Status = message;
+                            firstLoad.TrySetResult(message);
+                            break;
+                        }
                         // Request login- first login will be initiated from here after failing 1st call to pscp which attemps key based auth
                         AuthEventArgs authEvent = new AuthEventArgs
                         { 
@@ -144,6 +157,7 @@ namespace SuperPutty.Scp
                             this.Session.Password = authEvent.Password;
                             this.LoadDirectory(result.Path);
                         }
+                        else firstLoad.TrySetResult("Authentication was canceled.");
                         break;
                     case ResultStatusCode.Success:
                         // list files
@@ -154,9 +168,11 @@ namespace SuperPutty.Scp
                         this.CurrentPath = result.Path;
                         this.ViewModel.CurrentPath = result.Path.Path;
                         BaseViewModel.UpdateList(this.ViewModel.Files, result.Files);
+                        firstLoad.TrySetResult(null);
                         break;
                     case ResultStatusCode.Canceled:
                         this.ViewModel.Status = "Canceled";
+                        firstLoad.TrySetResult("The initial directory listing was canceled.");
                         break;
                     case ResultStatusCode.Error:
                         string errMsg = result.ErrorMsg != null
@@ -166,9 +182,11 @@ namespace SuperPutty.Scp
                                 : "Unknown Error listing directory";
                         Log.Error(errMsg, result.Error);
                         this.ViewModel.Status = errMsg;
+                        firstLoad.TrySetResult("The initial directory could not be loaded. See the remote browser for details.");
                         break;
                     default:
                         Log.InfoFormat("Unknown result '{0}'", result.StatusCode);
+                        firstLoad.TrySetResult("The initial directory listing failed.");
                         break;
                 }
             }
@@ -240,6 +258,7 @@ namespace SuperPutty.Scp
         {
             if (disposed) return;
             disposed = true;
+            firstLoad.TrySetResult("The tab closed during startup.");
             this.FileTransferPresenter.ViewModel.FileTransfers.ListChanged -= FileTransfers_ListChanged;
             AuthRequest = null;
             cancellation.Cancel();

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Threading.Tasks;
 using SuperPutty.Data;
 
 namespace SuperPutty.Scp
@@ -8,7 +9,7 @@ namespace SuperPutty.Scp
     {
         FileTransferPresenter fileTransferPresenter;
         IBrowserPresenter localBrowserPresenter;
-        IBrowserPresenter remoteBrowserPresenter;
+        BrowserPresenter remoteBrowserPresenter;
 
         public PscpBrowserPanel()
         {
@@ -20,39 +21,43 @@ namespace SuperPutty.Scp
            this(session, options, "")
         { }
 
-        public PscpBrowserPanel(SessionData session, PscpOptions options, string localStartingDir) : this()
+        public PscpBrowserPanel(SessionData session, PscpOptions options, string localStartingDir)
+            : this(session, options, localStartingDir, false)
         {
-            this.Session = session;
-            this.Name = session.SessionName;
-            this.TabText = session.SessionName;
-
-             //set the remote path
-            String remotePath = "";            
-            if (String.IsNullOrEmpty(session.RemotePath)){                
-                remotePath = options.PscpHomePrefix + session.Username;
-            }else{                
-                remotePath = session.RemotePath;
-            }
-
-            //set the local path
-            String localPath = "";
-            if (String.IsNullOrEmpty(localStartingDir)){
-                localPath = String.IsNullOrEmpty(session.LocalPath) ? Environment.GetFolderPath(Environment.SpecialFolder.Desktop) : session.LocalPath;
-            }else{
-                localPath = localStartingDir;
-            }
- 		 
-
-            this.fileTransferPresenter = new FileTransferPresenter(options);
-            this.localBrowserPresenter = new BrowserPresenter(
-                "Local", new LocalBrowserModel(), session, fileTransferPresenter);
-            this.remoteBrowserPresenter = new BrowserPresenter(
-                "Remote", new RemoteBrowserModel(options), session, fileTransferPresenter);
-
-            this.browserViewLocal.Initialize(this.localBrowserPresenter, new BrowserFileInfo(new DirectoryInfo(localPath)));
-            this.browserViewRemote.Initialize(this.remoteBrowserPresenter, RemoteBrowserModel.NewDirectory(remotePath));
-            this.fileTransferView.Initialize(this.fileTransferPresenter);
         }
+
+        internal PscpBrowserPanel(SessionData session, PscpOptions options, string localStartingDir,
+            bool deferInitialAuthentication) : this()
+        {
+            try
+            {
+                Session = session.CreateSnapshot();
+                AssociateSavedSession(session);
+                Name = TabText = Session.SessionName;
+                string remotePath = String.IsNullOrEmpty(Session.RemotePath)
+                    ? options.PscpHomePrefix + Session.Username
+                    : Session.RemotePath;
+                string localPath = String.IsNullOrEmpty(localStartingDir) ? Session.LocalPath : localStartingDir;
+                if (String.IsNullOrEmpty(localPath)) localPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+
+                fileTransferPresenter = new FileTransferPresenter(options);
+                localBrowserPresenter = new BrowserPresenter("Local", new LocalBrowserModel(), Session, fileTransferPresenter);
+                remoteBrowserPresenter = new BrowserPresenter("Remote", new RemoteBrowserModel(options), Session, fileTransferPresenter)
+                {
+                    DeferInitialAuthentication = deferInitialAuthentication
+                };
+                browserViewLocal.Initialize(localBrowserPresenter, new BrowserFileInfo(new DirectoryInfo(localPath)));
+                browserViewRemote.Initialize(remoteBrowserPresenter, RemoteBrowserModel.NewDirectory(remotePath));
+                fileTransferView.Initialize(fileTransferPresenter);
+            }
+            catch
+            {
+                Dispose();
+                throw;
+            }
+        }
+
+        internal Task<string> Startup { get { return remoteBrowserPresenter.FirstLoad; } }
 
         public SessionData Session { get; private set; }
     }

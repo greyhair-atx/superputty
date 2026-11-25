@@ -54,7 +54,7 @@ namespace SuperPutty
 
         internal DockPanel DockPanel { get; private set; }
 
-        public ToolWindowDocument CurrentPanel { get; set; }
+        internal readonly SessionDockingHistory SessionDocking = new SessionDockingHistory();
 
         private SingletonToolWindowHelper<SessionTreeview> sessions;
         private SingletonToolWindowHelper<LayoutsList> layouts;
@@ -397,6 +397,7 @@ namespace SuperPutty
             }
 
             this.focusHelper.Dispose();
+            SessionDocking.Save();
 
             base.OnFormClosed(e);
         }
@@ -423,13 +424,29 @@ namespace SuperPutty
                 // All confirmation and FormClosing handlers have had a chance to cancel.
                 IsShuttingDown = !e.Cancel;
                 updateChecks.OnClosing(e.Cancel);
-                if (IsShuttingDown) sessionLoadCancellation?.Cancel();
+                if (IsShuttingDown)
+                {
+                    sessionLoadCancellation?.Cancel();
+                    foreach (var document in DockPanel.Contents.OfType<ToolWindowDocument>())
+                        RememberSessionDocking(document);
+                }
             }
             finally
             {
                 if (e.Cancel) SingleInstanceHelper.ResumeReceiving();
                 else SingleInstanceHelper.StopReceiving();
             }
+        }
+
+        internal void RememberSessionDocking(ToolWindowDocument document)
+        {
+            if (document.SavedSession == null || String.IsNullOrWhiteSpace(document.SessionWorkspace))
+                return;
+            if (SettingsFolderResolver.PathsEqual(document.SessionWorkspace, SuperPuTTY.Settings.SettingsFolder) &&
+                document.GetCurrentSavedSession() == null)
+                return;
+            SessionDocking.Remember(document.SessionWorkspace, document.SavedSession.SessionId, document.LastDockPosition,
+                document.SavedSession.LastDockstate);
         }
 
         private void frmSuperPutty_FormClosing(object sender, FormClosingEventArgs e)
@@ -526,11 +543,11 @@ namespace SuperPutty
             if (activeDocument == null || activeSession == null || !String.IsNullOrEmpty(activeSession.ConsoleCommand))
                 return;
 
-            bool isSavedSession = Object.ReferenceEquals(
-                SuperPuTTY.GetSessionById(activeSession.SessionId),
-                activeSession);
-            SessionData editedSession = (SessionData)activeSession.Clone();
-            if (activeDocument is PscpBrowserPanel)
+            SessionData savedSession = activeDocument.GetCurrentSavedSession();
+            bool isSavedSession = savedSession != null;
+            SessionData target = savedSession ?? activeSession.CreateSnapshot();
+            SessionData editedSession = target.CreateSnapshot();
+            if (!isSavedSession && activeDocument is PscpBrowserPanel)
                 editedSession.Proto = ConnectionProtocol.SCP;
 
             // Quick-connect and command-line sessions use technical IDs such as
@@ -549,7 +566,7 @@ namespace SuperPutty
                     if (!TryBuildCurrentSessionId(editedSession.SessionId, name, out candidateId, out error))
                         return false;
 
-                    if (SuperPuTTY.SessionPathConflicts(candidateId, activeSession))
+                    if (SuperPuTTY.SessionPathConflicts(candidateId, savedSession))
                     {
                         error = "A session or folder with that path already exists";
                         return false;
@@ -563,7 +580,9 @@ namespace SuperPutty
 
             try
             {
-                await SuperPuTTY.SaveSessionChangesAsync(activeSession, editedSession);
+                if (isSavedSession && !Object.ReferenceEquals(activeDocument.GetCurrentSavedSession(), savedSession))
+                    throw new InvalidOperationException("The session catalog changed while the editor was open.");
+                await SuperPuTTY.SaveSessionChangesAsync(target, editedSession);
             }
             catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException ||
                 ex is InvalidDataException || ex is IOException || ex is UnauthorizedAccessException)
@@ -575,16 +594,17 @@ namespace SuperPutty
             }
 
             if (activeDocument.IsDisposed || activeDocument.Disposing) return;
-            activeDocument.Text = activeSession.SessionName;
-            activeDocument.TabText = activeSession.SessionName;
+            activeDocument.AssociateSavedSession(target);
+            activeDocument.Text = target.SessionName;
+            activeDocument.TabText = target.SessionName;
             ctlPuttyPanel activeTerminal = activeDocument as ctlPuttyPanel;
             if (activeTerminal != null)
             {
-                activeTerminal.TextOverride = activeSession.SessionName;
+                activeTerminal.TextOverride = target.SessionName;
                 if (activeTerminal.AppPanel != null)
-                    activeTerminal.AppPanel.Name = activeSession.SessionId;
+                    activeTerminal.AppPanel.Name = target.SessionId;
             }
-            SuperPuTTY.ReportStatus("Saved current session: {0}", activeSession.SessionId);
+            SuperPuTTY.ReportStatus("Saved current session: {0}", target.SessionId);
         }
 
         private static SessionData GetDocumentSession(ToolWindowDocument document)
@@ -1976,7 +1996,8 @@ namespace SuperPutty
                         }
                         if (this.sendCommandsDocumentSelector.IsDocumentSelected(panel))
                         {
-                            IntPtr handle = panel.AppPanel.AppWindowHandle;
+                            IntPtr handle = panel.AppPanel?.AppWindowHandle ?? IntPtr.Zero;
+                            if (handle == IntPtr.Zero) continue;
                             //Log.InfoFormat("SendCommand: session={0}, command=[{1}], handle={2}", panel.Session.SessionId, command, handle);
 
                             try
@@ -2264,7 +2285,7 @@ namespace SuperPutty
                 return true;
 
             ctlPuttyPanel p = control as ctlPuttyPanel;
-            if (p != null && p.AppPanel.AppWindowHandle == hWnd)
+            if (p?.AppPanel?.AppWindowHandle == hWnd)
                 return true;
 
             foreach (Control child in control.Controls)
@@ -2739,7 +2760,7 @@ namespace SuperPutty
                     foreach (IDockContent doc in VisualOrderTabSwitchStrategy.GetDocuments(this.DockPanel))
                     {
                         var panel = doc as ctlPuttyPanel;
-                        if (panel == null || !this.sendCommandsDocumentSelector.IsDocumentSelected(panel)) continue;
+                        if (panel?.AppPanel == null || !this.sendCommandsDocumentSelector.IsDocumentSelected(panel)) continue;
                         string icon = this.toolStripButtonChooseIconGroup.ImageKey;
                         if (icon != "" && icon != "stop" && panel.Session.ImageKey != icon) continue;
                         targets.Add(SPSL.ScriptTarget.ForPanel(panel.AppPanel));

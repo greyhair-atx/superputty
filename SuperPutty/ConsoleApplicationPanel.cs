@@ -32,7 +32,8 @@ namespace SuperPutty
         private readonly object launchProcessLock = new object();
         private Process launchProcess;
         private Process consoleProcess;
-        private Thread captureThread;
+        private CaptureResult pendingCapture;
+        private bool captureRunning;
         private IntPtr consoleWindow;
         private bool started;
         private bool closing;
@@ -147,14 +148,17 @@ namespace SuperPutty
         {
             base.OnVisibleChanged(e);
 
-            if (!this.started && this.Visible && !String.IsNullOrEmpty(this.ApplicationName))
-            {
-                this.StartConsole();
-            }
-            else if (this.Visible && this.ExternalProcessCaptured)
+            EnsureStarted();
+            if (this.Visible && this.ExternalProcessCaptured)
             {
                 this.MoveConsoleWindow();
             }
+        }
+
+        internal override void EnsureStarted()
+        {
+            if (!started && Visible && IsHandleCreated && !IsDisposed && !Disposing)
+                StartConsole();
         }
 
         protected override void OnResize(EventArgs e)
@@ -216,8 +220,9 @@ namespace SuperPutty
                     process.StartInfo.WorkingDirectory = this.ApplicationWorkingDirectory;
                 }
 
-                process.Start();
                 this.launchProcess = process;
+                if (!process.Start())
+                    throw new InvalidOperationException("The console host could not be started.");
 
                 string clientExecutable = PuttyStartInfo.GetConsoleClientExecutable(this.protocol);
                 CaptureRequest request = new CaptureRequest
@@ -228,18 +233,20 @@ namespace SuperPutty
                     DeadlineUtc = DateTime.UtcNow.Add(CaptureTimeout)
                 };
 
-                this.captureThread = new Thread(() => this.CaptureConsoleWindow(request))
+                var captureThread = new Thread(() => this.CaptureConsoleWindow(request))
                 {
                     IsBackground = true,
                     Name = "SuperPuTTY console window capture"
                 };
-                this.captureThread.Start();
+                captureRunning = true;
+                captureThread.Start();
             }
             catch (Exception ex) when (ex is Win32Exception || ex is InvalidOperationException || ex is FileNotFoundException)
             {
                 Log.Error("Unable to launch the console host.", ex);
-                MessageBox.Show(this, ex.Message, "Console Launch Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                this.NotifyClosed(true);
+                captureRunning = false;
+                this.CloseConsole();
+                this.ReportStartupFailure("The console host could not be started.");
             }
         }
 
@@ -267,22 +274,41 @@ namespace SuperPutty
                     }
                 }
 
-                if (this.captureCancellation.IsCancellationRequested)
+                lock (launchProcessLock)
                 {
-                    if (result != null)
+                    if (closing)
                     {
-                        result.Process.Dispose();
+                        result?.Process.Dispose();
+                        return;
                     }
-                    return;
+                    pendingCapture = result;
                 }
 
-                this.RunOnUiThread(() => this.CompleteCapture(result), () => result?.Process.Dispose());
+                RunOnUiThread(() => CompleteCapture(TakePendingCapture()), () => TakePendingCapture()?.Process.Dispose());
             }
             catch (Exception ex) when (ex is Win32Exception || ex is InvalidOperationException)
             {
                 result?.Process.Dispose();
                 Log.Warn("Unable to discover the console window.", ex);
                 this.RunOnUiThread(() => this.CompleteCapture(null));
+            }
+            finally
+            {
+                lock (launchProcessLock)
+                {
+                    captureRunning = false;
+                    if (closing) captureCancellation.Dispose();
+                }
+            }
+        }
+
+        private CaptureResult TakePendingCapture()
+        {
+            lock (launchProcessLock)
+            {
+                var result = pendingCapture;
+                pendingCapture = null;
+                return result;
             }
         }
 
@@ -300,13 +326,8 @@ namespace SuperPutty
             if (result == null)
             {
                 Log.Error("No new ConsoleWindowClass window was found for the launched console process tree.");
-                MessageBox.Show(this,
-                    "The console window could not be located and was not embedded.",
-                    "Console Window Not Found",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
                 this.CloseConsole();
-                this.NotifyClosed(true);
+                this.ReportStartupFailure("The console window could not be found.");
                 return;
             }
 
@@ -345,7 +366,7 @@ namespace SuperPutty
                 this.consoleProcess.Exited -= this.ConsoleProcessExited;
                 this.DisposeProcess(ref this.consoleProcess);
             }
-            this.NotifyClosed(true);
+            this.ReportStartupFailure("The console window could not be embedded.");
         }
 
         private bool AttachConsoleWindow()
@@ -364,11 +385,6 @@ namespace SuperPutty
             {
                 Log.ErrorFormat("Unable to parent console window {0} to panel {1}. Win32Error={2}",
                     this.consoleWindow, this.Handle, error);
-                MessageBox.Show(this,
-                    "The console window could not be embedded.",
-                    "Console Window Capture Failed",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
                 return false;
             }
 
@@ -400,13 +416,15 @@ namespace SuperPutty
 
         private void CloseConsole()
         {
-            if (this.closing)
+            lock (launchProcessLock)
             {
-                return;
+                if (closing) return;
+                closing = true;
+                captureCancellation.Cancel();
+                if (!captureRunning) captureCancellation.Dispose();
+                pendingCapture?.Process.Dispose();
+                pendingCapture = null;
             }
-
-            this.closing = true;
-            this.captureCancellation.Cancel();
 
             IntPtr window = this.consoleWindow;
             bool owned = this.IsOwnedConsoleWindow(window, true);

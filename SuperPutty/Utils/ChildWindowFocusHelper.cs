@@ -171,9 +171,11 @@ namespace SuperPutty.Utils
                 return false;
             }
 
-            if (this.childWindows.ContainsKey(childHandle))
+            ctlPuttyPanel tracked;
+            if (this.childWindows.TryGetValue(childHandle, out tracked))
             {
-                return true;
+                if (tracked.AppPanel?.AppWindowHandle == childHandle) return true;
+                this.childWindows.Remove(childHandle);
             }
 
             // Console windows are captured asynchronously, after ContentAdded.
@@ -181,7 +183,7 @@ namespace SuperPutty.Utils
             foreach (IDockContent doc in this.MainForm.DockPanel.Contents)
             {
                 ctlPuttyPanel panel = doc as ctlPuttyPanel;
-                if (panel != null && panel.AppPanel.AppWindowHandle == childHandle)
+                if (panel?.AppPanel?.AppWindowHandle == childHandle)
                 {
                     this.TrackPanel(panel);
                     return true;
@@ -193,7 +195,7 @@ namespace SuperPutty.Utils
 
         private void TrackPanel(ctlPuttyPanel panel)
         {
-            IntPtr handle = panel.AppPanel.AppWindowHandle;
+            IntPtr handle = panel.AppPanel?.AppWindowHandle ?? IntPtr.Zero;
             if (handle != IntPtr.Zero)
             {
                 this.childWindows[handle] = panel;
