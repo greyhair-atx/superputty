@@ -2,7 +2,7 @@
 param([Parameter(Mandatory)][string]$Compiler,[Parameter(Mandatory)][string]$PayloadDirectory,
  [Parameter(Mandatory)][string]$PortableArchive,[Parameter(Mandatory)][string]$ExpectedArchiveSha256,
  [Parameter(Mandatory)][string]$OutputDirectory,[Parameter(Mandatory)][string]$SignedUninstallerDirectory,
- [string]$Version='1.8.4',[switch]$TestFixture,
+ [string]$Version='1.8.5',[switch]$TestFixture,
  [ValidateSet('none','payload','registry','pause-files','pause-activation','recovery-only')][string]$TestFault='none',
  [string]$SigningTool,[string]$SigningDlib,[string]$SigningMetadata)
 $ErrorActionPreference='Stop'

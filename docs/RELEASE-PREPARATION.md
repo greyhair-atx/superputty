@@ -1,52 +1,45 @@
 # Preparing a release locally
 
-These commands prepare review artifacts. They do not publish, tag, push, deploy Pages, upload to scanners, or submit packages. See [the launch checklist](PUBLIC-LAUNCH-CHECKLIST.md) for approval gates.
+Use a Windows x64 developer shell with MSBuild, .NET Framework 4.8 developer tools, the .NET SDK, and PowerShell 7. See the [Inno release workflow](../packaging/inno/RELEASE.md) for the pinned toolchain and signing configuration.
 
-Use a Windows x64 developer shell with Visual Studio/MSBuild, .NET Framework 4.8 developer tools, the .NET SDK and restored WiX packages. Start with the complete solution:
+## Build and run regressions
 
 ```powershell
-MSBuild.exe .\SuperPutty.sln /restore /t:Rebuild /p:Configuration=Release /p:Platform=x64 /m /v:minimal
+MSBuild.exe .\SuperPuttyUnitTests\SuperPuttyUnitTests.csproj /restore /t:Rebuild /p:Configuration=Release /p:Platform=x64 /m /v:minimal
 dotnet vstest .\SuperPuttyUnitTests\bin\x64\Release\SuperPuttyUnitTests.exe --TestCaseFilter:"TestCategory!=NetworkTest"
 powershell.exe -NoProfile -File .\build\Test-ApplicationShutdown.ps1
 powershell.exe -NoProfile -File .\build\Test-ConsoleApplicationPanel.ps1
 ```
 
-For an unsigned review build, package both scopes with `InstallerArtifactSuffix=test-x64`, then run `New-ReleaseBundle.ps1` without `-RequireSignatures`. Unsigned artifacts must never use signed names.
+Run desktop and HKCU checks under an interactive Windows 11 account. Run live RDP sign-in, disconnect and reconnect, and SCP password and MFA checks using disposable accounts. Record the commit, OS, client versions, test counts, and any skipped scenarios. See [testing](testing.md) for prerequisites.
 
-For the signed candidate, use the existing [Artifact Signing setup](../build/ArtifactSigningMetadata.json) and credential configuration. The metadata contains service identifiers, not a private key. Sign `bin\x64\Release\SuperPutty.exe` with SHA-256 and an RFC3161 SHA-256 timestamp **before** creating the final MSIs. The Azure pipeline implements this ordering. Do not rebuild project references after signing the executable:
+## Prepare and verify the signed candidate
 
-```powershell
-MSBuild.exe .\SuperPuttyInstaller\SuperPuttyInstaller.wixproj /restore /t:Build /p:Configuration=Release /p:Platform=x64 /p:BuildProjectReferences=false /p:InstallerScope=PerUser /p:InstallerProductVersion=1.8.0 /p:InstallerArtifactSuffix=win-x64-signed
-MSBuild.exe .\SuperPuttyInstaller\SuperPuttyInstaller.wixproj /restore /t:Build /p:Configuration=Release /p:Platform=x64 /p:BuildProjectReferences=false /p:InstallerScope=PerMachine /p:InstallerProductVersion=1.8.0 /p:InstallerArtifactSuffix=win-x64-signed
-```
+Match the three-part release version in `azure-pipelines.yml` to the executable's four-part assembly and file versions. Commit the reviewed changes before building the signed candidate. The pipeline builds one signed x64 Inno setup for both install scopes and a portable ZIP containing the signed application. Enable code signing with the configured Azure service connection. For an unsigned local review, use `New-InnoReleaseBundle.ps1 -Version 1.8.5 -PortableOnly` with a fresh output directory.
 
-Sign both resulting MSIs with the same signing service and timestamp settings. Then:
+Run the checks on the final signed files:
 
 ```powershell
-pwsh -NoProfile -File .\build\Verify-CodeSignatures.ps1 -InstallerVersion 1.8.0 -InstallerArtifactSuffix win-x64-signed
-pwsh -NoProfile -File .\build\New-ReleaseBundle.ps1 -Version 1.8.0 -InstallerArtifactSuffix win-x64-signed -RequireSignatures
-pwsh -NoProfile -File .\build\New-WinGetManifest.ps1 -Version 1.8.0
-winget validate .\packaging\winget\ChrisThornton.SuperPuTTYCommunityEdition\1.8.0
+$bundle = 'C:\review\win-x64-signed'
+.\build\Verify-InnoReleaseBundle.ps1 -ReleaseDirectory $bundle -Version 1.8.5 -RequireCleanSource -RequireInstaller
+.\build\Test-InnoReleaseTooling.ps1 -ReleaseDirectory $bundle -Version 1.8.5 -ResultDirectory 'C:\review\tooling-1.8.5'
+.\build\New-InnoWinGetManifest.ps1 -ReleaseDirectory $bundle -Version 1.8.5 -ManifestDirectory 'C:\review\winget-1.8.5'
 ```
 
-`New-ReleaseBundle.ps1` checks both MSIs, x64 PE/version/branding, scope and upgrade rows, original license bytes, exact executable bytes, runtime files and 47 icons. It performs unattended **administrative extraction** (`msiexec /a /qn`), which is not a full installation test. Signing verification requires `Valid`, signer `Christopher Thornton`, and a timestamp certificate. Missing inputs fail the bundle. The ZIP uses an explicit allowlist and excludes user settings and PDBs.
+The bundle verifier checks the application's version, signatures, checksums, and the CycloneDX 1.6 runtime file inventory. The WinGet review manifests record the SHA-256 of the exact signed setup. Regenerate manifests and reverify the bundle after rebuilding or re-signing any artifact.
 
-The CycloneDX 1.6 SBOM is an exact runtime **file inventory**, with SHA-256 values for all ZIP payload files. It does not pretend to resolve external clients, Windows, .NET Framework or every transitive build dependency. [Third-party notices](../THIRD-PARTY-NOTICES.txt), `packages.config` and project PackageReferences document the separate dependency inventory. Validate the SBOM against the [official 1.6 schema](https://cyclonedx.org/schema/bom-1.6.schema.json).
+## Test both install scopes in a disposable Windows VM
 
-The output is `artifacts/release-1.8.0/win-x64-signed`. Review its six top-level assets for release. Temporary payload directories beside the output are local staging, not additional release assets. The checksum file lists five assets: two MSIs, ZIP, SBOM and build manifest. It cannot hash itself.
-
-The build manifest identifies the base commit and whether the source was dirty. **A dirty-tree candidate is not the final release.** After approval, commit the reviewed changes, rebuild/sign from that commit, regenerate checksums and WinGet manifests, then create the release tag on exactly that commit. Do not rebuild or re-sign an MSI after its WinGet hash/ProductCode has been frozen without regenerating all dependent files. Keep published 1.7.x assets immutable.
-
-## Disposable installer tests
-
-Never run lifecycle tests against a developer's installed copy. In an elevated, disposable Windows VM or hosted agent with no SuperPuTTY installations or preferences:
+Run the lifecycle script as a standard test account for current-user installs and an elevated test account for machine installs. Use the verified public Inno installer from the previous release to check upgrades in each scope:
 
 ```powershell
-$env:SUPERPUTTY_DISPOSABLE_TEST = '1'
-pwsh -NoProfile -File .\build\Test-InstallerLifecycle.ps1 -ReleaseDirectory C:\review\win-x64-signed
+.\build\Test-InnoReleaseLifecycle.ps1 -ReleaseDirectory $bundle -Scope user -PreviousInnoSetup 'C:\review\SuperPuTTY-CE-1.8.4-setup-win-x64.exe' -ResultDirectory 'C:\review\user-upgrade' -LaunchTest
+.\build\Test-InnoReleaseLifecycle.ps1 -ReleaseDirectory $bundle -Scope machine -PreviousInnoSetup 'C:\review\SuperPuTTY-CE-1.8.4-setup-win-x64.exe' -ResultDirectory 'C:\review\machine-upgrade' -LaunchTest
 ```
 
-The script verifies hashes, `/qn /norestart` installation and exact ProductCode uninstallation in both scopes, product display names and preservation of a legacy preferences sentinel. It refuses existing installs/settings. It does not simulate live session authentication, a non-admin token, every supported OS, upgrades or cross-scope conflicts. Run the manual matrix in [branding.md](branding.md), including upgrades from 1.7.6, the legacy bridge, blocked upstream 1.5, and a real non-administrator current-user install. Azure's `testInstallerLifecycle` parameter is opt-in and must only be used on disposable agents.
+Verify fresh installs, preserved preferences and session data, interrupted upgrade recovery, and uninstall in each scope. The older MSI migration remains an explicit uninstall and install procedure. Use the [installer validation procedures](releases/1.8.4-TEST-PLAN.md) for recovery and legacy migration coverage.
+
+Tag the exact commit identified in the verified build manifest after approval. Keep the published files immutable and compare the downloaded hashes from GitHub and Gitea with the approved bundle.
 
 ## Website preview
 

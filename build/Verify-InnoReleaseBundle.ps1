@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$ReleaseDirectory,[string]$Version='1.8.4',[switch]$RequireInstaller,[switch]$RequireCleanSource)
+param([Parameter(Mandatory)][string]$ReleaseDirectory,[string]$Version='1.8.5',[switch]$RequireInstaller,[switch]$RequireCleanSource)
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path $ReleaseDirectory).Path
 $prefix="SuperPuTTY-CE-$Version"

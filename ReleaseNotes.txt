@@ -1,3 +1,9 @@
+SuperPuTTY Community Edition 1.8.5
+ - Cap terminal and SCP tabs at 200 per window. Pace folder launches, allow cancellation, and pause pending launches during layout confirmation.
+ - Keep each open tab and queued SCP transfer on its original connection settings. Add retry and close actions for failed terminal startup and preserve external RDP sign-in prompts.
+ - Save docking positions in a separate workspace file. Recover fresh history after preserving a damaged copy.
+ - Harden shared session, layout, and preference files against conflicting writes. Improve single-instance forwarding, native-window cleanup, and SCP cancellation.
+
 SuperPuTTY Community Edition 1.8.4
  - New installer, new look: one signed modern setup can install for the current user or all users on the machine. Existing MSI users must explicitly uninstall their MSI before installing Inno in the same scope.
  - Released November 8, 2026 from frozen source 36dc25e on GitHub and Gitea. Ten VirusTotal analyses completed with zero malicious/suspicious detections; all 11 assets downloaded from each host and hash-verified.

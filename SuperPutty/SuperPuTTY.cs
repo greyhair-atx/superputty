@@ -210,6 +210,8 @@ namespace SuperPutty
 
         public static bool IsLayoutChanging { get; private set; }
         internal static bool IsLayoutTransitionInProgress { get; private set; }
+        internal static Task LayoutTransitionCompletion { get; private set; }
+        internal static long LayoutWorkspaceVersion { get; private set; }
 
         public static void AddLayout(string file)
         {
@@ -344,6 +346,8 @@ namespace SuperPutty
             };
 
             IsLayoutTransitionInProgress = true;
+            var transition = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            LayoutTransitionCompletion = transition.Task;
             try
             {
                 IsLayoutChanging = true;
@@ -352,6 +356,7 @@ namespace SuperPutty
                 if (!args.Cancel)
                 {
                     CurrentLayout = args.New;
+                    if (!args.IsNewLayoutAlreadyActive) LayoutWorkspaceVersion++;
                     LayoutChanged?.Invoke(typeof(SuperPuTTY), args);
                 }
                 // Modal notices pump the message loop. Hold forwarded commands
@@ -361,6 +366,8 @@ namespace SuperPutty
             finally
             {
                 IsLayoutTransitionInProgress = false;
+                LayoutTransitionCompletion = null;
+                transition.TrySetResult(true);
                 SingleInstanceHelper.ResumePendingCommands();
             }
         }
@@ -1080,16 +1087,24 @@ namespace SuperPutty
                 ex is Win32Exception || ex is System.Runtime.InteropServices.COMException || ex is TargetInvocationException;
         }
 
-        internal static Task<string> OpenBatchSessionAsync(SessionData session)
+        internal static async Task<SessionLaunchResult> OpenBatchSessionAsync(SessionData session, CancellationToken cancelPending)
         {
             if (!Object.ReferenceEquals(GetSessionById(session.SessionId), session))
-                return Task.FromResult("The saved session is no longer in this workspace.");
+                return SessionLaunchResult.Completed("The saved session is no longer in this workspace.");
             string error;
             var panel = TryOpenSessionTab(session, IsScpSession(session), true, out error);
             var terminal = panel as ctlPuttyPanel;
-            if (terminal != null) return terminal.Startup;
             var browser = panel as PscpBrowserPanel;
-            return browser != null ? browser.Startup : Task.FromResult(error);
+            Task<string> startup = terminal?.Startup ?? browser?.Startup;
+            if (startup == null) return SessionLaunchResult.Completed(error);
+            var canceled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using (cancelPending.Register(() => canceled.TrySetResult(true)))
+            {
+                await Task.WhenAny(startup, canceled.Task);
+                if (startup.IsCompleted) return SessionLaunchResult.Completed(await startup);
+                return new SessionLaunchResult(terminal?.AppPanel?.IsWaitingForStartupInput == true
+                    ? SessionLaunchStatus.WaitingForSignIn : SessionLaunchStatus.Starting);
+            }
         }
 
         internal static async void StartSessionScript(ctlPuttyPanel panel, string fileName)

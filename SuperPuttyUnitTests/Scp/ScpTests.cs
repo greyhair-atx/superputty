@@ -2,10 +2,9 @@
 using NUnit.Framework;
 using System.Diagnostics;
 using log4net;
-using System.Threading;
-using System.Configuration;
 using SuperPutty.Data;
 using SuperPutty.Scp;
+using SuperPutty.Utils;
 using System;
 using System.IO;
 
@@ -14,177 +13,82 @@ namespace SuperPuttyUnitTests.Scp
     /// <summary>
     /// Basic SCP tests to test underlying process invocation limitations/quirks
     /// </summary>
-    [TestFixture]
+    [TestFixture, Category("NetworkTest")]
     class ScpTests
     {
-        private static readonly ILog Log = LogManager.GetLogger(typeof(ScpTests));
-
-        static ScpTests()
-        {
-            Program.InitLoggingForUnitTests();
-        }
-
-        Process proc;
-        List<string> outData;
-        List<string> errData;
-        int lineNum = 0;
-
         [SetUp]
-        public void Setup()
+        public void RequireTestServer()
         {
-            Log.InfoFormat("Setup");
-
-            if (proc != null)
-            {
-                try
-                {
-                    proc.Refresh();
-                    if (!proc.HasExited)
-                    {
-                        proc.Kill();
-                    }
-                }
-                catch(Exception ex)
-                {
-                    Log.Warn("Error in Setup", ex);
-                }
-            }
-            proc = new Process();
-
-            lineNum = 0;
-            outData = new List<string>();
-            errData = new List<string>();
+            ScpConfig.RequireTestServer();
         }
 
-        void proc_ErrorDataReceived(object sender, DataReceivedEventArgs e)
-        {
-            Log.InfoFormat("ERR {0:000} {1}", ++lineNum, e.Data);
-            this.errData.Add(e.Data);
-        }
-
-        void proc_OutputDataReceived(object sender, DataReceivedEventArgs e)
-        {
-            Log.InfoFormat("OUT {0:000} {1}", ++lineNum, e.Data);
-            this.outData.Add(e.Data);
-        }
-
-        void ListDirectory(string user, string password, string host)
-        {
-            string args = string.Format(
-                "-ls -load \"Default Settings\" -P 22 -pw {0} {1}@{2}:.",
-                password, user, host);
-            ProcessStartInfo startInfo = new ProcessStartInfo
-            {
-                FileName = ScpConfig.PscpLocation,
-                Arguments = args,
-                CreateNoWindow = true,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-                UseShellExecute = false
-            };
-
-            proc.StartInfo = startInfo;
-            proc.EnableRaisingEvents = true;
-
-            Log.InfoFormat("Starting list: args={0}", args);
-            if (proc.Start())
-            {
-                proc.OutputDataReceived += proc_OutputDataReceived;
-                proc.ErrorDataReceived += proc_ErrorDataReceived;
-
-                Log.Info("BeginErrorReadLine()");
-                proc.BeginErrorReadLine();
-                Log.Info("BeginOutputReadLine()");
-                proc.BeginOutputReadLine();
-                Log.Info("WaitForExit(5000)");
-                proc.WaitForExit(5000);
-
-                proc.CancelErrorRead();
-                proc.CancelOutputRead();
-                Log.InfoFormat("Done");
-            }
-            else
-            {
-                Assert.Fail("Process failed to start");
-            }
-        }
-
-
-        /// <summary>
-        /// Simple test to run scp and get a listing back.  
-        /// </summary>
-        [Test, Category("NetworkTest")]
+        [Test]
         public void ListDirSuccess()
         {
-            ListDirectory(ScpConfig.UserName, ScpConfig.Password, ScpConfig.KnownHost);
-            Assert.Greater(this.outData.Count, 0);
+            var result = ListDirectory(ScpConfig.Password, ScpConfig.KnownHost);
+            Assert.AreEqual(0, result.ExitCode, result.Error);
+            Assert.IsNotEmpty(result.Output);
         }
 
-        /// <summary>
-        /// Bad password will hang with an auth failed messsage and prompt for password which blocks/locks the
-        /// process
-        /// </summary>
-        [Test, Category("NetworkTest")]
+        [Test]
         public void ListDirBadPassword()
         {
-            bool returned = false;
-            Thread t = new Thread(x => 
-            {
-                ListDirectory(ScpConfig.UserName, ScpConfig.Password + "zzz", ScpConfig.KnownHost);
-                lock (this)
-                {
-                    Monitor.Pulse(this);
-                    returned = true;
-                }
-            });
-            t.IsBackground = true;
-            t.Start();
-
-            lock (this)
-            {
-                Monitor.Wait(this, 5000);
-            }
-            Assert.False(returned);
-            Assert.AreEqual(0, this.outData.Count);
-            Assert.AreEqual(0, this.errData.Count);
+            var result = ListDirectory(ScpConfig.Password + "zzz", ScpConfig.KnownHost);
+            Assert.AreNotEqual(0, result.ExitCode, "PSCP accepted the incorrect password.");
         }
 
-        /// <summary>
-        /// Unknown host will hang asking to accept key on output stream
-        /// </summary>
-        [Test, Category("NetworkTest")]
+        [Test]
         public void ListDirHostNoKey()
         {
-            bool returned = false;
-            Thread t = new Thread(x =>
-            {
-                ListDirectory(ScpConfig.UserName, ScpConfig.Password, ScpConfig.UnKnownHost);
-                lock (this)
-                {
-                    Monitor.Pulse(this);
-                    returned = true;
-                }
-            });
-            t.IsBackground = true;
-            t.Start();
+            var result = ListDirectory(ScpConfig.Password, ScpConfig.UnKnownHost);
+            Assert.AreNotEqual(0, result.ExitCode);
+            Assert.That(result.Error, Does.Contain("host key is not cached").IgnoreCase);
+        }
 
-            lock (this)
+        private static (int ExitCode, string Output, string Error) ListDirectory(string password, string host)
+        {
+            using (var credentials = PscpClient.PscpPasswordPipe.Create(password, false))
+            using (var process = new Process
             {
-                Monitor.Wait(this, 5000);
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = ScpConfig.PscpLocation,
+                    Arguments = "-ls -batch -P " + ScpConfig.Port + " -pwfile " +
+                        CommandLineOptions.QuoteArgument(credentials.PipePath) + " " +
+                        CommandLineOptions.QuoteArgument(ScpConfig.UserName + "@" + host + ":."),
+                    CreateNoWindow = true,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false
+                }
+            })
+            {
+                Assert.IsTrue(process.Start());
+                var output = process.StandardOutput.ReadToEndAsync();
+                var error = process.StandardError.ReadToEndAsync();
+                if (!process.WaitForExit(15000))
+                {
+                    process.Kill();
+                    process.WaitForExit(5000);
+                    Assert.Fail("PSCP did not finish within 15 seconds.");
+                }
+                return (process.ExitCode, output.GetAwaiter().GetResult(), error.GetAwaiter().GetResult());
             }
-            Assert.False(returned);
-            Assert.AreEqual(0, this.outData.Count);
-            Assert.Greater(this.errData.Count, 1);
-            Assert.IsTrue(this.errData[0].Contains("The server's host key is not cached "));
         }
     }
 
-    [TestFixture]
-    public class PscpClientListDirTests 
+    [TestFixture, Category("NetworkTest")]
+    public class PscpClientListDirTests
     {
+        [SetUp]
+        public void RequireTestServer()
+        {
+            ScpConfig.RequireTestServer();
+        }
+
         private static readonly ILog Log = LogManager.GetLogger(typeof(PscpClientListDirTests));
 
-        [Test, Category("NetworkTest")]
+        [Test]
         public void ListDirSuccess()
         {
             SessionData session = new SessionData
@@ -192,7 +96,7 @@ namespace SuperPuttyUnitTests.Scp
                 Username = ScpConfig.UserName, 
                 Password = ScpConfig.Password, 
                 Host = ScpConfig.KnownHost, 
-                Port = 22
+                Port = ScpConfig.Port
             };
 
             PscpClient client = new PscpClient(ScpConfig.DefaultOptions, session);
@@ -209,7 +113,7 @@ namespace SuperPuttyUnitTests.Scp
             Log.InfoFormat("Result: {0}", res);
         }
 
-        [Test, Category("NetworkTest")]
+        [Test]
         public void ListDirBadPassword()
         {
             SessionData session = new SessionData
@@ -217,7 +121,7 @@ namespace SuperPuttyUnitTests.Scp
                 Username = ScpConfig.UserName,
                 Password = ScpConfig.Password + "xxx",
                 Host = ScpConfig.KnownHost,
-                Port = 22
+                Port = ScpConfig.Port
             };
 
             PscpClient client = new PscpClient(ScpConfig.DefaultOptions, session);
@@ -230,7 +134,7 @@ namespace SuperPuttyUnitTests.Scp
             Log.InfoFormat("Result: {0}", res);
         }
 
-        [Test, Category("NetworkTest")]
+        [Test]
         public void ListDirHostNoKey()
         {
             SessionData session = new SessionData
@@ -238,7 +142,7 @@ namespace SuperPuttyUnitTests.Scp
                 Username = ScpConfig.UserName,
                 Password = ScpConfig.Password,
                 Host = ScpConfig.UnKnownHost,
-                Port = 22
+                Port = ScpConfig.Port
             };
 
             PscpClient client = new PscpClient(ScpConfig.DefaultOptions, session);
@@ -251,7 +155,7 @@ namespace SuperPuttyUnitTests.Scp
             Log.InfoFormat("Result: {0}", res);
         }
 
-        [Test, Category("NetworkTest")]
+        [Test]
         public void ListDirBadPath()
         {
             SessionData session = new SessionData
@@ -259,7 +163,7 @@ namespace SuperPuttyUnitTests.Scp
                 Username = ScpConfig.UserName,
                 Password = ScpConfig.Password,
                 Host = ScpConfig.KnownHost,
-                Port = 22
+                Port = ScpConfig.Port
             };
 
             PscpClient client = new PscpClient(ScpConfig.DefaultOptions, session);
@@ -273,17 +177,16 @@ namespace SuperPuttyUnitTests.Scp
         }
     }
 
-    [TestFixture]
+    [TestFixture, Category("NetworkTest")]
     public class PscpClientTransferTests
     {
-        private static readonly ILog Log = LogManager.GetLogger(typeof(PscpClientTransferTests));
-
-        static PscpClientTransferTests()
+        [SetUp]
+        public void RequireTestServer()
         {
-            Program.InitLoggingForUnitTests();
+            ScpConfig.RequireTestServer();
         }
 
-        [Test, Category("NetworkTest")]
+        [Test]
         public void LocalToRemote()
         {
             SessionData session = new SessionData
@@ -291,56 +194,54 @@ namespace SuperPuttyUnitTests.Scp
                 Username = ScpConfig.UserName,
                 Password = ScpConfig.Password,
                 Host = ScpConfig.KnownHost,
-                Port = 22
+                Port = ScpConfig.Port
             };
 
-            List<BrowserFileInfo> sourceFiles = new List<BrowserFileInfo> 
+            string directory = Path.Combine(Path.GetTempPath(), "SuperPuttySshProbe-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            string file = Path.Combine(directory, "superputty-network-test.txt");
+            try
             {
-                //new BrowserFileInfo(new FileInfo(Path.GetTempFileName()))
-                new BrowserFileInfo(new FileInfo(ScpConfig.PscpLocation))
-            };
-            BrowserFileInfo target = new BrowserFileInfo
-            { 
-                Path = string.Format("/home/{0}/", session.Username), 
-                Source = SourceType.Remote
-            };
-
-            PscpOptions options = new PscpOptions { PscpLocation = ScpConfig.PscpLocation, TimeoutMs = 5000 };
-            PscpClient client = new PscpClient(options, session);
-            PscpResult res = client.CopyFiles(
-                sourceFiles, 
-                target, 
-                (complete, cancelAll, status) => 
-                {
-                    Log.InfoFormat(
-                        "complete={0}, cancelAll={1}, fileName={2}, pctComplete={3}", 
-                        complete, cancelAll, status.Filename, status.PercentComplete);
-                });
-
-            Log.InfoFormat("Result: {0}", res);
-
-            /*
-            ListDirectoryResult res = client.ListDirectory(new BrowserFileInfo { Path = "." });
-
-            Assert.AreEqual(ResultStatusCode.Success, res.StatusCode);
-            Assert.Greater(res.Files.Count, 0);
-            foreach (BrowserFileInfo file in res.Files)
-            {
-                Log.Info(file);
+                File.WriteAllText(file, "SuperPuTTY SCP test");
+                var sourceFiles = new List<BrowserFileInfo> { new BrowserFileInfo(new FileInfo(file)) };
+                var target = new BrowserFileInfo { Path = ".", Source = SourceType.Remote, Type = FileType.Directory };
+                var client = new PscpClient(ScpConfig.DefaultOptions, session);
+                FileTransferResult result = client.CopyFiles(sourceFiles, target, null);
+                Assert.AreEqual(ResultStatusCode.Success, result.StatusCode, result.ErrorMsg);
             }
-
-            Log.InfoFormat("Result: {0}", res);*/
+            finally
+            {
+                File.Delete(file);
+                Directory.Delete(directory);
+            }
         }
     }
 
     public class ScpConfig
     {
-        public static readonly string PscpLocation = ConfigurationManager.AppSettings["SuperPuTTY.ScpTests.PscpLocation"];
-        public static readonly string UserName = ConfigurationManager.AppSettings["SuperPuTTY.ScpTests.UserName"];
-        public static readonly string Password = ConfigurationManager.AppSettings["SuperPuTTY.ScpTests.Password"];
-        public static readonly string KnownHost = ConfigurationManager.AppSettings["SuperPuTTY.ScpTests.KnownHost"];
-        public static readonly string UnKnownHost = ConfigurationManager.AppSettings["SuperPuTTY.ScpTests.UnKnownHost"];
+        public static readonly string PscpLocation = Environment.GetEnvironmentVariable("SUPERPUTTY_TEST_PSCP");
+        public static readonly string UserName = Environment.GetEnvironmentVariable("SUPERPUTTY_TEST_SSH_USER");
+        public static readonly string Password = Environment.GetEnvironmentVariable("SUPERPUTTY_TEST_SSH_PASSWORD");
+        public static readonly string KnownHost = Environment.GetEnvironmentVariable("SUPERPUTTY_TEST_SSH_HOST");
+        public static readonly string UnKnownHost = Environment.GetEnvironmentVariable("SUPERPUTTY_TEST_SSH_UNTRUSTED_HOST");
+        public static ushort Port { get; private set; } = 22;
 
-        public static PscpOptions DefaultOptions = new PscpOptions { PscpLocation = ScpConfig.PscpLocation };
+        public static PscpOptions DefaultOptions = new PscpOptions { PscpLocation = PscpLocation };
+
+        internal static void RequireTestServer()
+        {
+            if (String.IsNullOrWhiteSpace(PscpLocation) || String.IsNullOrWhiteSpace(KnownHost) ||
+                String.IsNullOrWhiteSpace(UnKnownHost) || String.IsNullOrWhiteSpace(UserName) || String.IsNullOrEmpty(Password))
+                Assert.Ignore("Set the PSCP executable and disposable SSH test account environment variables documented in docs/testing.md.");
+
+            Assert.IsTrue(File.Exists(PscpLocation), "The PSCP executable supplied by SUPERPUTTY_TEST_PSCP does not exist.");
+            string configuredPort = Environment.GetEnvironmentVariable("SUPERPUTTY_TEST_SSH_PORT");
+            if (!String.IsNullOrWhiteSpace(configuredPort))
+            {
+                ushort port;
+                Assert.IsTrue(UInt16.TryParse(configuredPort, out port) && port > 0, "The SSH test port must be between 1 and 65535.");
+                Port = port;
+            }
+        }
     }
 }

@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$Version='1.8.4',[string]$Configuration='Release',[string]$ApplicationDirectory,
+param([string]$Version='1.8.5',[string]$Configuration='Release',[string]$ApplicationDirectory,
  [Parameter(Mandatory)][string]$OutputDirectory,[string]$WorkDirectory,
  [switch]$PortableOnly,[string]$Compiler,[string]$SigningTool,[string]$SigningDlib,[string]$SigningMetadata)
 $ErrorActionPreference='Stop'

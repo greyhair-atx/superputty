@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$ReleaseDirectory,[Parameter(Mandatory)][string]$ManifestDirectory,[string]$Version='1.8.4')
+param([Parameter(Mandatory)][string]$ReleaseDirectory,[Parameter(Mandatory)][string]$ManifestDirectory,[string]$Version='1.8.5')
 $ErrorActionPreference='Stop'
 & "$PSScriptRoot/Verify-InnoReleaseBundle.ps1" -ReleaseDirectory $ReleaseDirectory -Version $Version -RequireInstaller
 if(Test-Path $ManifestDirectory){throw 'Use a new manifest directory; preserve previous review files.'}

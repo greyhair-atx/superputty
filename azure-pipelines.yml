@@ -32,8 +32,8 @@ trigger:
 variables:
   buildPlatform: 'x64'
   buildConfiguration: 'Release'
-  releaseVersion: '1.8.4'
-  applicationVersion: '1.8.4.0'
+  releaseVersion: '1.8.5'
+  applicationVersion: '1.8.5.0'
   bundleDirectory: '$(Build.ArtifactStagingDirectory)/candidate'
 
 jobs:

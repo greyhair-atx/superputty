@@ -57,31 +57,7 @@ The Windows integration scripts require an interactive desktop and an existing R
 
 ## Installer and release checks
 
-Build both fixed-scope test MSIs after building the application:
-
-```powershell
-MSBuild.exe .\SuperPuttyInstaller\SuperPuttyInstaller.wixproj /restore /t:Build /p:Configuration=Release /p:Platform=x64 /p:BuildProjectReferences=false /p:InstallerScope=PerUser
-MSBuild.exe .\SuperPuttyInstaller\SuperPuttyInstaller.wixproj /restore /t:Build /p:Configuration=Release /p:Platform=x64 /p:BuildProjectReferences=false /p:InstallerScope=PerMachine
-```
-
-Then validate their architecture, version, runtime files, license UI, installation scope, and extracted payload:
-
-```powershell
-.\build\Verify-ReleaseArtifacts.ps1 -InstallerScope PerUser
-.\build\Verify-ReleaseArtifacts.ps1 -InstallerScope PerMachine
-```
-
-The verifier defaults to the current test artifact names. Use `-ExpectedVersion` and `-MsiName` when checking another version or filename.
-
-CE filenames start with `SuperPuTTY-CE-`. The verifier checks MSI/ARP and shortcut names, file description, copyright, separate scope UpgradeCodes, the bounded legacy community bridge, and the upstream detection-only guard. See [branding and compatibility](branding.md) for upgrade consequences and the disposable-machine release test matrix. Administrative extraction checks do not establish live upgrade/uninstall behavior.
-
-For signed release artifacts, run:
-
-```powershell
-.\build\Verify-CodeSignatures.ps1
-```
-
-This checks the application and both installer scopes for a valid expected signer and timestamp. Override the script parameters when validating a different release version, artifact suffix, or authorized signer.
+Follow the [release preparation guide](RELEASE-PREPARATION.md) to build and verify the signed Inno setup and portable ZIP. Run fresh-install and upgrade checks in both scopes on disposable Windows test accounts. Reserve the WiX project and MSI scripts for historical installer and migration checks.
 
 ## Manual smoke test
 
@@ -98,7 +74,7 @@ Use a disposable account and non-production endpoints where possible.
 9. Verify **Tools > Open Log File Location** opens the active log directory and that credentials are absent from the log.
 10. Save and reload a named layout. Restart with `<Auto Restore>` and confirm the window arrangement returns without reopening the previously active connections.
 11. Import `Sessions.example.csv` and confirm fields including `PrivateKeyFile` are preserved.
-12. Install and uninstall both current-user and all-users MSI packages on clean test profiles. Confirm the requested scope, shortcuts, manual link, license page, and third-party notices.
+12. Install and uninstall the Inno setup in both scopes on clean test profiles. Confirm scope, shortcuts, manual link, license page, and third-party notices.
 13. Select a versioned TigerVNC executable and connect using a non-default port. Confirm the log uses `host::port`, complete authentication, and verify the remote desktop replaces the login dialog inside the tab. Test resizing, switching tabs, and reconnecting; confirm an options dialog does not replace the desktop.
 14. Close an active tab using its X, context menu, and assigned **CloseTab** shortcut. Verify **Cancel** preserves it and **OK** closes it. Verify a session that exits on its own closes without prompting and an approved bulk close does not prompt per tab.
 15. Assign **RestartSession** under **Tools > Options > Shortcuts**, restart SuperPuTTY, and verify the binding is retained. Invoke it on a disconnected PuTTY session that remains open and confirm it reconnects. Verify it does not send PuTTY commands to VNC, RDP, MinTTY, or local shell tabs.
@@ -106,9 +82,17 @@ Use a disposable account and non-production endpoints where possible.
 
 ## Network tests
 
-Tests marked `NetworkTest` exercise real PSCP listings and transfers. They are intentionally excluded from normal CI and local runs because they need host, account, credential, and executable settings in the test configuration.
+Tests marked `NetworkTest` exercise real PSCP listings and transfers. Run them from an isolated Windows test account with a disposable SSH service that accepts password authentication. Set these process environment variables before starting the test runner:
 
-Run them only against a disposable SSH service after reviewing `SuperPuttyUnitTests\app.config`. Never commit live credentials or private-key material. Execute the category explicitly when the environment is ready:
+| Variable | Value |
+| --- | --- |
+| `SUPERPUTTY_TEST_PSCP` | Full path to the PSCP executable |
+| `SUPERPUTTY_TEST_SSH_HOST` | DNS name or address with its verified host key cached for this Windows account |
+| `SUPERPUTTY_TEST_SSH_UNTRUSTED_HOST` | Second name or address for the test server with no host key cached |
+| `SUPERPUTTY_TEST_SSH_USER` and `SUPERPUTTY_TEST_SSH_PASSWORD` | Credentials for the disposable account |
+| `SUPERPUTTY_TEST_SSH_PORT` | SSH port, defaults to 22 |
+
+Disable Pageant or other key authentication for the disposable account so the incorrect-password cases exercise password rejection. Place a fixture file in the account's home directory for the listing test. The upload test writes `superputty-network-test.txt` in that directory. Supply the password through the test runner's secret environment and execute the category explicitly:
 
 ```powershell
 dotnet vstest .\SuperPuttyUnitTests\bin\x64\Release\SuperPuttyUnitTests.exe --TestCaseFilter:"TestCategory=NetworkTest"

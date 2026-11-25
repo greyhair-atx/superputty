@@ -70,6 +70,8 @@ namespace SuperPutty
 
         internal PuttyClosedCallback m_CloseCallback;
         internal Action<string> StartupFailed;
+        internal Action<bool> StartupInputChanged;
+        internal bool IsWaitingForStartupInput { get; private set; }
         private event Action Captured;
 
         internal virtual bool ScriptInputReady { get { return !ScriptsStopped && ExternalProcessCaptured; } }
@@ -181,6 +183,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             ReleaseWindowEventHooks();
             Captured = null;
             StartupFailed = null;
+            StartupInputChanged = null;
             m_CloseCallback = null;
         }
 
@@ -908,7 +911,6 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                 int windowTimeout = GetMaxWindowPoolingTime() * 1000;
                 await WaitForInputIdleAsync(m_Process, windowTimeout, cancellation);
                 Stopwatch captureWait = Stopwatch.StartNew();
-                bool windowPresented = false;
                 while (true)
                 {
                     cancellation.ThrowIfCancellationRequested();
@@ -918,12 +920,18 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
                         failure = "The client exited before its window could be attached.";
                         return;
                     }
-                    if (window != IntPtr.Zero && NativeMethods.IsWindow(window))
-                        windowPresented = true;
-                    if (window != IntPtr.Zero && IsWindowAppliesForInherit(window))
+                    bool windowPresented = window != IntPtr.Zero && NativeMethods.IsWindowVisible(window);
+                    if (windowPresented && IsWindowAppliesForInherit(window))
                     {
                         m_AppWin = window;
                         break;
+                    }
+                    bool waitingForInput = proto == Data.ConnectionProtocol.RDP && windowPresented;
+                    if (waitingForInput != IsWaitingForStartupInput)
+                    {
+                        IsWaitingForStartupInput = waitingForInput;
+                        if (!waitingForInput) captureWait.Restart();
+                        StartupInputChanged?.Invoke(waitingForInput);
                     }
                     if ((!LoopWaitForHandle && proto != Data.ConnectionProtocol.RDP) ||
                         CaptureTimedOut(proto, windowPresented, captureWait.ElapsedMilliseconds, windowTimeout))
@@ -963,6 +971,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             finally
             {
                 startupInProgress = false;
+                IsWaitingForStartupInput = false;
                 startupCancellation.Dispose();
                 startupCancellation = null;
                 if (!captured || cancellation.IsCancellationRequested)

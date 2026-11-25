@@ -1,25 +1,25 @@
 # Installation
 
-The latest stable release is [SuperPuTTY Community Edition 1.8.4](https://github.com/greyhair-atx/superputty/releases/tag/sp-1.8.4). **New installer, new look:** one signed Inno setup supports either the current user or all users on the machine. Use the assets and instructions supplied with older releases when installing them.
+Download the setup or portable ZIP for the version you want from [SuperPuTTY Community Edition releases](https://github.com/greyhair-atx/superputty/releases). Use the checksums and installation guide supplied with that release. A single signed Inno setup supports both installation scopes.
 
 ## Package and scope
 
-`SuperPuTTY-CE-1.8.4-setup-win-x64.exe` supports both scopes:
+`SuperPuTTY-CE-<version>-setup-win-x64.exe` supports both scopes.
 
 - **Current user:** `%LOCALAPPDATA%\Programs\SuperPuTTY Community Edition`, without administrator rights.
 - **All users:** `%ProgramFiles%\SuperPuTTY Community Edition`, with administrator approval.
 
-Use one scope and retain it for upgrades. Requires Windows x64, Windows 10 build 19041 or later, .NET Framework 4.8, and separately installed connection clients. Release acceptance testing targets Windows 11 x64; Windows 10 is outside the validation scope. Help > About SuperPuTTY CE should show **1.8.4.0**.
+Use one scope and retain it for upgrades. Requires Windows x64, Windows 10 build 19041 or later, .NET Framework 4.8, and separately installed connection clients. Release acceptance testing targets Windows 11 x64. Check **Help > About SuperPuTTY CE** to verify the installed version against the release.
 
 **Existing MSI installations must be explicitly removed before installing Inno.** Back up settings and retain the verified recovery MSI first. Removal and replacement are not atomic; automatic MSI-to-Inno upgrades are not supported.
 
 ## Verify before running
 
-Compare the full SHA-256 with the matching filename in `SuperPuTTY-CE-1.8.4-SHA256SUMS.txt`. Obtain both from the same trusted release/review source:
+Compare the full SHA-256 with the matching filename in `SuperPuTTY-CE-<version>-SHA256SUMS.txt`. Obtain both from the same trusted release. Replace `<version>` with the number in the filename you downloaded.
 
 ```powershell
-Get-FileHash .\SuperPuTTY-CE-1.8.4-setup-win-x64.exe -Algorithm SHA256
-Get-AuthenticodeSignature .\SuperPuTTY-CE-1.8.4-setup-win-x64.exe | Format-List
+Get-FileHash -LiteralPath '.\SuperPuTTY-CE-<version>-setup-win-x64.exe' -Algorithm SHA256
+Get-AuthenticodeSignature -LiteralPath '.\SuperPuTTY-CE-<version>-setup-win-x64.exe' | Format-List
 # For an extracted ZIP:
 Get-AuthenticodeSignature .\SuperPutty.exe | Format-List
 ```
@@ -48,7 +48,7 @@ Run the installer and select the scope. Install PuTTY/PSCP from the [official Pu
 For unattended setup, wait and check the exit code. Use an elevated shell and `/ALLUSERS` for machine scope:
 
 ```powershell
-$p = Start-Process .\SuperPuTTY-CE-1.8.4-setup-win-x64.exe -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CURRENTUSER /LOG="setup.log"' -Wait -PassThru
+$p = Start-Process '.\SuperPuTTY-CE-<version>-setup-win-x64.exe' -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CURRENTUSER /LOG="setup.log"' -Wait -PassThru
 if ($p.ExitCode -ne 0) { throw "Setup failed: $($p.ExitCode). Review setup.log." }
 ```
 
@@ -62,7 +62,7 @@ Uninstall through Windows Settings > Apps or the registered Inno uninstaller. Do
 
 ## No-install ZIP
 
-Extract `SuperPuTTY-CE-1.8.4-portable-win-x64.zip` completely into a new writable directory, verify the EXE signature, and run `SuperPutty.exe`. Never extract over a running application. The ZIP has no uninstall registration and does not remove an MSI.
+Extract `SuperPuTTY-CE-<version>-portable-win-x64.zip` completely into a new writable directory, verify the EXE signature, and run `SuperPutty.exe`. Never extract over a running application. The ZIP has no uninstall registration and does not remove an MSI.
 
 This is not an isolated portable profile: `%USERPROFILE%\SuperPuTTY.settings` takes precedence; preferences beside the EXE are used only if there is no profile file. Sessions and layouts use the configured settings folder. Back up before switching copies.
 

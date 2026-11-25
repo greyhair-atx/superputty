@@ -122,8 +122,15 @@ namespace SuperPutty.Data
         {
             using (SharedFile.Lock(path))
             {
-                SharedFile.FileVersion version;
-                var positions = Read(path, out version);
+                var version = new SharedFile.FileVersion { Missing = true };
+                Dictionary<string, DockState> positions;
+                string preserved = null;
+                try { positions = Read(path, out version); }
+                catch (Exception ex) when (ex is InvalidDataException || ex is XmlException)
+                {
+                    positions = NewPositions();
+                    preserved = path + ".corrupt." + Guid.NewGuid().ToString("N");
+                }
                 foreach (var change in changes) positions[change.Key] = change.Value;
 
                 string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -144,7 +151,8 @@ namespace SuperPutty.Data
                             writer.WriteEndElement();
                         }
                     }, MaximumBytes);
-                    SharedFile.PublishVersion(temporary, path, null, version);
+                    SharedFile.PublishVersion(temporary, path, preserved, version);
+                    if (preserved != null) Log.WarnFormat("Preserved damaged docking history at {0}.", preserved);
                 }
                 finally { if (File.Exists(temporary)) File.Delete(temporary); }
                 return positions;

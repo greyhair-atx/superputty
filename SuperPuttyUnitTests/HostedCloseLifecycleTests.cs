@@ -53,6 +53,8 @@ class HostedWindow : Form {
  }
  protected override bool ShowWithoutActivation { get { return true; } }
  protected override void WndProc(ref Message message) {
+  if(message.Msg==0x8001) Text=""Fixture - Remote Desktop Connection"";
+  if(message.Msg==0x8002) Hide();
   if(armed && message.Msg==closeMessage) {
    File.WriteAllText(marker+"".closed"", message.Msg.ToString());
    Thread.Sleep(delay); Environment.Exit(0);
@@ -123,6 +125,58 @@ class HostedWindow : Form {
                 Assert.IsTrue(tab.AppPanel.IsDisposed);
                 Assert.IsFalse(tab.IsDisposed);
             }
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ExternalRdpWatchdogWaitsForSignInAndResumesWhenPromptCloses(bool completesSignIn)
+        {
+            var settings = SuperPutty.SuperPuTTY.Settings;
+            string original = settings.RDPExe;
+            string viewerDirectory = Path.Combine(directory, "rdp-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(viewerDirectory);
+            string viewer = Path.Combine(viewerDirectory, "wfreerdp.exe");
+            File.Copy(executable, viewer);
+            settings.RDPExe = viewer;
+            try
+            {
+                var session = new SessionData { Proto = ConnectionProtocol.RDP, SessionName = "RDP sign-in" };
+                using (var tab = new ctlPuttyPanel(session, null))
+                {
+                    string marker = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".window");
+                    var client = tab.AppPanel;
+                    client.ApplicationParameters = CommandLineOptions.QuoteArgument(marker) + " " +
+                        NativeMethods.WM_DESTROY + " 0";
+                    tab.Show();
+                    tab.WatchStartup();
+                    PumpUntil(() => client.IsWaitingForStartupInput && File.Exists(marker));
+
+                    var watchdog = (System.Windows.Forms.Timer)typeof(ctlPuttyPanel)
+                        .GetField("startupTimer", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(tab);
+                    watchdog.Interval = 100;
+                    tab.WatchStartup();
+                    Assert.IsFalse(watchdog.Enabled);
+                    Assert.IsFalse(tab.Startup.IsCompleted);
+                    Assert.IsFalse(client.ExternalProcessCaptured);
+
+                    IntPtr prompt = new IntPtr(Int64.Parse(File.ReadAllText(marker)));
+                    Assert.IsTrue(NativeMethods.PostMessage(prompt, completesSignIn ? 0x8001u : 0x8002u, IntPtr.Zero, IntPtr.Zero));
+                    PumpUntil(() => tab.Startup.IsCompleted);
+                    if (completesSignIn)
+                    {
+                        Assert.IsNull(tab.Startup.Result);
+                        Assert.IsTrue(client.ExternalProcessCaptured);
+                    }
+                    else
+                    {
+                        StringAssert.Contains("timed out", tab.Startup.Result);
+                        Assert.IsTrue(client.IsDisposed);
+                    }
+                    tab.CloseWithoutConfirmation();
+                    PumpUntil(() => client.ProcessCleanup.IsCompleted);
+                }
+            }
+            finally { settings.RDPExe = original; }
         }
 
         private static void PumpUntil(Func<bool> condition)

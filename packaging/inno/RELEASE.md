@@ -1,6 +1,6 @@
 # Inno release preparation
 
-The 1.8.4 release path is `azure-pipelines.yml` → `build/New-InnoReleaseBundle.ps1`. It builds the application/test projects directly, excluding the historical WiX project. The old MSI scripts remain for recovery/history and are not the new release path.
+The release path is `azure-pipelines.yml` → `build/New-InnoReleaseBundle.ps1`. It builds the application and test projects directly. The WiX project and MSI scripts remain available for historical recovery and migration checks.
 
 Default CI produces an unsigned `portable-dev` bundle only. Enabling code signing requires the configured Azure service connection, Artifact Signing task extension and permission to the existing signing profile. Both application and setup/uninstaller are signed and timestamped. The pipeline retains review artifacts; it never creates release tags, public GitHub/Gitea releases or WinGet submissions.
 
@@ -11,7 +11,7 @@ Desktop tests use the `InteractiveUiTest` category; console authentication tests
 After building and signing `bin/x64/Release/SuperPutty.exe`:
 
 ```powershell
-./build/New-InnoReleaseBundle.ps1 -Version 1.8.4 -OutputDirectory <new-bundle-dir> -WorkDirectory <new-private-work-dir> -Compiler <pinned-ISCC.exe> -SigningTool <signtool.exe> -SigningDlib <Azure.CodeSigning.Dlib.dll> -SigningMetadata <metadata.json>
+./build/New-InnoReleaseBundle.ps1 -Version 1.8.5 -OutputDirectory <new-bundle-dir> -WorkDirectory <new-private-work-dir> -Compiler <pinned-ISCC.exe> -SigningTool <signtool.exe> -SigningDlib <Azure.CodeSigning.Dlib.dll> -SigningMetadata <metadata.json>
 ./build/Verify-InnoReleaseBundle.ps1 -ReleaseDirectory <bundle-dir> -RequireInstaller
 ./build/Test-InnoReleaseTooling.ps1 -ReleaseDirectory <bundle-dir> -ResultDirectory <new-test-dir>
 ./build/New-InnoWinGetManifest.ps1 -ReleaseDirectory <bundle-dir> -ManifestDirectory <new-review-dir>
@@ -25,4 +25,4 @@ Bundle verification includes hidden entries and rejects all unlisted files/direc
 
 Lifecycle tests call `build/Verify-InnoPayload.ps1` after installation and rejected reinstall to compare every installed payload file and the internal payload manifest against the verified SBOM. Hidden extras, unexpected directories, reparse points, missing files and changed bytes fail validation. The CI diagnostics artifact retains regression, tooling and lifecycle outputs after either success or failure; candidate publication still requires success.
 
-Run the [candidate test plan](../../docs/releases/1.8.4-TEST-PLAN.md), review and commit, then rebuild from a clean commit. `Verify-InnoReleaseBundle.ps1 -RequireCleanSource -RequireInstaller` rejects a dirty preparation build. Manually approve publication only after final-byte validation and acceptance results. Regenerate WinGet review files after every rebuild; URLs for an unpublished release intentionally do not exist yet.
+Follow the [release preparation guide](../../docs/RELEASE-PREPARATION.md), review and commit, then rebuild from a clean commit. `Verify-InnoReleaseBundle.ps1 -RequireCleanSource -RequireInstaller` rejects a dirty preparation build. Approve publication after testing and verifying the final signed files. Regenerate WinGet review files after every rebuild.

@@ -70,7 +70,10 @@ namespace SuperPutty
             focusRetry = new ChildFocusRetry();
             components.Add(focusRetry);
             startupTimer = new System.Windows.Forms.Timer(components) { Interval = 120000 };
-            startupTimer.Tick += (sender, e) => FailStartup("Session startup timed out.");
+            startupTimer.Tick += (sender, e) =>
+            {
+                if (AppPanel?.IsWaitingForStartupInput != true) FailStartup("Session startup timed out.");
+            };
             Disposed += (sender, e) => startup.TrySetResult("The tab closed during startup.");
 
             this.Text = session.SessionName;
@@ -109,7 +112,7 @@ namespace SuperPutty
         {
             if (!Startup.IsCompleted && !IsDisposed && !Disposing)
             {
-                startupTimer.Start();
+                if (AppPanel?.IsWaitingForStartupInput != true) startupTimer.Start();
                 AppPanel?.EnsureStarted();
             }
         }
@@ -158,6 +161,16 @@ namespace SuperPutty
             client.Name = Session.SessionId;
             client.Size = Size;
             client.StartupFailed = message => PostClientCallback(client, () => FailStartup(message));
+            client.StartupInputChanged = waiting =>
+            {
+                if (!ReferenceEquals(client, AppPanel) || IsDisposed || Disposing || Startup.IsCompleted) return;
+                if (waiting)
+                {
+                    startupTimer.Stop();
+                    SuperPuTTY.ReportStatus("{0} is waiting for RDP sign-in.", Session.SessionId);
+                }
+                else startupTimer.Start();
+            };
             client.m_CloseCallback = error => PostClientCallback(client, () =>
             {
                 if (Startup.IsCompleted)

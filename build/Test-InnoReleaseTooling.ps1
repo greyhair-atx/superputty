@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$ReleaseDirectory,[Parameter(Mandatory)][string]$ResultDirectory,[string]$Version='1.8.4')
+param([Parameter(Mandatory)][string]$ReleaseDirectory,[Parameter(Mandatory)][string]$ResultDirectory,[string]$Version='1.8.5')
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path $ReleaseDirectory).Path
 if(Test-Path $ResultDirectory){throw 'Use a new test result directory.'}

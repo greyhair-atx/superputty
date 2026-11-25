@@ -4,7 +4,11 @@
 
 Saved sessions appear in the Sessions panel and are stored in `Sessions.XML`. Double-click a session to open it. Right-click a session or folder for editing and organization commands.
 
-SuperPuTTY supports up to **200 open session tabs** per window, shared by terminal and SCP sessions, including docked and floating sessions. Close a session to free a slot. Overflow hides tab headers that do not fit; use the tab list to select them. **Connect All** asks for confirmation above 10 sessions by default, then opens sessions until the 200-tab limit is reached. The legacy `SuperPuTTY.MaxSessionsToOpen` configuration key controls that confirmation threshold. Layouts containing more than 200 session tabs are rejected before replacing the current workspace.
+SuperPuTTY supports up to **200 open session tabs** per window, shared by terminal and SCP sessions, including docked and floating sessions. Close a session to free a slot. Use the tab list to select tabs hidden by overflow. Layouts containing more than 200 session tabs are rejected before replacing the current workspace.
+
+**Connect All** checks that the folder fits in the available slots before opening any tabs. It asks for confirmation above 10 sessions by default and starts up to three connections at a time. The legacy `SuperPuTTY.MaxSessionsToOpen` configuration key controls the confirmation threshold. Choose **Cancel Connect All** from the folder menu to stop pending launches and keep the tabs already opened. If an RDP viewer is waiting for sign-in, finish signing in to free its startup slot. If an SCP listing needs credentials, refresh its remote browser to sign in.
+
+New tabs and **Reconnect with Saved Settings** use the current saved profile. Existing connections and queued SCP transfers keep the connection details they started with. Docking positions for saved sessions are stored in `SessionDocking.xml` in the workspace settings folder.
 
 In **Tools > Options > GUI > Tabs and Docking**, enable **Middle-click closes tabs without confirmation** to close the tab under the middle mouse button immediately. This is off by default; with it off, middle-click uses the normal close confirmation. Clicking the tab's **X** still asks before closing an active or unknown-state session, using `Close tab '<tab name>'?`. The setting takes effect after saving Options and works in Light, Dark, Dark Modern and System themes. Disconnected sessions retain their normal behavior without a session-close prompt.
 

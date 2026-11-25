@@ -96,26 +96,73 @@ namespace SuperPuttyUnitTests
         public void ConnectAllLimitsConcurrentStartsAndSkipsPendingTabsWhenCanceled()
         {
             var sessions = Enumerable.Range(1, 8).Select(index => new SessionData { SessionId = "test/" + index }).ToArray();
-            var launches = new System.Collections.Generic.List<TaskCompletionSource<string>>();
+            var launches = new System.Collections.Generic.List<TaskCompletionSource<SessionLaunchResult>>();
             using (var cancellation = new CancellationTokenSource())
             {
                 var result = SessionTreeview.RunConnectAllAsync(sessions, session =>
                 {
-                    var launch = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    var launch = new TaskCompletionSource<SessionLaunchResult>(TaskCreationOptions.RunContinuationsAsynchronously);
                     launches.Add(launch);
                     return launch.Task;
                 }, TimeSpan.Zero, cancellation.Token);
 
                 Assert.AreEqual(SessionTreeview.ConnectAllParallelStartups, launches.Count);
-                launches[0].SetResult("Missing client");
+                launches[0].SetResult(SessionLaunchResult.Completed("Missing client"));
                 PumpUntil(() => launches.Count == SessionTreeview.ConnectAllParallelStartups + 1);
                 cancellation.Cancel();
-                foreach (var launch in launches.Skip(1)) launch.SetResult(null);
+                foreach (var launch in launches.Skip(1)) launch.SetResult(SessionLaunchResult.Completed(null));
                 PumpUntil(() => result.IsCompleted);
                 Assert.AreEqual(3, result.Result.Opened);
                 Assert.AreEqual(4, result.Result.Canceled);
                 CollectionAssert.AreEqual(new[] { "test/1: Missing client" }, result.Result.Failures);
             }
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ConnectAllPausesDuringLayoutConfirmationAndResumesOnlyIfCanceled(bool approve)
+        {
+            var sessions = Enumerable.Range(1, 5).Select(index => new SessionData { SessionId = "test/" + index }).ToArray();
+            var launches = new System.Collections.Generic.List<TaskCompletionSource<SessionLaunchResult>>();
+            var batch = SessionTreeview.RunConnectAllAsync(sessions, session =>
+            {
+                var launch = new TaskCompletionSource<SessionLaunchResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+                launches.Add(launch);
+                return launch.Task;
+            }, TimeSpan.Zero, CancellationToken.None);
+
+            LayoutData original = App.CurrentLayout;
+            EventHandler<LayoutChangedEventArgs> confirm = (sender, e) =>
+            {
+                launches[0].SetResult(SessionLaunchResult.Completed(null));
+                var elapsed = Stopwatch.StartNew();
+                while (elapsed.ElapsedMilliseconds < 150)
+                {
+                    Application.DoEvents();
+                    Thread.Sleep(5);
+                }
+                Assert.AreEqual(SessionTreeview.ConnectAllParallelStartups, launches.Count);
+                e.Cancel = !approve;
+            };
+            App.LayoutChanging += confirm;
+            try { App.LoadLayout(new LayoutData("Other.xml")); }
+            finally { App.LayoutChanging -= confirm; }
+
+            try
+            {
+                foreach (var launch in launches.Skip(1).ToArray())
+                    launch.SetResult(SessionLaunchResult.Completed(null));
+                if (!approve)
+                {
+                    PumpUntil(() => launches.Count == sessions.Length);
+                    foreach (var launch in launches.Skip(SessionTreeview.ConnectAllParallelStartups))
+                        launch.SetResult(SessionLaunchResult.Completed(null));
+                }
+                PumpUntil(() => batch.IsCompleted);
+                Assert.AreEqual(approve ? 3 : 5, batch.Result.Opened);
+                Assert.AreEqual(approve ? 2 : 0, batch.Result.Canceled);
+            }
+            finally { App.LoadLayout(original, true); }
         }
 
         [Test]
@@ -147,6 +194,34 @@ namespace SuperPuttyUnitTests
             {
                 File.Delete(history);
                 File.Delete(catalog);
+                Directory.Delete(folder);
+            }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void SavingDockHistoryPreservesDamagedOriginalAndRestoresNewPositions(bool oversized)
+        {
+            string folder = Path.Combine(Path.GetTempPath(), "SuperPuttyDockRecovery-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            string history = SessionDockingHistory.FilePath(folder);
+            string damaged = oversized ? new string('x', 2 * 1024 * 1024 + 1) : "<SessionDocking>";
+            try
+            {
+                File.WriteAllText(history, damaged);
+                var prior = new SessionDockingHistory();
+                Assert.AreEqual(DockState.Document, prior.Get(folder, "Probe", DockState.Document));
+                prior.Remember(folder, "Probe", DockState.DockRight, DockState.Document);
+                prior.Save();
+
+                var reopened = new SessionDockingHistory();
+                Assert.AreEqual(DockState.DockRight, reopened.Get(folder, "Probe", DockState.Document));
+                var preserved = Directory.GetFiles(folder, "SessionDocking.xml.corrupt.*").Single();
+                Assert.AreEqual(damaged, File.ReadAllText(preserved));
+            }
+            finally
+            {
+                foreach (string file in Directory.EnumerateFiles(folder)) File.Delete(file);
                 Directory.Delete(folder);
             }
         }

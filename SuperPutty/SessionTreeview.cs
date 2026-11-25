@@ -683,7 +683,7 @@ namespace SuperPutty
             if (connectAllCancellation != null)
             {
                 connectAllCancellation.Cancel();
-                SuperPuTTY.ReportStatus("Pending Connect All launches canceled. Waiting for tabs already started.");
+                SuperPuTTY.ReportStatus("Pending Connect All launches canceled. Tabs already launched will stay open.");
                 return;
             }
 
@@ -712,10 +712,13 @@ namespace SuperPutty
                 SuperPuTTY.ReportStatus("Starting {0} sessions. To stop pending launches, choose Cancel Connect All from the folder menu.", sessions.Count);
                 try
                 {
-                    var result = await RunConnectAllAsync(sessions, SuperPuTTY.OpenBatchSessionAsync, ConnectAllLaunchInterval, cancellation.Token);
+                    var result = await RunConnectAllAsync(sessions, session => SuperPuTTY.OpenBatchSessionAsync(session, cancellation.Token),
+                        ConnectAllLaunchInterval, cancellation.Token);
                     if (IsDisposed || Disposing || (SuperPuTTY.MainForm?.IsShuttingDown ?? false)) return;
 
                     string summary = $"Connect All finished. {result.Opened} started, {result.Failures.Length} failed, {result.Canceled} canceled.";
+                    if (result.WaitingForSignIn > 0) summary += $" {result.WaitingForSignIn} waiting for RDP sign-in.";
+                    if (result.Starting > 0) summary += $" {result.Starting} still starting.";
                     SuperPuTTY.ReportStatus(summary);
                     if (result.Failures.Length > 0)
                     {
@@ -738,21 +741,27 @@ namespace SuperPutty
         {
             internal int Opened { get; }
             internal int Canceled { get; }
+            internal int WaitingForSignIn { get; }
+            internal int Starting { get; }
             internal string[] Failures { get; }
 
-            internal ConnectAllResult(int requested, string[] outcomes)
+            internal ConnectAllResult(int requested, SessionLaunchResult[] outcomes)
             {
-                Failures = outcomes.Where(outcome => outcome != null).ToArray();
-                Opened = outcomes.Length - Failures.Length;
+                Failures = outcomes.Where(outcome => outcome.Status == SessionLaunchStatus.Failed)
+                    .Select(outcome => outcome.Error).ToArray();
+                Opened = outcomes.Count(outcome => outcome.Status == SessionLaunchStatus.Started);
+                WaitingForSignIn = outcomes.Count(outcome => outcome.Status == SessionLaunchStatus.WaitingForSignIn);
+                Starting = outcomes.Count(outcome => outcome.Status == SessionLaunchStatus.Starting);
                 Canceled = requested - outcomes.Length;
             }
         }
 
         internal static async Task<ConnectAllResult> RunConnectAllAsync(IReadOnlyList<SessionData> sessions,
-            Func<SessionData, Task<string>> launch, TimeSpan interval, CancellationToken cancellation)
+            Func<SessionData, Task<SessionLaunchResult>> launch, TimeSpan interval, CancellationToken cancellation)
         {
-            var active = new List<Task<string>>();
-            var attempts = new List<Task<string>>();
+            long layoutVersion = SuperPuTTY.LayoutWorkspaceVersion;
+            var active = new List<Task<SessionLaunchResult>>();
+            var attempts = new List<Task<SessionLaunchResult>>();
             var canceled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             using (cancellation.Register(() => canceled.TrySetResult(true)))
             {
@@ -764,9 +773,17 @@ namespace SuperPutty
                         await Task.WhenAny(Task.WhenAny(active), canceled.Task);
                         active.RemoveAll(attempt => attempt.IsCompleted);
                     }
-                    if (cancellation.IsCancellationRequested) break;
+                    // The confirmation dialog pumps this continuation while the
+                    // old workspace is still visible.
+                    Task transition;
+                    while (!cancellation.IsCancellationRequested &&
+                        (transition = SuperPuTTY.LayoutTransitionCompletion) != null)
+                    {
+                        await Task.WhenAny(transition, canceled.Task);
+                    }
+                    if (cancellation.IsCancellationRequested || SuperPuTTY.LayoutWorkspaceVersion != layoutVersion) break;
 
-                    Task<string> launchTask = LaunchForBatchAsync(session, launch);
+                    Task<SessionLaunchResult> launchTask = LaunchForBatchAsync(session, launch);
                     active.Add(launchTask);
                     attempts.Add(launchTask);
                     if (attempts.Count < sessions.Count && interval > TimeSpan.Zero)
@@ -779,18 +796,20 @@ namespace SuperPutty
             }
         }
 
-        private static async Task<string> LaunchForBatchAsync(SessionData session, Func<SessionData, Task<string>> launch)
+        private static async Task<SessionLaunchResult> LaunchForBatchAsync(SessionData session,
+            Func<SessionData, Task<SessionLaunchResult>> launch)
         {
             string id = session.SessionId;
             try
             {
-                string error = await launch(session);
-                return error == null ? null : $"{id}: {error}";
+                var result = await launch(session);
+                return result.Status == SessionLaunchStatus.Failed
+                    ? SessionLaunchResult.Completed($"{id}: {result.Error}") : result;
             }
             catch (Exception ex) when (SuperPuTTY.IsSessionLaunchError(ex))
             {
                 Log.Warn("Could not start a session from Connect All.", ex);
-                return $"{id}: The session could not be started.";
+                return SessionLaunchResult.Completed($"{id}: The session could not be started.");
             }
         }
 
