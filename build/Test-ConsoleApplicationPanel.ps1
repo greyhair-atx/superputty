@@ -78,7 +78,16 @@ function Test-ConsoleProtocol {
 
         $panel.RefreshAppWindow()
         [System.Windows.Forms.Application]::DoEvents()
-        Write-Host "PASS: $ConnectionProtocol captured and parented HWND $capturedHandle."
+        for ($iteration = 0; $iteration -lt 3; $iteration++) {
+            $panel.GetType().GetMethod('RecreateHandle', [Reflection.BindingFlags]'Instance,NonPublic').Invoke($panel, @()) | Out-Null
+            [System.Windows.Forms.Application]::DoEvents()
+            if ($panel.AppWindowHandle -ne $capturedHandle -or
+                [ConsolePanelTestNativeMethods]::GetParent($capturedHandle) -ne $panel.Handle -or
+                $panel.ConnectionState -ne [SuperPutty.SessionConnectionState]::Connected) {
+                throw "$ConnectionProtocol lost its captured console during handle recreation."
+            }
+        }
+        Write-Host "PASS: $ConnectionProtocol preserved HWND $capturedHandle through three host handle recreations."
     }
     finally {
         if ($form -ne $null) {

@@ -136,6 +136,36 @@ namespace SuperPuttyUnitTests
             }
         }
 
+        [TestCase(ConnectionProtocol.WINCMD)]
+        [TestCase(ConnectionProtocol.PS)]
+        public void RecreatingConsoleHostPreservesWindowAndFinalClose(ConnectionProtocol protocol)
+        {
+            using (var window = new ConsoleWindow())
+            {
+                using (var panel = new ConsoleApplicationPanel(protocol))
+                {
+                    typeof(ConsoleApplicationPanel).GetField("started", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(panel, true);
+                    panel.Size = new Size(640, 480);
+                    ApplicationPanel.ReparentWindow(window.Handle, panel.Handle, true);
+                    SetCapturedWindow(panel, window.Handle, Process.GetCurrentProcess());
+                    for (int i = 0; i < 3; i++)
+                    {
+                        typeof(Control).GetMethod("RecreateHandle", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(panel, null);
+                        Application.DoEvents();
+                        Assert.AreEqual(window.Handle, panel.AppWindowHandle);
+                        Assert.AreEqual(panel.Handle, NativeMethods.GetAncestor(window.Handle, 1));
+                        Assert.AreEqual(SessionConnectionState.Connected, panel.ConnectionState);
+                        Assert.AreEqual(0, window.CloseRequests);
+                    }
+                    CloseConsole(panel);
+                    Application.DoEvents();
+                    Assert.AreEqual(1, window.CloseRequests);
+                }
+                Application.DoEvents();
+                Assert.IsFalse(IsWindow(window.Handle), "Disposal must release the preserved console window.");
+            }
+        }
+
         [Test]
         public void UnavailableCapturedProcessIsHandledAsUncaptured()
         {

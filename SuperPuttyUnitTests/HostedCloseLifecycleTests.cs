@@ -11,6 +11,7 @@ using NUnit.Framework;
 using SuperPutty;
 using SuperPutty.Data;
 using SuperPutty.Utils;
+using WeifenLuo.WinFormsUI.Docking;
 
 namespace SuperPuttyUnitTests
 {
@@ -19,6 +20,21 @@ namespace SuperPuttyUnitTests
     {
         private string directory;
         private string executable;
+
+        private sealed class FailingRecreationPanel : ApplicationPanel
+        {
+            internal bool RejectDetach;
+            internal bool RejectRestore;
+            internal bool InterruptCreation;
+            internal FailingRecreationPanel() : base(ConnectionProtocol.SSH) { }
+            protected override IntPtr RecreationWindow { get { return RejectDetach ? new IntPtr(-1) : base.RecreationWindow; } }
+            protected override bool OwnsRecreationWindow(IntPtr window) { return !RejectRestore && base.OwnsRecreationWindow(window); }
+            protected override void OnHandleCreated(EventArgs e)
+            {
+                if (InterruptCreation) return;
+                base.OnHandleCreated(e);
+            }
+        }
 
         [OneTimeSetUp]
         public void CompileHostedWindowFixture()
@@ -107,6 +123,131 @@ class HostedWindow : Form {
                     PumpUntil(() => tab.IsDisposed);
                     Assert.IsTrue(process.WaitForExit(5000), "The owned child was left running.");
                     PumpUntil(() => client.ProcessCleanup.IsCompleted);
+                }
+            }
+        }
+
+        [Test]
+        public void DockingRoundTripAndHostHandleRecreationPreserveTheLiveClient()
+        {
+            string marker = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".window");
+            using (var form = new Form { Width = 1000, Height = 700 })
+            using (var dock = new DockPanel { Dock = DockStyle.Fill, DocumentStyle = DocumentStyle.DockingWindow })
+            using (var theme = new VS2015LightTheme())
+            using (var tab = new ctlPuttyPanel(new SessionData { Proto = ConnectionProtocol.SSH, SessionName = "Dock round trip" }, null))
+            {
+                dock.Theme = theme;
+                form.Controls.Add(dock);
+                var client = tab.AppPanel;
+                client.ApplicationName = executable;
+                client.ApplicationParameters = CommandLineOptions.QuoteArgument(marker) + " " + NativeMethods.WM_CLOSE + " 0";
+                client.ApplicationCloseWithDestroy = false;
+                form.Show();
+                tab.Show(dock, DockState.Document);
+                tab.WatchStartup();
+                PumpUntil(() => tab.Startup.IsCompleted);
+                Assert.IsNull(tab.Startup.Result);
+                IntPtr child = client.AppWindowHandle;
+                uint pid;
+                NativeMethods.GetWindowThreadProcessId(child, out pid);
+                using (var process = Process.GetProcessById((int)pid))
+                {
+                    try
+                    {
+                        foreach (DockState state in new[] { DockState.DockLeft, DockState.Float, DockState.Document })
+                        {
+                            tab.Show(dock, state);
+                            Application.DoEvents();
+                            Assert.AreEqual(state, tab.DockState);
+                            Assert.AreSame(state == DockState.Float ? (Form)tab.Pane.FloatWindow : form, client.ActivationForm);
+                            AssertHostedClient(client, child, process);
+
+                            // Exercise the exceptional lifecycle as well as normal reparenting.
+                            typeof(Control).GetMethod("RecreateHandle", BindingFlags.Instance | BindingFlags.NonPublic)
+                                .Invoke(client, null);
+                            Application.DoEvents();
+                            AssertHostedClient(client, child, process);
+                            Assert.IsFalse(client.ScriptsStopped);
+
+                            typeof(Control).GetMethod("RecreateHandle", BindingFlags.Instance | BindingFlags.NonPublic)
+                                .Invoke(tab, null);
+                            Application.DoEvents();
+                            AssertHostedClient(client, child, process);
+                        }
+                    }
+                    finally
+                    {
+                        tab.CloseWithoutConfirmation();
+                        PumpUntil(() => client.ProcessCleanup.IsCompleted);
+                        if (!process.HasExited) { process.Kill(); process.WaitForExit(5000); }
+                    }
+                    Assert.IsTrue(process.HasExited);
+                    Assert.IsTrue(File.Exists(marker + ".closed"), "Final close must still notify the original client.");
+                }
+            }
+        }
+
+        private static void AssertHostedClient(ApplicationPanel client, IntPtr child, Process process)
+        {
+            Assert.IsFalse(process.HasExited, "Docking must preserve the original process.");
+            Assert.AreEqual(child, client.AppWindowHandle, "Docking must preserve the native client window.");
+            Assert.AreEqual(client.Handle, NativeMethods.GetAncestor(child, 1));
+            NativeMethods.RECT bounds = new NativeMethods.RECT();
+            Assert.IsTrue(NativeMethods.GetWindowRect(child, ref bounds));
+            var expected = client.RectangleToScreen(client.HostedWindowBounds);
+            Assert.AreEqual(expected, System.Drawing.Rectangle.FromLTRB(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom));
+        }
+
+        [TestCase(false, false)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        public void FailedHandleRecreationReleasesParkingHostAndOwnedProcess(bool detachFails, bool interruptCreation)
+        {
+            string marker = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".window");
+            using (var form = new Form())
+            using (var client = new FailingRecreationPanel
+            {
+                ApplicationName = executable,
+                ApplicationParameters = CommandLineOptions.QuoteArgument(marker) + " " + NativeMethods.WM_CLOSE + " 0",
+                ApplicationCloseWithDestroy = false,
+                Dock = DockStyle.Fill
+            })
+            {
+                string failure = null;
+                client.StartupFailed = message => failure = message;
+                form.Controls.Add(client);
+                form.Show();
+                PumpUntil(() => client.ExternalProcessCaptured);
+                uint pid;
+                NativeMethods.GetWindowThreadProcessId(client.AppWindowHandle, out pid);
+                using (var process = Process.GetProcessById((int)pid))
+                {
+                    try
+                    {
+                        client.RejectDetach = detachFails;
+                        client.RejectRestore = !detachFails;
+                        client.InterruptCreation = interruptCreation;
+                        var recreate = typeof(Control).GetMethod("RecreateHandle", BindingFlags.Instance | BindingFlags.NonPublic);
+                        var parkingField = typeof(ApplicationPanel).GetField("recreationHost", BindingFlags.Instance | BindingFlags.NonPublic);
+                        if (interruptCreation)
+                        {
+                            Assert.DoesNotThrow(() => recreate.Invoke(client, null));
+                            var parking = (Panel)parkingField.GetValue(client);
+                            Assert.IsNotNull(parking);
+                            client.Dispose();
+                            Assert.IsTrue(parking.IsDisposed);
+                        }
+                        else Assert.DoesNotThrow(() => recreate.Invoke(client, null));
+                        PumpUntil(() => client.ProcessCleanup.IsCompleted);
+                        if (!interruptCreation) Assert.IsNotNull(failure);
+                        Assert.IsFalse(client.ExternalProcessCaptured);
+                        Assert.IsTrue(process.HasExited);
+                        Assert.IsNull(parkingField.GetValue(client));
+                    }
+                    finally
+                    {
+                        if (!process.HasExited) { process.Kill(); process.WaitForExit(5000); }
+                    }
                 }
             }
         }

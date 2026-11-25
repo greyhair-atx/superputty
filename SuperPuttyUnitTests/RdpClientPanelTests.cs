@@ -131,5 +131,31 @@ namespace SuperPuttyUnitTests
                 Port = 3389
             };
         }
+
+        [Test, Apartment(ApartmentState.STA)]
+        public void HandleRecreationPreservesTheActiveXControlWithoutEnteringShutdown()
+        {
+            RdpClientPanel panel;
+            Assert.IsTrue(RdpClientPanel.TryCreate(CreateRdpSession(), delegate { }, out panel));
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            using (panel)
+            {
+                var child = (Control)typeof(RdpClientPanel).GetField("client", flags).GetValue(panel);
+                var window = child.Handle;
+                // Model a pending connection without contacting a remote server.
+                typeof(RdpClientPanel).GetField("connecting", flags).SetValue(panel, true);
+                typeof(RdpClientPanel).GetMethod("Client_OnConnecting", flags).Invoke(panel, new object[] { panel, System.EventArgs.Empty });
+                for (int i = 0; i < 3; i++)
+                {
+                    typeof(Control).GetMethod("RecreateHandle", flags).Invoke(panel, null);
+                    Application.DoEvents();
+                    Assert.AreEqual(window, child.Handle);
+                    Assert.AreSame(panel, child.Parent);
+                    Assert.IsFalse((bool)typeof(RdpClientPanel).GetField("closing", flags).GetValue(panel));
+                    Assert.AreEqual(SessionConnectionState.Connecting, panel.ConnectionState);
+                }
+            }
+            Assert.IsTrue((bool)typeof(RdpClientPanel).GetField("closing", flags).GetValue(panel));
+        }
     }
 }

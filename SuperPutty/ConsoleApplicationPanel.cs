@@ -51,6 +51,9 @@ namespace SuperPutty
         }
 
         protected override bool UsesManagedChildHost { get { return true; } }
+        protected override IntPtr RecreationWindow { get { return AppWindowHandle; } }
+        protected override bool OwnsRecreationWindow(IntPtr window) { return IsOwnedConsoleWindow(window, false); }
+        protected override void FailHandleRecreation() { FailCapture(); }
 
         public override SessionConnectionState ConnectionState
         {
@@ -169,7 +172,7 @@ namespace SuperPutty
 
         protected override void OnHandleDestroyed(EventArgs e)
         {
-            this.CloseConsole();
+            if (!RecreatingHandle) this.CloseConsole();
             base.OnHandleDestroyed(e);
         }
 

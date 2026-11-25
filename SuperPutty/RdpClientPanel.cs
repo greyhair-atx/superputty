@@ -47,6 +47,12 @@ namespace SuperPutty
         }
 
         protected override bool UsesManagedChildHost { get { return true; } }
+        protected override Control ManagedRecreationChild { get { return client; } }
+        protected override void FailHandleRecreation()
+        {
+            CloseClient();
+            ReportStartupFailure("The RDP control could not be restored. Close and reopen the session to retry.");
+        }
 
         public override SessionConnectionState ConnectionState
         {
@@ -244,7 +250,7 @@ namespace SuperPutty
 
         protected override void OnHandleDestroyed(EventArgs e)
         {
-            this.CloseClient();
+            if (!RecreatingHandle) this.CloseClient();
             base.OnHandleDestroyed(e);
         }
 

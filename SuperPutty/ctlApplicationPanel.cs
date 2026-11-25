@@ -61,6 +61,20 @@ namespace SuperPutty
         private bool m_Created = false;
         private IntPtr m_AppWin;
         private IntPtr hostWindow;
+        private Panel recreationHost;
+        private IntPtr recreationWindow;
+        private bool recreationFailed;
+        protected virtual Control ManagedRecreationChild { get { return null; } }
+        protected virtual IntPtr RecreationWindow { get { return UsesManagedChildHost ? IntPtr.Zero : AppWindowHandle; } }
+        protected virtual bool OwnsRecreationWindow(IntPtr window) { return IsProcessWindow(window); }
+        protected virtual void FailHandleRecreation()
+        {
+            ScriptsStopped = true;
+            StopHostedProcess();
+            StopVncWindowTracker();
+            ReleaseWindowEventHooks();
+            ReportStartupFailure("The client window could not be restored. Close and reopen the session to retry.");
+        }
         private readonly List<NativeHookRegistration> windowEventHooks = new List<NativeHookRegistration>();
         private bool windowEventHooksDisabled;
         private WindowActivator m_windowActivator = null;
@@ -173,6 +187,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             ScriptsStopped = true;
             StopHostedProcess();
             StopVncWindowTracker();
+            ReleaseRecreationHost();
             this.Disposed -= new EventHandler(ApplicationPanel_Disposed);
             SuperPuTTY.LayoutChanged -= new EventHandler<Data.LayoutChangedEventArgs>(SuperPuTTY_LayoutChanged);
             SuperPuTTY.Settings.SettingsApplied -= Settings_SettingsApplied;
@@ -713,6 +728,19 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             }
         }
 
+        internal Form ActivationForm
+        {
+            get
+            {
+                // DockContent is itself a Form, so FindForm returns the embedded
+                // tab. Walk through it to the actual desktop window instead.
+                Form form = null;
+                for (Control control = this; control != null; control = control.Parent)
+                    if (control is Form candidate && candidate.TopLevel) form = candidate;
+                return form ?? SuperPuTTY.MainForm;
+            }
+        }
+
         void UpdateForeground()
         {
             // if we got the EVENT_SYSTEM_FOREGROUND, and the hwnd is the putty terminal hwnd (m_AppWin)
@@ -728,8 +756,8 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             // if you leave TopMost = true; then the window will always be on top.
             if (this.TopLevelControl != null)
             {
-                Form form = SuperPuTTY.MainForm;
-                if (form.WindowState == FormWindowState.Minimized)
+                Form form = ActivationForm;
+                if (form == null || form.WindowState == FormWindowState.Minimized)
                 {
                     return;
                 }
@@ -987,14 +1015,44 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
         
         /// <summary>
-        /// Send a close message to the hosted application window when the parent is destroyed
+        /// Preserve the hosted application across temporary host handle replacement.
         /// </summary>
-        /// <param name="e"></param>
+        protected override void DestroyHandle()
+        {
+            // Move the native child before Windows destroys its parent HWND.
+            // HandleDestroyed is too late to protect the native child lifecycle.
+            if (RecreatingHandle)
+            {
+                Control managed = ManagedRecreationChild;
+                IntPtr window = RecreationWindow;
+                if (managed != null || window != IntPtr.Zero)
+                {
+                    recreationHost = new Panel();
+                    try
+                    {
+                        if (managed != null) managed.Parent = recreationHost;
+                        else ReparentWindow(window, recreationHost.Handle, true);
+                        recreationWindow = window;
+                    }
+                    catch (Exception ex) when (ex is InvalidOperationException || ex is Win32Exception)
+                    {
+                        Log.Warn("Unable to preserve the client during handle recreation.", ex);
+                        ReleaseRecreationHost();
+                        recreationFailed = true;
+                    }
+                }
+            }
+            base.DestroyHandle();
+        }
+
         protected override void OnHandleDestroyed(EventArgs e)
         {
-            ScriptsStopped = true;
-            StopHostedProcess();
-            StopVncWindowTracker();
+            if (!RecreatingHandle)
+            {
+                ScriptsStopped = true;
+                StopHostedProcess();
+                StopVncWindowTracker();
+            }
             hostWindow = IntPtr.Zero;
             base.OnHandleDestroyed(e);
         }
@@ -1003,6 +1061,38 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         {
             hostWindow = Handle;
             base.OnHandleCreated(e);
+            bool failed = recreationFailed;
+            recreationFailed = false;
+            if (recreationHost != null)
+            {
+                try
+                {
+                    Control managed = ManagedRecreationChild;
+                    if (managed != null) managed.Parent = this;
+                    else
+                    {
+                        if (!OwnsRecreationWindow(recreationWindow))
+                            throw new InvalidOperationException("The preserved client window is no longer available.");
+                        ReparentWindow(recreationWindow, hostWindow, true);
+                    }
+                    RefreshAppWindow();
+                }
+                catch (Exception ex) when (ex is InvalidOperationException || ex is Win32Exception)
+                {
+                    Log.Warn("Unable to restore the client after handle recreation.", ex);
+                    failed = true;
+                }
+                finally { ReleaseRecreationHost(); }
+            }
+            if (failed) FailHandleRecreation();
+        }
+
+        private void ReleaseRecreationHost()
+        {
+            Panel parking = recreationHost;
+            recreationHost = null;
+            recreationWindow = IntPtr.Zero;
+            parking?.Dispose();
         }
 
         /// <summary>
