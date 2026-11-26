@@ -131,10 +131,12 @@ namespace SuperPuttyUnitTests
                 return launch.Task;
             }, TimeSpan.Zero, CancellationToken.None);
 
+            var initialLaunches = launches.ToArray();
+            Assert.AreEqual(SessionTreeview.ConnectAllParallelStartups, initialLaunches.Length);
             LayoutData original = App.CurrentLayout;
             EventHandler<LayoutChangedEventArgs> confirm = (sender, e) =>
             {
-                launches[0].SetResult(SessionLaunchResult.Completed(null));
+                initialLaunches[0].SetResult(SessionLaunchResult.Completed(null));
                 var elapsed = Stopwatch.StartNew();
                 while (elapsed.ElapsedMilliseconds < 150)
                 {
@@ -150,12 +152,13 @@ namespace SuperPuttyUnitTests
 
             try
             {
-                foreach (var launch in launches.Skip(1).ToArray())
+                // Canceling the layout can already have started a queued launch.
+                foreach (var launch in initialLaunches.Skip(1))
                     launch.SetResult(SessionLaunchResult.Completed(null));
                 if (!approve)
                 {
                     PumpUntil(() => launches.Count == sessions.Length);
-                    foreach (var launch in launches.Skip(SessionTreeview.ConnectAllParallelStartups))
+                    foreach (var launch in launches.Skip(initialLaunches.Length))
                         launch.SetResult(SessionLaunchResult.Completed(null));
                 }
                 PumpUntil(() => batch.IsCompleted);
