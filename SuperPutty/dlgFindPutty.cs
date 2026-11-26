@@ -635,13 +635,13 @@ namespace SuperPutty
             textBoxWinSCPLocation.Text = getPathExe(@"\WinSCP\WinSCP.exe", SuperPuTTY.Settings.WinSCPExe, true);
         }
 
-        //Search automatically the path of VNC when doubleClick when it is empty
+        // Remove in a future cleanup. The VNC path field has no double-click binding.
         private void textBoxVNCLocation_DoubleClick(object sender, EventArgs e)
         {
             textBoxVNCLocation.Text = getPathExe(@"\TightVNC\tvnviewer.exe", SuperPuTTY.Settings.VNCExe, true);
         }
 
-        //Search automatically the path of RDP when doubleClick when it is empty
+        // Remove in a future cleanup. The RDP path field has no double-click binding.
         private void textBoxRDPLocation_DoubleClick(object sender, EventArgs e)
         {
             textBoxRDPLocation.Text = getPathExe(Environment.ExpandEnvironmentVariables("%systemroot%\\system32\\mstsc.exe"), SuperPuTTY.Settings.RDPExe, true);

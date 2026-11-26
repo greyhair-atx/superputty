@@ -855,6 +855,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 
         public event EventHandler InnerApplicationFocused;
 
+        // Remove in a future cleanup. The focus code never calls this event raiser.
         void OnInnerApplicationFocused()
         {
             if (this.InnerApplicationFocused != null)

@@ -1573,6 +1573,7 @@ namespace SuperPutty.Gui.Docking
             ButtonWindowList.Bounds = DrawHelper.RtlTransform(this, new Rectangle(point, buttonSize));
         }
 
+        // Remove in a future cleanup. No button is wired to this handler.
         private void Close_Click(object sender, EventArgs e)
         {
             DockPane.CloseActiveContent();

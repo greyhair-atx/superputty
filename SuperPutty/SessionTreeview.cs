@@ -1480,6 +1480,7 @@ namespace SuperPutty
             ExternalApplications.openFileZilla(session); 
         }
 
+        // Remove in a future cleanup. The active search handlers call ApplySearch directly.
         private void txtSearch_TextChanged(object sender, EventArgs e)
         {
             if (SuperPuTTY.Settings.FilterSessionsOnChange)

@@ -56,6 +56,7 @@ namespace SuperPutty.Gui
 
         }
 
+        // Remove in a future cleanup. The name field uses the Validating handler.
         private void txtItemName_Validated(object sender, EventArgs e)
         {
             //this.errorProvider.SetError(this.txtItemName, String.Empty);

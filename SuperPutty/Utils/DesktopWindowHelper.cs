@@ -69,6 +69,7 @@ namespace SuperPutty.Utils
             return windows;
         }
 
+        // Remove in a future cleanup. Its only call is commented out.
         static string GetProcessExe(Process process)
         {
             string exe = "?";

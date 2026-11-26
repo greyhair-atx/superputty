@@ -1617,6 +1617,7 @@ namespace SuperPutty
             about = null;
         }
 
+        // Remove in a future cleanup. No menu item is wired to this handler.
         private void superPuttyWebsiteToolStripMenuItem_Click(object sender, EventArgs e)
         {
             Process.Start("https://github.com/greyhair-atx/superputty/");
@@ -1967,6 +1968,7 @@ namespace SuperPutty
             this.tsSendCommandCombo.ComboBox.Refresh();
         }
 
+        // Remove in a future cleanup. Toolbar callers use the overload that takes CommandData.
         /// <summary>Send command from send command toolbar to open sessions</summary>
         /// <param name="saveHistory">If true, save the history in the command toolbar combobox</param>
         /// <returns>The number of commands sent</returns>
@@ -2260,6 +2262,7 @@ namespace SuperPutty
             return null;
         }
 
+        // Remove in a future cleanup. The mouse hook registration is disabled.
         private static IntPtr SetMHook(NativeMethods.LowLevelKMProc proc)
         {
             using (Process curProcess = Process.GetCurrentProcess())
@@ -2269,6 +2272,7 @@ namespace SuperPutty
             }
         }
 
+        // Remove in a future cleanup along with the disabled mouse hook registration.
         private IntPtr MHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
             if (nCode >= 0 && (wParam == (IntPtr)NativeMethods.WM.LBUTTONUP || wParam == (IntPtr)NativeMethods.WM.RBUTTONUP) && IsForegroundWindow(true))

@@ -7,7 +7,7 @@ namespace SuperPutty
         public const string OfficialUpstream = "Official upstream";
         public const string CommunityFork = "Community fork";
 
-        public static readonly string[] Names = { OfficialUpstream, CommunityFork };
+        public static readonly string[] Names = { CommunityFork, OfficialUpstream };
 
         public static string GetReleaseApiUrl(string channel)
         {
