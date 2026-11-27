@@ -67,7 +67,7 @@ The active tab joins visually with its application frame. Each document tab reta
 - `Ctrl+S`: save the current named layout
 - `Ctrl+Shift+8`: toggle command masking
 
-Additional shortcuts can be assigned under **Tools > Options > Shortcuts**.
+Additional shortcuts can be assigned under **Tools > SupperPuTTY CE Advanced Options > Shortcuts**.
 
 Assign **RestartSession** there to invoke PuTTY's **Restart Session** command for the current tab. It has no default key binding and applies to PuTTY sessions, not VNC, RDP, or local shell tabs.
 

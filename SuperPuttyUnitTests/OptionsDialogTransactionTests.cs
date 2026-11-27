@@ -156,6 +156,40 @@ namespace SuperPuttyUnitTests
         }
 
         [Test]
+        public void GuiOptionsSaveWithoutRequiringAnExecutableOrChangingAdvancedSettings()
+        {
+            string missingExecutable = Path.Combine(directory, "missing.exe");
+            App.Settings.PuttyExe = missingExecutable;
+            App.Settings.UpdateChannel = UpdateChannel.OfficialUpstream;
+            App.Settings.MiddleClickClosesWithoutConfirmation = false;
+
+            using (var dialog = new dlgFindPutty(guiOnly: true))
+            {
+                var tabs = Field<TabControl>(dialog, "tabControl");
+                Assert.AreEqual("SupperPuTTY CE GUI Options", dialog.Text);
+                Assert.AreEqual(1, tabs.TabPages.Count);
+                Assert.AreEqual("GUI", tabs.TabPages[0].Text);
+                Field<CheckBox>(dialog, "checkMiddleClickClose").Checked = true;
+                dialog.Shown += delegate { Field<Button>(dialog, "buttonOk").PerformClick(); };
+                Assert.AreEqual(DialogResult.OK, dialog.ShowDialog());
+            }
+
+            App.Settings.Reload();
+            Assert.IsTrue(App.Settings.MiddleClickClosesWithoutConfirmation);
+            Assert.AreEqual(missingExecutable, App.Settings.PuttyExe);
+            Assert.AreEqual(UpdateChannel.OfficialUpstream, App.Settings.UpdateChannel);
+            Assert.AreEqual(first, App.Settings.SettingsFolder);
+
+            using (var dialog = new dlgFindPutty())
+            {
+                Assert.AreEqual("SupperPuTTY CE Advanced Options", dialog.Text);
+                var tabs = Field<TabControl>(dialog, "tabControl");
+                Assert.IsFalse(tabs.TabPages.ContainsKey("tabPageGUI"));
+                Assert.IsTrue(tabs.TabPages.ContainsKey("tabPageGeneral"));
+            }
+        }
+
+        [Test]
         public void CancellingModalOptionsDuringCatalogPreparationDoesNotCommitWhenTheReadCompletes()
         {
             var original = new SessionData { SessionId = "Original", SessionName = "Original" };

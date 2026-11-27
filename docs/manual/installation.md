@@ -28,7 +28,7 @@ Expect `Valid`, signer **Christopher Thornton**, and a timestamp certificate. Ar
 
 ## Back up and migrate from MSI
 
-Close SuperPuTTY and its connection clients. Back up `%USERPROFILE%\SuperPuTTY.settings` (or the active preferences beside the EXE) and the entire settings folder shown in Tools > Options. Keep backups private. Retain the verified MSI matching the installed version and scope before removal.
+Close SuperPuTTY and its connection clients. Back up `%USERPROFILE%\SuperPuTTY.settings` (or the active preferences beside the EXE) and the entire settings folder shown in Tools > SupperPuTTY CE Advanced Options. Keep backups private. Retain the verified MSI matching the installed version and scope before removal.
 
 Find the actual installed **ProductCode** in its uninstall registration or matching build manifest. Inno's detection message reports the detected code. Never use the shared UpgradeCode. Remove that exact product, without a scope filter:
 
@@ -43,7 +43,7 @@ Elevate for machine-scope removal. MSI exit 0 means success; 3010 requires a res
 
 ## Install and first launch
 
-Run the installer and select the scope. Install PuTTY/PSCP from the [official PuTTY site](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html). In Tools > Options > General, select `putty.exe`, optionally `pscp.exe`, and a writable settings folder. Other clients are required only for their associated protocols. Default Layout `<Auto Restore>` restores window arrangement without reopening prior connections.
+Run the installer and select the scope. Install PuTTY/PSCP from the [official PuTTY site](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html). In Tools > SupperPuTTY CE Advanced Options > General, select `putty.exe`, optionally `pscp.exe`, and a writable settings folder. Other clients are required only for their associated protocols. Default Layout `<Auto Restore>` restores window arrangement without reopening prior connections.
 
 For unattended setup, wait and check the exit code. Use an elevated shell and `/ALLUSERS` for machine scope:
 

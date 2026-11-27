@@ -37,7 +37,13 @@ namespace SuperPutty
 {
     public partial class dlgFindPutty : Form
     {
+        internal const string AdvancedOptionsTitle = "SupperPuTTY CE Advanced Options";
+        internal const string GuiOptionsTitle = "SupperPuTTY CE GUI Options";
+        internal const string AdvancedOptionsMenuPath = "Tools > " + AdvancedOptionsTitle;
+        internal const string GuiOptionsMenuPath = "Tools > " + GuiOptionsTitle;
+
         private static readonly ILog Log = LogManager.GetLogger(typeof(dlgFindPutty));
+        private readonly bool guiOnly;
 
         private string OrigSettingsFolder { get; set; }
         private string OrigDefaultLayoutName { get; set; }
@@ -75,17 +81,28 @@ namespace SuperPutty
             this.tabControl.TabPages.Add(page);
         }
 
-        public dlgFindPutty()
+        public dlgFindPutty() : this(false) { }
+
+        internal dlgFindPutty(bool guiOnly)
         {
+            this.guiOnly = guiOnly;
             this.Font = new System.Drawing.Font("Segoe UI", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
 
             InitializeComponent();
-            InitializeProtocolOptions();
-
-            FixDpiScalingIssues();
-
+            Text = guiOnly ? GuiOptionsTitle : AdvancedOptionsTitle;
+            foreach (var page in tabControl.TabPages.Cast<TabPage>().ToArray())
+            {
+                if (guiOnly ? page != tabPageGUI : page == tabPageGUI) page.Dispose();
+            }
+            if (guiOnly) InitializeGuiOptions();
+            else InitializeAdvancedOptions();
             ThemeManager.Apply(this);
+        }
 
+        private void InitializeAdvancedOptions()
+        {
+            InitializeProtocolOptions();
+            FixDpiScalingIssues();
             string puttyExe = SuperPuTTY.Settings.PuttyExe;
             string pscpExe = SuperPuTTY.Settings.PscpExe;
 
@@ -171,6 +188,42 @@ namespace SuperPutty
             }
             this.OrigSettingsFolder = SuperPuTTY.Settings.SettingsFolder;
 
+            this.comboBoxActivatorType.Items.Add(typeof(KeyEventWindowActivator).FullName);
+            this.comboBoxActivatorType.Items.Add(typeof(CombinedWindowActivator).FullName);
+            this.comboBoxActivatorType.Items.Add(typeof(SetFGWindowActivator).FullName);
+            this.comboBoxActivatorType.Items.Add(typeof(RestoreWindowActivator).FullName);
+            this.comboBoxActivatorType.Items.Add(typeof(SetFGAttachThreadWindowActivator).FullName);
+            this.comboBoxActivatorType.SelectedItem = SuperPuTTY.Settings.WindowActivator;
+            InitLayouts();
+
+            this.checkSingleInstanceMode.Checked = SuperPuTTY.Settings.SingleInstanceMode;
+            this.checkRestoreWindow.Checked = SuperPuTTY.Settings.RestoreWindowLocation;
+            this.checkExitConfirmation.Checked = SuperPuTTY.Settings.ExitConfirmation;
+            this.checkEnableControlTabSwitching.Checked = SuperPuTTY.Settings.EnableControlTabSwitching;
+            this.checkEnableKeyboardShortcuts.Checked = SuperPuTTY.Settings.EnableKeyboadShortcuts;
+            this.checkBoxCheckForUpdates.Checked = SuperPuTTY.Settings.AutoUpdateCheck;
+            this.comboBoxUpdateChannel.Items.AddRange(UpdateChannel.Names);
+            this.comboBoxUpdateChannel.SelectedItem = UpdateChannel.Names.Contains(SuperPuTTY.Settings.UpdateChannel)
+                ? SuperPuTTY.Settings.UpdateChannel
+                : UpdateChannel.CommunityFork;
+            this.textBoxPuttyDefaultParameters.Text = SuperPuTTY.Settings.PuttyDefaultParameters;
+
+            if (SuperPuTTY.IsFirstRun)
+            {
+                this.ShowIcon = true;
+                this.ShowInTaskbar = true;
+            }
+
+            this.Shortcuts = new BindingList<KeyboardShortcut>();
+            foreach (KeyboardShortcut ks in SuperPuTTY.Settings.LoadShortcuts())
+            {
+                this.Shortcuts.Add(ks);
+            }
+            this.dataGridViewShortcuts.DataSource = this.Shortcuts;
+        }
+
+        private void InitializeGuiOptions()
+        {
             // tab text
             foreach(String s in Enum.GetNames(typeof(frmSuperPutty.TabTextBehavior)))
             {
@@ -190,14 +243,6 @@ namespace SuperPutty
             }
             this.comboBoxTabSwitching.SelectedItem = selectedItem ?? TabSwitcher.Strategies[0];
 
-            // activator types
-            this.comboBoxActivatorType.Items.Add(typeof(KeyEventWindowActivator).FullName);
-            this.comboBoxActivatorType.Items.Add(typeof(CombinedWindowActivator).FullName);
-            this.comboBoxActivatorType.Items.Add(typeof(SetFGWindowActivator).FullName);
-            this.comboBoxActivatorType.Items.Add(typeof(RestoreWindowActivator).FullName);
-            this.comboBoxActivatorType.Items.Add(typeof(SetFGAttachThreadWindowActivator).FullName);
-            this.comboBoxActivatorType.SelectedItem = SuperPuTTY.Settings.WindowActivator;
-
             // search types
             foreach (string name in Enum.GetNames(typeof(SessionTreeview.SearchMode)))
             {
@@ -209,20 +254,12 @@ namespace SuperPutty
             this.comboTheme.Items.AddRange(ThemeManager.ThemeNames);
             this.comboTheme.SelectedItem = ThemeManager.Normalize(SuperPuTTY.Settings.Theme);
 
-            // default layouts
-            InitLayouts();
-
-            this.checkSingleInstanceMode.Checked = SuperPuTTY.Settings.SingleInstanceMode;
             this.checkConstrainPuttyDocking.Checked = SuperPuTTY.Settings.RestrictContentToDocumentTabs;
-            this.checkRestoreWindow.Checked = SuperPuTTY.Settings.RestoreWindowLocation;
-            this.checkExitConfirmation.Checked = SuperPuTTY.Settings.ExitConfirmation;
             this.checkExpandTree.Checked = SuperPuTTY.Settings.ExpandSessionsTreeOnStartup;
             this.checkMinimizeToTray.Checked = SuperPuTTY.Settings.MinimizeToTray;
             this.checkSessionsTreeShowLines.Checked = SuperPuTTY.Settings.SessionsTreeShowLines;
             this.checkConfirmTabClose.Checked = SuperPuTTY.Settings.MultipleTabCloseConfirmation;
             this.checkMiddleClickClose.Checked = SuperPuTTY.Settings.MiddleClickClosesWithoutConfirmation;
-            this.checkEnableControlTabSwitching.Checked = SuperPuTTY.Settings.EnableControlTabSwitching;
-            this.checkEnableKeyboardShortcuts.Checked = SuperPuTTY.Settings.EnableKeyboadShortcuts;
             this.btnFont.Font = SuperPuTTY.Settings.SessionsTreeFont;
             this.btnFont.Text = ToShortString(SuperPuTTY.Settings.SessionsTreeFont);
             this.numericUpDownOpacity.Value = (decimal) SuperPuTTY.Settings.Opacity * 100;
@@ -232,32 +269,12 @@ namespace SuperPutty
             this.checkSessionsShowSearch.Checked = SuperPuTTY.Settings.SessionsShowSearch;
             this.checkFilterWhileTyping.Checked = SuperPuTTY.Settings.FilterSessionsOnChange;
             this.checkPuttyEnableNewSessionMenu.Checked = SuperPuTTY.Settings.PuttyPanelShowNewSessionMenu;
-            this.checkBoxCheckForUpdates.Checked = SuperPuTTY.Settings.AutoUpdateCheck;
-            this.comboBoxUpdateChannel.Items.AddRange(UpdateChannel.Names);
-            this.comboBoxUpdateChannel.SelectedItem = UpdateChannel.Names.Contains(SuperPuTTY.Settings.UpdateChannel)
-                ? SuperPuTTY.Settings.UpdateChannel
-                : UpdateChannel.CommunityFork;
             this.textBoxHomeDirPrefix.Text = SuperPuTTY.Settings.PscpHomePrefix;
             this.textBoxRootDirPrefix.Text = SuperPuTTY.Settings.PscpRootHomePrefix;
             this.checkSessionTreeFoldersFirst.Checked = SuperPuTTY.Settings.SessiontreeShowFoldersFirst;
             this.checkBoxPersistTsHistory.Checked = SuperPuTTY.Settings.PersistCommandBarHistory;
             this.numericUpDown1.Value = SuperPuTTY.Settings.SaveCommandHistoryDays;
             this.checkBoxAllowPuttyPWArg.Checked = SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg;
-            this.textBoxPuttyDefaultParameters.Text = SuperPuTTY.Settings.PuttyDefaultParameters;
-
-            if (SuperPuTTY.IsFirstRun)
-            {
-                this.ShowIcon = true;
-                this.ShowInTaskbar = true;
-            }
-
-            // shortcuts
-            this.Shortcuts = new BindingList<KeyboardShortcut>();
-            foreach (KeyboardShortcut ks in SuperPuTTY.Settings.LoadShortcuts())
-            {
-                this.Shortcuts.Add(ks);
-            }
-            this.dataGridViewShortcuts.DataSource = this.Shortcuts;
         }
 
         private void FixDpiScalingIssues()
@@ -342,11 +359,18 @@ namespace SuperPutty
         {
             base.OnLoad(e);
 
-            this.BeginInvoke(new MethodInvoker(delegate { this.textBoxPuttyLocation.Focus(); }));
+            if (!guiOnly)
+                this.BeginInvoke(new MethodInvoker(delegate { this.textBoxPuttyLocation.Focus(); }));
         }
        
         private async void buttonOk_Click(object sender, EventArgs e)
         {
+            if (guiOnly)
+            {
+                SaveGuiOptions();
+                return;
+            }
+
             var pending = new Dictionary<string, object>();
             List<String> errors = new List<string>();
             if (this.protocolList.CheckedItems.Count == 0)
@@ -412,41 +436,17 @@ namespace SuperPutty
             if (errors.Count == 0)
             {
                 pending[nameof(Properties.Settings.SingleInstanceMode)] = this.checkSingleInstanceMode.Checked;
-                pending[nameof(Properties.Settings.RestrictContentToDocumentTabs)] = this.checkConstrainPuttyDocking.Checked;
-                pending[nameof(Properties.Settings.MultipleTabCloseConfirmation)] = this.checkConfirmTabClose.Checked;
-                pending[nameof(Properties.Settings.MiddleClickClosesWithoutConfirmation)] = this.checkMiddleClickClose.Checked;
                 pending[nameof(Properties.Settings.RestoreWindowLocation)] = this.checkRestoreWindow.Checked;
                 pending[nameof(Properties.Settings.ExitConfirmation)] = this.checkExitConfirmation.Checked;
-                pending[nameof(Properties.Settings.ExpandSessionsTreeOnStartup)] = this.checkExpandTree.Checked;
                 pending[nameof(Properties.Settings.EnableControlTabSwitching)] = this.checkEnableControlTabSwitching.Checked;
                 pending[nameof(Properties.Settings.EnableKeyboadShortcuts)] = this.checkEnableKeyboardShortcuts.Checked;
-                pending[nameof(Properties.Settings.MinimizeToTray)] = this.checkMinimizeToTray.Checked;
-                pending[nameof(Properties.Settings.TabTextBehavior)] = (string) this.comboBoxTabText.SelectedItem;
-                pending[nameof(Properties.Settings.TabSwitcher)] = (string)this.comboBoxTabSwitching.SelectedItem.GetType().FullName;
-                pending[nameof(Properties.Settings.SessionsTreeShowLines)] = this.checkSessionsTreeShowLines.Checked;
-                pending[nameof(Properties.Settings.SessionsTreeFont)] = this.btnFont.Font;
                 pending[nameof(Properties.Settings.WindowActivator)] = (string) this.comboBoxActivatorType.SelectedItem;
-                pending[nameof(Properties.Settings.Opacity)] = (double) this.numericUpDownOpacity.Value / 100.0;
-                pending[nameof(Properties.Settings.SessionsSearchMode)] = (string) this.comboSearchMode.SelectedItem;
-                pending[nameof(Properties.Settings.QuickSelectorCaseSensitiveSearch)] = this.checkQuickSelectorCaseSensitiveSearch.Checked;
-                pending[nameof(Properties.Settings.ShowDocumentIcons)] = this.checkShowDocumentIcons.Checked;
-                pending[nameof(Properties.Settings.Theme)] = (string) this.comboTheme.SelectedItem;
                 var protocols = SessionData.GetProtocolDisplayOrder();
                 pending[nameof(Properties.Settings.HiddenProtocols)] = String.Join(",", protocols
                     .Where((protocol, index) => !this.protocolList.GetItemChecked(index))
                     .Select(protocol => protocol.ToString()));
-                pending[nameof(Properties.Settings.DockingRestrictFloatingWindows)] = this.checkRestrictFloatingWindows.Checked;
-                pending[nameof(Properties.Settings.SessionsShowSearch)] = this.checkSessionsShowSearch.Checked;
-                pending[nameof(Properties.Settings.FilterSessionsOnChange)] = this.checkFilterWhileTyping.Checked;
-                pending[nameof(Properties.Settings.PuttyPanelShowNewSessionMenu)] = this.checkPuttyEnableNewSessionMenu.Checked;
                 pending[nameof(Properties.Settings.AutoUpdateCheck)] = this.checkBoxCheckForUpdates.Checked;
                 pending[nameof(Properties.Settings.UpdateChannel)] = (string)this.comboBoxUpdateChannel.SelectedItem;
-                pending[nameof(Properties.Settings.PscpHomePrefix)] = this.textBoxHomeDirPrefix.Text;
-                pending[nameof(Properties.Settings.PscpRootHomePrefix)] = this.textBoxRootDirPrefix.Text;
-                pending[nameof(Properties.Settings.SessiontreeShowFoldersFirst)] = this.checkSessionTreeFoldersFirst.Checked;
-                pending[nameof(Properties.Settings.PersistCommandBarHistory)] = this.checkBoxPersistTsHistory.Checked;
-                pending[nameof(Properties.Settings.SaveCommandHistoryDays)] = (int)this.numericUpDown1.Value;
-                pending[nameof(Properties.Settings.AllowPlainTextPuttyPasswordArg)] = this.checkBoxAllowPuttyPWArg.Checked;
                 pending[nameof(Properties.Settings.PuttyDefaultParameters)] = this.textBoxPuttyDefaultParameters.Text;
 
                 // save shortcuts
@@ -492,14 +492,9 @@ namespace SuperPutty
                         DialogResult = DialogResult.OK;
                     }
                     catch (OperationCanceledException) { }
-                    catch (Exception ex) when (ex is System.Configuration.ConfigurationErrorsException ||
-                        ex is IOException || ex is UnauthorizedAccessException || ex is InvalidDataException ||
-                        ex is InvalidOperationException || ex is ArgumentException || ex is TimeoutException ||
-                        ex is System.Security.SecurityException)
+                    catch (Exception ex) when (IsPreferenceSaveError(ex))
                     {
-                        Log.Warn("Unable to apply Options", ex);
-                        if (!IsDisposed && !Disposing)
-                            MessageBox.Show(this, ex.Message, "Unable to Save Preferences", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        ReportPreferenceSaveError(ex);
                     }
                     finally
                     {
@@ -525,6 +520,60 @@ namespace SuperPutty
                     DialogResult = DialogResult.Cancel;
                 }
             }
+        }
+
+        private void SaveGuiOptions()
+        {
+            var pending = new Dictionary<string, object>
+            {
+                [nameof(Properties.Settings.RestrictContentToDocumentTabs)] = checkConstrainPuttyDocking.Checked,
+                [nameof(Properties.Settings.MultipleTabCloseConfirmation)] = checkConfirmTabClose.Checked,
+                [nameof(Properties.Settings.MiddleClickClosesWithoutConfirmation)] = checkMiddleClickClose.Checked,
+                [nameof(Properties.Settings.ExpandSessionsTreeOnStartup)] = checkExpandTree.Checked,
+                [nameof(Properties.Settings.MinimizeToTray)] = checkMinimizeToTray.Checked,
+                [nameof(Properties.Settings.TabTextBehavior)] = (string)comboBoxTabText.SelectedItem,
+                [nameof(Properties.Settings.TabSwitcher)] = comboBoxTabSwitching.SelectedItem.GetType().FullName,
+                [nameof(Properties.Settings.SessionsTreeShowLines)] = checkSessionsTreeShowLines.Checked,
+                [nameof(Properties.Settings.SessionsTreeFont)] = btnFont.Font,
+                [nameof(Properties.Settings.Opacity)] = (double)numericUpDownOpacity.Value / 100.0,
+                [nameof(Properties.Settings.SessionsSearchMode)] = (string)comboSearchMode.SelectedItem,
+                [nameof(Properties.Settings.QuickSelectorCaseSensitiveSearch)] = checkQuickSelectorCaseSensitiveSearch.Checked,
+                [nameof(Properties.Settings.ShowDocumentIcons)] = checkShowDocumentIcons.Checked,
+                [nameof(Properties.Settings.Theme)] = (string)comboTheme.SelectedItem,
+                [nameof(Properties.Settings.DockingRestrictFloatingWindows)] = checkRestrictFloatingWindows.Checked,
+                [nameof(Properties.Settings.SessionsShowSearch)] = checkSessionsShowSearch.Checked,
+                [nameof(Properties.Settings.FilterSessionsOnChange)] = checkFilterWhileTyping.Checked,
+                [nameof(Properties.Settings.PuttyPanelShowNewSessionMenu)] = checkPuttyEnableNewSessionMenu.Checked,
+                [nameof(Properties.Settings.PscpHomePrefix)] = textBoxHomeDirPrefix.Text,
+                [nameof(Properties.Settings.PscpRootHomePrefix)] = textBoxRootDirPrefix.Text,
+                [nameof(Properties.Settings.SessiontreeShowFoldersFirst)] = checkSessionTreeFoldersFirst.Checked,
+                [nameof(Properties.Settings.PersistCommandBarHistory)] = checkBoxPersistTsHistory.Checked,
+                [nameof(Properties.Settings.SaveCommandHistoryDays)] = (int)numericUpDown1.Value,
+                [nameof(Properties.Settings.AllowPlainTextPuttyPasswordArg)] = checkBoxAllowPuttyPWArg.Checked
+            };
+            try
+            {
+                CommitSettingsChanges(pending, SuperPuTTY.Settings.Save);
+                DialogResult = DialogResult.OK;
+            }
+            catch (Exception ex) when (IsPreferenceSaveError(ex))
+            {
+                ReportPreferenceSaveError(ex);
+            }
+        }
+
+        private static bool IsPreferenceSaveError(Exception ex)
+        {
+            return ex is System.Configuration.ConfigurationErrorsException || ex is IOException ||
+                ex is UnauthorizedAccessException || ex is InvalidDataException || ex is InvalidOperationException ||
+                ex is ArgumentException || ex is TimeoutException || ex is System.Security.SecurityException;
+        }
+
+        private void ReportPreferenceSaveError(Exception ex)
+        {
+            Log.Warn("Unable to apply Options", ex);
+            if (!IsDisposed && !Disposing)
+                MessageBox.Show(this, ex.Message, "Unable to Save Preferences", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         internal static void CommitSettingsChanges(IDictionary<string, object> changes, Action persist,

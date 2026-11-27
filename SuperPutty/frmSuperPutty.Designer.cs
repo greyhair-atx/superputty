@@ -90,6 +90,7 @@ namespace SuperPutty
             this.toggleCommandMaskToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripMenuItem4 = new System.Windows.Forms.ToolStripSeparator();
             this.optionsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.guiOptionsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.helpToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.documentationToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.diagnosticsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -444,6 +445,7 @@ namespace SuperPutty
             this.toolStripMenuItem11,
             this.toggleCommandMaskToolStripMenuItem,
             this.toolStripMenuItem4,
+            this.guiOptionsToolStripMenuItem,
             this.optionsToolStripMenuItem});
             this.toolsToolStripMenuItem.Name = "toolsToolStripMenuItem";
             this.toolsToolStripMenuItem.Size = new System.Drawing.Size(47, 20);
@@ -487,9 +489,15 @@ namespace SuperPutty
             this.optionsToolStripMenuItem.Name = "optionsToolStripMenuItem";
             this.optionsToolStripMenuItem.ShortcutKeys = System.Windows.Forms.Keys.F2;
             this.optionsToolStripMenuItem.Size = new System.Drawing.Size(269, 22);
-            this.optionsToolStripMenuItem.Text = "&Options";
+            this.optionsToolStripMenuItem.Text = dlgFindPutty.AdvancedOptionsTitle;
             this.optionsToolStripMenuItem.Click += new System.EventHandler(this.optionsToolStripMenuItem_Click);
             // 
+            // guiOptionsToolStripMenuItem
+            //
+            this.guiOptionsToolStripMenuItem.Name = "guiOptionsToolStripMenuItem";
+            this.guiOptionsToolStripMenuItem.Text = dlgFindPutty.GuiOptionsTitle;
+            this.guiOptionsToolStripMenuItem.Click += new System.EventHandler(this.guiOptionsToolStripMenuItem_Click);
+            //
             // helpToolStripMenuItem
             // 
             this.helpToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
@@ -966,6 +974,7 @@ namespace SuperPutty
         private System.Windows.Forms.SaveFileDialog saveFileDialogLayout;
         private System.Windows.Forms.ToolStripSeparator toolStripMenuItem4;
         private System.Windows.Forms.ToolStripMenuItem optionsToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem guiOptionsToolStripMenuItem;
         private System.Windows.Forms.StatusStrip statusStrip1;
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabelMessage;
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabelLayout;

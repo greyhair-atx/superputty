@@ -837,10 +837,33 @@ namespace SuperPutty
             }
         }
 
+        private void openHostInBrowserToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            Uri uri;
+            if (!ExternalApplications.TryGetSessionBrowserUri(SelectedSession, out uri)) return;
+
+            try
+            {
+                using (var browser = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = uri.AbsoluteUri,
+                    UseShellExecute = true
+                })) { }
+            }
+            catch (Exception ex) when (ex is Win32Exception || ex is InvalidOperationException ||
+                ex is UnauthorizedAccessException || ex is System.Security.SecurityException)
+            {
+                Log.Warn("Unable to open the session host in the default browser", ex);
+                MessageBox.Show(this, "The default browser could not be opened.", "Browser Open IP/Hostname",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
         private void contextMenuStripAddTreeItem_Opening(object sender, CancelEventArgs e)
         {
             SessionData selectedSession = this.SelectedSession;
             this.copyHostToolStripMenuItem.Enabled = selectedSession != null && !String.IsNullOrWhiteSpace(selectedSession.Host);
+            this.openHostInBrowserToolStripMenuItem.Enabled = ExternalApplications.TryGetSessionBrowserUri(selectedSession, out _);
             bool isScpSession = selectedSession != null && selectedSession.Proto == ConnectionProtocol.SCP;
 
             bool canPing = WCMDStartInfo.CanPing(selectedSession);

@@ -11,7 +11,7 @@ SuperPuTTY uses two related locations:
 
 New profiles reuse an existing writable Documents-based SuperPuTTY folder when available. Otherwise, the application uses `%LOCALAPPDATA%\SuperPuTTY`. If a configured folder becomes unwritable, SuperPuTTY can fall back to Local AppData and copy settings while preserving files already there. It validates the session catalog before saving the new folder. If copying or validation fails, check the original folder and restart SuperPuTTY. The configured path remains available for retry.
 
-Use **Tools > Options > General** to see or change the active settings folder. The directory must be writable.
+Use **Tools > SupperPuTTY CE Advanced Options > General** to see or change the active settings folder. The directory must be writable.
 
 When multiple SuperPuTTY instances share these files, a save is rejected if another instance has changed the preferences or session catalog since it was loaded. Use **Reload Sessions** before retrying a session save; restart SuperPuTTY to reload application preferences. This keeps an older instance from silently replacing newer changes. File access retries transient sharing violations for a bounded time and reports a busy file if access remains unavailable.
 
@@ -27,7 +27,7 @@ If the single-instance connection cannot start, SuperPuTTY can still open an ind
 
 ## Protocol dropdowns
 
-Under **Tools > Options > Protocols**, check the protocols you want in the connection toolbar and new session dropdowns. Uncheck protocols to hide them, or use **Show all** to restore every option. Keep at least one checked. Changes apply when you save, without restarting. All protocols are shown by default.
+Under **Tools > SupperPuTTY CE Advanced Options > Protocols**, check the protocols you want in the connection toolbar and new session dropdowns. Uncheck protocols to hide them, or use **Show all** to restore every option. Keep at least one checked. Changes apply when you save, without restarting. All protocols are shown by default.
 
 Hidden protocols still work for saved sessions. When editing an existing session, its current protocol remains available so it is not changed accidentally.
 
@@ -45,7 +45,7 @@ Use **Cancel** to stop the operation and its console processes. Operations time 
 
 ## Application theme (1.8.3)
 
-Under **Tools > Options > GUI > Misc > Theme**, choose Light, Dark, Dark Modern, or System. Save and restart to apply the choice. Light is the default; Dark Modern uses a VS Code inspired palette and flat document tabs. System follows the Windows app preference at startup using the original Dark style. External terminal and remote desktop colors are configured in their own applications. Dark mode was contributed by [dustinreeves](https://github.com/dustinreeves).
+Under **Tools > SupperPuTTY CE GUI Options > Misc > Theme**, choose Light, Dark, Dark Modern, or System. Save and restart to apply the choice. Light is the default; Dark Modern uses a VS Code inspired palette and flat document tabs. System follows the Windows app preference at startup using the original Dark style. External terminal and remote desktop colors are configured in their own applications. Dark mode was contributed by [dustinreeves](https://github.com/dustinreeves).
 
 ## Backups
 
@@ -75,6 +75,6 @@ See [Security and privacy](security.md) for credential, host-key, certificate, s
 
 ## Updates
 
-The update channel can be selected under **Tools > Options**. Choose the community-fork channel for releases from `greyhair-atx/superputty`, or upstream when following Jim Radford's original project releases.
+The update channel can be selected under **Tools > SupperPuTTY CE Advanced Options**. Choose the community-fork channel for releases from `greyhair-atx/superputty`, or upstream when following Jim Radford's original project releases.
 
 New profiles default to **Community fork**. Missing or unrecognized channel values also use the community repository. An explicitly saved **Official upstream** or **Community fork** choice is preserved; upgrading does not migrate existing preferences.

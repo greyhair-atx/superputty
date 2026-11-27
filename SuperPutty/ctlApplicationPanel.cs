@@ -915,7 +915,7 @@ DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
             {
                 if (!File.Exists(ApplicationName))
                 {
-                    failure = "The client executable is missing. Check its path in Tools > Options.";
+                    failure = "The client executable is missing. Check its path in " + dlgFindPutty.AdvancedOptionsMenuPath + ".";
                     return;
                 }
 

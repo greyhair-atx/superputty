@@ -6,7 +6,7 @@ Layouts store DockPanelSuite window placement: docked tool panels, floating pane
 
 ## Automatic layout
 
-Select `<Auto Restore>` as **Tools > Options > General > Default Layout** to retain the application workspace between runs.
+Select `<Auto Restore>` as **Tools > SupperPuTTY CE Advanced Options > General > Default Layout** to retain the application workspace between runs.
 
 The community version deliberately separates workspace restoration from connection restoration:
 

@@ -27,7 +27,7 @@ See [SCP file transfers](scp-file-transfers.md) for the complete authentication 
 
 ## Settings cannot be saved
 
-- Open **Tools > Options** and confirm the settings folder is writable.
+- Open **Tools > SupperPuTTY CE Advanced Options** and confirm the settings folder is writable.
 - Check OneDrive or Controlled Folder Access notifications.
 - Review whether SuperPuTTY reported a fallback to `%LOCALAPPDATA%\SuperPuTTY`.
 - Back up files before manually editing or replacing settings.

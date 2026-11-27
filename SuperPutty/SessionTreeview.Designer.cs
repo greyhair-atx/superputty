@@ -42,6 +42,7 @@
             this.newSessionToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.createLikeToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.copyHostToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.openHostInBrowserToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.settingsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.deleteToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
@@ -115,6 +116,7 @@
             this.newSessionToolStripMenuItem,
             this.createLikeToolStripMenuItem,
             this.copyHostToolStripMenuItem,
+            this.openHostInBrowserToolStripMenuItem,
             this.settingsToolStripMenuItem,
             this.deleteToolStripMenuItem,
             this.toolStripSeparator1,
@@ -134,6 +136,12 @@
             this.contextMenuStripAddTreeItem.Size = new System.Drawing.Size(182, 258);
             this.contextMenuStripAddTreeItem.Opening += new System.ComponentModel.CancelEventHandler(this.contextMenuStripAddTreeItem_Opening);
             // 
+            // openHostInBrowserToolStripMenuItem
+            //
+            this.openHostInBrowserToolStripMenuItem.Name = "openHostInBrowserToolStripMenuItem";
+            this.openHostInBrowserToolStripMenuItem.Text = "Browser Open IP/Hostname";
+            this.openHostInBrowserToolStripMenuItem.Click += new System.EventHandler(this.openHostInBrowserToolStripMenuItem_Click);
+            //
             // newSessionToolStripMenuItem
             // 
             this.newSessionToolStripMenuItem.Name = "newSessionToolStripMenuItem";
@@ -403,6 +411,7 @@
         private System.Windows.Forms.TreeView treeView1;
         private System.Windows.Forms.ContextMenuStrip contextMenuStripAddTreeItem;
         private System.Windows.Forms.ToolStripMenuItem copyHostToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem openHostInBrowserToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem newSessionToolStripMenuItem;
         private System.Windows.Forms.ImageList imageList1;
         private System.Windows.Forms.ToolStripMenuItem settingsToolStripMenuItem;

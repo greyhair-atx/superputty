@@ -6,7 +6,7 @@ SuperPuTTY uses PuTTY's `pscp.exe` for the integrated two-pane file browser. Sup
 
 ## Configure an SCP session
 
-1. Confirm the PSCP location under **Tools > Options > General**.
+1. Confirm the PSCP location under **Tools > SupperPuTTY CE Advanced Options > General**.
 2. Create or edit a saved session.
 3. Select **SCP** as the protocol.
 4. Enter the host, port, and username.
@@ -19,7 +19,7 @@ SSH saved sessions can also carry these file-transfer options when SCP is opened
 
 ## Optional WinSCP and FileZilla shortcuts
 
-Paths for WinSCP and FileZilla can be set under **Tools > Options > General**. When a configured executable is available, the saved session's context menu can launch that program with the session's host, port, username, and local or remote starting path.
+Paths for WinSCP and FileZilla can be set under **Tools > SupperPuTTY CE Advanced Options > General**. When a configured executable is available, the saved session's context menu can launch that program with the session's host, port, username, and local or remote starting path.
 
 These are external SFTP clients and do not use SuperPuTTY's protected PSCP named-pipe password flow. With plain-text password arguments disabled, the client must obtain authentication itself. Do not enable command-line password forwarding merely to avoid the client's normal prompt.
 

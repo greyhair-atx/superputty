@@ -85,7 +85,7 @@ namespace SuperPuttyUnitTests
             string error;
             Assert.IsFalse(ExternalApplications.TryOpenClient(new SessionData { Host = "server.example", Port = 22 },
                 winScp, "missing.exe", out error, (file, args) => { throw new Win32Exception(2); }));
-            StringAssert.Contains("Tools > Options", error);
+            StringAssert.Contains("Tools > SupperPuTTY CE Advanced Options", error);
         }
 
         [Test]
@@ -97,6 +97,31 @@ namespace SuperPuttyUnitTests
                 true, "client.exe", out error, (file, args) => launchedArgs = args));
             StringAssert.Contains("sftp://server.example:22", launchedArgs);
             Assert.IsNull(error);
+        }
+
+        [TestCase("server.example", "https://server.example/")]
+        [TestCase(" 192.0.2.10 ", "https://192.0.2.10/")]
+        [TestCase("2001:db8::1", "https://[2001:db8::1]/")]
+        [TestCase("[2001:db8::1]", "https://[2001:db8::1]/")]
+        public void SessionBrowserUsesHttpsAndOmitsSessionCredentialsAndPort(string host, string expected)
+        {
+            var session = new SessionData { Host = host, Port = 2222, Username = "user", Password = "secret" };
+            Assert.IsTrue(ExternalApplications.TryGetSessionBrowserUri(session, out Uri uri));
+            Assert.AreEqual(expected, uri.AbsoluteUri);
+        }
+
+        [TestCase(null)]
+        [TestCase(" ")]
+        [TestCase("https://server.example")]
+        [TestCase("server.example:2222")]
+        [TestCase("[2001:db8::1]:2222")]
+        [TestCase("user@server.example")]
+        [TestCase("server.example/path")]
+        [TestCase("server.example\\")]
+        public void SessionBrowserRejectsMissingHostsAndNonHostInput(string host)
+        {
+            Assert.IsFalse(ExternalApplications.TryGetSessionBrowserUri(new SessionData { Host = host }, out Uri uri));
+            Assert.IsNull(uri);
         }
     }
 }

@@ -1569,9 +1569,19 @@ namespace SuperPutty
 
         private void optionsToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            SuperPuTTY.ReportStatus("Editing Options");
+            ShowOptions(false);
+        }
 
-            using (dlgFindPutty dialog = new dlgFindPutty())
+        private void guiOptionsToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            ShowOptions(true);
+        }
+
+        private void ShowOptions(bool guiOnly)
+        {
+            SuperPuTTY.ReportStatus(guiOnly ? "Editing GUI Options" : "Editing Advanced Options");
+
+            using (dlgFindPutty dialog = new dlgFindPutty(guiOnly))
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
                 if (SuperPuTTY.CurrentLayout == null)

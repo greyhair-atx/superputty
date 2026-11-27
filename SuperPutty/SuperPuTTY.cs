@@ -1042,7 +1042,7 @@ namespace SuperPutty
             }
             if (scp && !IsScpEnabled)
             {
-                error = "The PSCP executable is missing. Check its path in Tools > Options.";
+                error = "The PSCP executable is missing. Check its path in " + dlgFindPutty.AdvancedOptionsMenuPath + ".";
                 return null;
             }
 

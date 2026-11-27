@@ -64,7 +64,7 @@ namespace SuperPuttyUnitTests
             var start = new PuttyStartInfo(new SessionData { Proto = ConnectionProtocol.SSH, Host = "server", Port = 22 });
             string error;
             Assert.IsFalse(start.TryStartStandalone(out error, info => { throw new Win32Exception(2); }));
-            StringAssert.Contains("Tools > Options", error);
+            StringAssert.Contains("Tools > SupperPuTTY CE Advanced Options", error);
             bool launched = false;
             Assert.IsTrue(start.TryStartStandalone(out error, info => launched = true));
             Assert.IsTrue(launched);

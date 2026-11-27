@@ -2,7 +2,7 @@
 
 [Back to the manual](README.md)
 
-SuperPuTTY organizes and hosts connections, while PuTTY or another configured client performs most protocol work. Program paths are configured under **Tools > Options > General**.
+SuperPuTTY organizes and hosts connections, while PuTTY or another configured client performs most protocol work. Program paths are configured under **Tools > SupperPuTTY CE Advanced Options > General**.
 
 | Session type | Client and behavior |
 | --- | --- |

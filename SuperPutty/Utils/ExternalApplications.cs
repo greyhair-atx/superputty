@@ -10,6 +10,23 @@ namespace SuperPutty.Utils
     {
         private static readonly ILog Log = LogManager.GetLogger(typeof(ExternalApplications));
 
+        internal static bool TryGetSessionBrowserUri(SessionData session, out Uri uri)
+        {
+            uri = null;
+            string host = session?.Host?.Trim();
+            if (String.IsNullOrEmpty(host) || session.Proto == ConnectionProtocol.Serial ||
+                host.IndexOfAny(new[] { '/', '\\', '@', '?', '#', '%' }) >= 0 ||
+                host.Any(c => Char.IsWhiteSpace(c) || Char.IsControl(c)))
+                return false;
+
+            UriHostNameType hostType = Uri.CheckHostName(host);
+            if (hostType == UriHostNameType.Unknown) return false;
+            if (hostType == UriHostNameType.IPv6 && !host.StartsWith("[", StringComparison.Ordinal))
+                host = "[" + host + "]";
+
+            return Uri.TryCreate("https://" + host + "/", UriKind.Absolute, out uri);
+        }
+
         internal static string BuildArguments(SessionData session, bool winScp, bool includePassword)
         {
             if (session == null) throw new ArgumentNullException("session");
@@ -72,7 +89,7 @@ namespace SuperPutty.Utils
             try
             {
                 if (String.IsNullOrWhiteSpace(executable))
-                    throw new ArgumentException("Configure the external client executable in Tools > Options.");
+                    throw new ArgumentException("Configure the external client executable in " + dlgFindPutty.AdvancedOptionsMenuPath + ".");
                 string args = BuildArguments(session, winScp, true);
                 Log.Debug("Send to " + (winScp ? "WinSCP: " : "FileZilla: ") + BuildArguments(session, winScp, false));
                 if (start != null) start(executable, args);
@@ -85,7 +102,7 @@ namespace SuperPutty.Utils
                 ex is UnauthorizedAccessException || ex is System.Security.SecurityException)
             {
                 Log.Warn("Unable to open external file-transfer client (" + ex.GetType().Name + ").");
-                error = "Unable to open the file-transfer client. Check the session hostname and the executable configured in Tools > Options.";
+                error = "Unable to open the file-transfer client. Check the session hostname and the executable configured in " + dlgFindPutty.AdvancedOptionsMenuPath + ".";
                 return false;
             }
         }

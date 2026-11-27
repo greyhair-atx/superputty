@@ -114,7 +114,7 @@ namespace SuperPuttyUnitTests
             {
                 SuperPutty.SuperPuTTY.Settings.SettingsFolder = directory;
                 SuperPutty.SuperPuTTY.Settings.MiddleClickClosesWithoutConfirmation = enabled;
-                using (var options = new dlgFindPutty())
+                using (var options = new dlgFindPutty(guiOnly: true))
                 {
                     var checkbox = (CheckBox)options.Controls.Find("checkMiddleClickClose", true).Single();
                     Assert.AreEqual(enabled, checkbox.Checked);

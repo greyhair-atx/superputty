@@ -112,7 +112,7 @@ namespace SuperPutty.Utils
         static string MakeArgs(SessionData session, bool includePassword)
         {
             if (!String.IsNullOrEmpty(session.Password) && includePassword && !SuperPuTTY.Settings.AllowPlainTextPuttyPasswordArg)
-                Log.Warn("SuperPuTTY is set to NOT allow the use of the -pw <password> argument, this can be overriden in Tools -> Options -> GUI");
+                Log.Warn("SuperPuTTY blocks the -pw password argument. This setting is in " + dlgFindPutty.GuiOptionsMenuPath + ".");
 
             string protocol = session.Proto == ConnectionProtocol.SSH2 || session.Proto == ConnectionProtocol.SSHNet
                 ? "ssh"
@@ -186,7 +186,7 @@ namespace SuperPutty.Utils
                 ex is ArgumentException || ex is InvalidOperationException)
             {
                 Log.Warn("Could not start external session (" + ex.GetType().Name + ").");
-                error = "Unable to start the external client. Check its executable path in Tools > Options and your permission to run it.";
+                error = "Unable to start the external client. Check its executable path in " + dlgFindPutty.AdvancedOptionsMenuPath + " and your permission to run it.";
                 return false;
             }
         }

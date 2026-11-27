@@ -81,7 +81,7 @@ Use a disposable account and non-production endpoints where possible.
 12. Install and uninstall the Inno setup in both scopes on clean test profiles. Confirm scope, shortcuts, manual link, license page, and third-party notices.
 13. Select a versioned TigerVNC executable and connect using a non-default port. Confirm the log uses `host::port`, complete authentication, and verify the remote desktop replaces the login dialog inside the tab. Test resizing, switching tabs, and reconnecting; confirm an options dialog does not replace the desktop.
 14. Close an active tab using its X, context menu, and assigned **CloseTab** shortcut. Verify **Cancel** preserves it and **OK** closes it. Verify a session that exits on its own closes without prompting and an approved bulk close does not prompt per tab.
-15. Assign **RestartSession** under **Tools > Options > Shortcuts**, restart SuperPuTTY, and verify the binding is retained. Invoke it on a disconnected PuTTY session that remains open and confirm it reconnects. Verify it does not send PuTTY commands to VNC, RDP, MinTTY, or local shell tabs.
+15. Assign **RestartSession** under **Tools > SupperPuTTY CE Advanced Options > Shortcuts**, restart SuperPuTTY, and verify the binding is retained. Invoke it on a disconnected PuTTY session that remains open and confirm it reconnects. Verify it does not send PuTTY commands to VNC, RDP, MinTTY, or local shell tabs.
 16. Switch repeatedly between terminal tabs and application controls to check focus with the default three attempts at 40 ms intervals.
 
 ## Network tests
